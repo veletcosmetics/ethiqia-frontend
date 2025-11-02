@@ -35,6 +35,19 @@ export default function Feed() {
     e.preventDefault();
     setError(null);
     try {
+      // 1) Moderación previa en cliente
+      const modRes = await fetch(`${getBase()}/api/ai/moderate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text })
+      });
+      const mod = await modRes.json();
+      if (mod?.allowed === false) {
+        setError('Contenido rechazado por moderación de IA');
+        return;
+      }
+
+      // 2) Publicación
       const token = getToken();
       if (!token) { setError('Inicia sesión primero'); return; }
       const fd = new FormData();

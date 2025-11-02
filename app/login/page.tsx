@@ -13,10 +13,18 @@ export default function Login() {
     e.preventDefault();
     setError(null);
     try {
-      const res = await api('/api/auth/login', { method: 'POST', body: JSON.stringify({ email, password }) });
+      const res = await api('/api/auth/login', {
+        method: 'POST',
+        body: JSON.stringify({ email, password })
+      });
       setToken(res.token);
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('user', JSON.stringify(res.user));
+      }
       router.push('/feed');
-    } catch (e: any) { setError(e.message || 'Error'); }
+    } catch (e: any) {
+      setError(e.message || 'Error');
+    }
   }
 
   return (

@@ -1,5 +1,6 @@
 import './globals.css';
 import Link from 'next/link';
+import ClientUserBadge from '../components/ClientUserBadge';
 
 export const metadata = {
   title: 'Ethiqia',
@@ -13,10 +14,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <header className="border-b border-[#1c2230]">
           <div className="container py-4 flex items-center justify-between">
             <Link href="/" className="font-semibold">Ethiqia</Link>
-            <nav className="flex gap-4 text-sm">
+            <nav className="flex items-center gap-4 text-sm">
               <Link href="/feed">Feed</Link>
               <Link href="/login">Entrar</Link>
               <Link href="/register">Crear cuenta</Link>
+              <ClientUserBadge />
             </nav>
           </div>
         </header>
