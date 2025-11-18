@@ -10,7 +10,7 @@ export default function Navbar() {
           <li><Link href="/feed" className="hover:text-white">Feed</Link></li>
           <li><Link href="/login" className="hover:text-white">Entrar</Link></li>
           <li>
-            <Link href="/profile" className="rounded-md border border-neutral-700 px-3 py-1.5 hover:border-neutral-500">
+            <Link href="/register" className="rounded-md border border-neutral-700 px-3 py-1.5 hover:border-neutral-500">
               Crear cuenta
             </Link>
           </li>
