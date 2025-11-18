@@ -1,111 +1,74 @@
 'use client';
 
-import { useState } from 'react';
-import Link from 'next/link';
-import { getBase, setToken } from '@/lib/api';
+import { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
+import type { SessionData } from '../../lib/session';
+import { getSession, clearSession } from '../../lib/session';
 
-export default function RegisterPage() {
-  const [name, setName] = useState('');
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+export default function ProfilePage() {
+  const router = useRouter();
+  const [session, setSession] = useState<SessionData | null>(null);
+  const [loading, setLoading] = useState(true);
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    setError(null);
-    setLoading(true);
+  useEffect(() => {
+    const s = getSession();
+    setSession(s);
+    setLoading(false);
+  }, []);
 
-    try {
-      const res = await fetch(`${getBase()}/api/auth/register`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, email, password }),
-      });
+  function handleLogout() {
+    clearSession();
+    setSession(null);
+    router.push('/login');
+  }
 
-      if (!res.ok) {
-        const data = await res.json().catch(() => null);
-        throw new Error(data?.error || 'No se pudo crear la cuenta');
-      }
+  if (loading) {
+    return (
+      <main className="min-h-[calc(100vh-64px)] flex items-center justify-center bg-neutral-950 text-neutral-100">
+        <p>Cargando...</p>
+      </main>
+    );
+  }
 
-      const data = await res.json();
-      // Opcional: si el backend devuelve token al registrar, lo guardamos
-      if (data.token) {
-        setToken(data.token);
-        window.location.href = '/feed';
-      } else {
-        // Si no devuelve token, lo mandamos a login
-        window.location.href = '/login';
-      }
-    } catch (err: any) {
-      setError(err.message || 'Error inesperado');
-    } finally {
-      setLoading(false);
-    }
+  if (!session || !session.token) {
+    return (
+      <main className="min-h-[calc(100vh-64px)] flex flex-col items-center justify-center bg-neutral-950 text-neutral-100">
+        <h1 className="text-2xl font-semibold mb-2">Perfil</h1>
+        <p className="text-neutral-400 mb-4">
+          Inicia sesión para ver tu perfil.
+        </p>
+        <button
+          onClick={() => router.push('/login')}
+          className="rounded-md bg-emerald-500 px-4 py-2 text-sm font-medium text-black hover:bg-emerald-400"
+        >
+          Ir a iniciar sesión
+        </button>
+      </main>
+    );
   }
 
   return (
-    <main className="min-h-[calc(100vh-64px)] flex items-center justify-center bg-neutral-950 text-neutral-50">
-      <section className="w-full max-w-md space-y-6 px-6">
-        <h1 className="text-3xl font-semibold tracking-tight text-center">
-          Crear cuenta
-        </h1>
+    <main className="min-h-[calc(100vh-64px)] flex items-center justify-center bg-neutral-950 text-neutral-100">
+      <section className="w-full max-w-lg bg-neutral-900/70 border border-neutral-800 rounded-xl px-6 py-8 space-y-4">
+        <h1 className="text-2xl font-semibold">Tu perfil Ethiqia</h1>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
-          {error && (
-            <p className="text-sm text-red-400 bg-red-950/40 border border-red-800 rounded px-3 py-2">
-              {error}
-            </p>
-          )}
+        <div className="space-y-2 text-sm">
+          <p>
+            <span className="font-medium text-neutral-300">Nombre: </span>
+            {session.user?.name ?? '—'}
+          </p>
+          <p>
+            <span className="font-medium text-neutral-300">Email: </span>
+            {session.user?.email ?? '—'}
+          </p>
+        </div>
 
-          <div className="space-y-1">
-            <label className="text-sm text-neutral-200">Nombre</label>
-            <input
-              type="text"
-              className="w-full rounded bg-neutral-800 px-3 py-2 text-sm outline-none border border-neutral-700 focus:border-emerald-400"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              required
-            />
-          </div>
-
-          <div className="space-y-1">
-            <label className="text-sm text-neutral-200">Email</label>
-            <input
-              type="email"
-              className="w-full rounded bg-neutral-800 px-3 py-2 text-sm outline-none border border-neutral-700 focus:border-emerald-400"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              required
-            />
-          </div>
-
-          <div className="space-y-1">
-            <label className="text-sm text-neutral-200">Contraseña</label>
-            <input
-              type="password"
-              className="w-full rounded bg-neutral-800 px-3 py-2 text-sm outline-none border border-neutral-700 focus:border-emerald-400"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-            />
-          </div>
-
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full mt-4 rounded bg-emerald-400 text-neutral-950 font-medium py-2 text-sm hover:bg-emerald-300 transition disabled:opacity-60"
-          >
-            {loading ? 'Creando cuenta…' : 'Crear cuenta'}
-          </button>
-        </form>
-
-        <p className="text-center text-sm text-neutral-400">
-          ¿Ya tienes cuenta?{' '}
-          <Link href="/login" className="text-emerald-400 hover:underline">
-            Entrar
-          </Link>
-        </p>
+        <button
+          onClick={handleLogout}
+          className="mt-4 rounded-md border border-neutral-700 px-4 py-2 text-sm hover:border-neutral-500"
+        >
+          Cerrar sesión
+        </button>
       </section>
     </main>
   );
