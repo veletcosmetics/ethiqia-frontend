@@ -2,6 +2,7 @@
 
 import { FormEvent, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { getBase } from '../../lib/api';
 import { saveSession } from '../../lib/session';
 
@@ -32,6 +33,7 @@ export default function LoginPage() {
         throw new Error(data.error || 'Error al iniciar sesión');
       }
 
+      // Guardamos la sesión sencilla en localStorage
       saveSession({
         token: data.token,
         user: {
@@ -41,6 +43,7 @@ export default function LoginPage() {
         },
       });
 
+      // Redirigimos al perfil
       router.push('/profile');
     } catch (err: any) {
       setError(err.message ?? 'Error inesperado');
@@ -59,6 +62,12 @@ export default function LoginPage() {
         <p className="text-sm text-neutral-400 text-center">
           Accede a tu cuenta Ethiqia.
         </p>
+
+        {error && (
+          <p className="text-sm text-red-400">
+            {error}
+          </p>
+        )}
 
         <div>
           <label className="block text-sm mb-1">Email</label>
@@ -84,10 +93,6 @@ export default function LoginPage() {
           />
         </div>
 
-        {error && (
-          <p className="text-sm text-red-400">{error}</p>
-        )}
-
         <button
           type="submit"
           disabled={loading}
@@ -98,9 +103,9 @@ export default function LoginPage() {
 
         <p className="text-xs text-neutral-400 text-center">
           ¿Aún no tienes cuenta?{' '}
-          <a href="/register" className="text-emerald-400 hover:text-emerald-300">
+          <Link href="/register" className="text-emerald-400 hover:text-emerald-300">
             Crea tu cuenta aquí
-          </a>
+          </Link>
         </p>
       </form>
     </main>
