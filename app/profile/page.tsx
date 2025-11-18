@@ -5,11 +5,19 @@ import { useRouter } from 'next/navigation';
 import type { SessionData } from '../../lib/session';
 import { getSession, clearSession } from '../../lib/session';
 
-function computeDemoScore(session: SessionData | null): number {
+// Score base en función del usuario (para que cada usuario tenga algo distinto)
+function computeBaseScore(session: SessionData | null): number {
   if (!session?.user?.email) return 72;
-  // Cálculo tonto pero determinista para la demo
-  const base = 60 + (session.user.email.length % 35);
-  return Math.min(95, Math.max(45, base));
+  const base = 60 + (session.user.email.length % 25);
+  return Math.min(90, Math.max(50, base));
+}
+
+// Score "según la imagen" (DEMO IA)
+// NO es IA real: solo usamos tamaño de archivo para que parezca que analiza algo.
+function computeImageScore(file: File): number {
+  const size = file.size; // bytes
+  const base = 55 + (size % 40); // 55–95 aprox.
+  return Math.min(95, Math.max(50, base));
 }
 
 export default function ProfilePage() {
@@ -18,11 +26,14 @@ export default function ProfilePage() {
   const [loading, setLoading] = useState(true);
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
   const [score, setScore] = useState<number>(75);
+  const [scoreSource, setScoreSource] = useState<'base' | 'image'>('base');
+  const [lastAnalysis, setLastAnalysis] = useState<string | null>(null);
 
   useEffect(() => {
     const s = getSession();
     setSession(s);
-    setScore(computeDemoScore(s));
+    setScore(computeBaseScore(s));
+    setScoreSource('base');
     setLoading(false);
   }, []);
 
@@ -35,8 +46,31 @@ export default function ProfilePage() {
   function handleAvatarChange(e: ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
+
+    // Mostrar la imagen en el momento
     const url = URL.createObjectURL(file);
     setAvatarUrl(url);
+
+    // Recalcular score "como si" analizáramos la imagen con IA
+    const newScore = computeImageScore(file);
+    setScore(newScore);
+    setScoreSource('image');
+    setLastAnalysis(
+      `Score recalculado a partir de la imagen cargada (${Math.round(
+        file.size / 1024
+      )} KB).`
+    );
+
+    // 👉 GUARDAR PUBLICACIÓN DEMO PARA EL FEED (solo en esta sesión, localStorage)
+    if (typeof window !== 'undefined') {
+      const demoPost = {
+        imageUrl: url,
+        score: newScore,
+        name: session?.user?.name ?? 'Tu perfil Ethiqia',
+        createdAt: Date.now(),
+      };
+      localStorage.setItem('ethiqia_demo_post', JSON.stringify(demoPost));
+    }
   }
 
   if (loading) {
@@ -70,6 +104,7 @@ export default function ProfilePage() {
   return (
     <main className="min-h-[calc(100vh-64px)] flex items-center justify-center bg-neutral-950 text-neutral-100">
       <section className="w-full max-w-xl rounded-2xl border border-neutral-800 bg-neutral-900/70 px-6 py-8 space-y-6">
+        {/* Cabecera perfil */}
         <header className="flex items-center gap-4">
           <div className="relative h-16 w-16 rounded-full bg-neutral-800 flex items-center justify-center overflow-hidden">
             {avatarUrl ? (
@@ -87,6 +122,7 @@ export default function ProfilePage() {
           </div>
         </header>
 
+        {/* Score Ethiqia */}
         <div className="space-y-2">
           <p className="text-xs font-medium text-neutral-400 uppercase tracking-[0.2em]">
             Ethiqia Score
@@ -101,16 +137,18 @@ export default function ProfilePage() {
                 />
               </div>
               <p className="mt-1 text-[11px] text-neutral-400">
-                Score generado de forma simulada para la demo. En producción vendrá de los
-                algoritmos de IA de Ethiqia.
+                {scoreSource === 'base'
+                  ? 'Score base demo generado a partir de tu perfil. En producción vendrá de los algoritmos de IA de Ethiqia.'
+                  : 'Score recalculado en función de la imagen cargada (análisis de imagen simulado para la demo).'}
               </p>
             </div>
           </div>
         </div>
 
+        {/* Subida de imagen para la demo IA */}
         <div className="space-y-2">
           <p className="text-xs font-medium text-neutral-400 uppercase tracking-[0.2em]">
-            Foto de perfil (demo)
+            Análisis de imagen (DEMO IA)
           </p>
           <input
             type="file"
@@ -123,11 +161,33 @@ export default function ProfilePage() {
                        hover:file:border-neutral-500"
           />
           <p className="text-[11px] text-neutral-500">
-            La imagen se mantiene solo en esta sesión del navegador. Para la demo es suficiente
-            para enseñar el concepto de perfil con foto.
+            Al subir una foto, Ethiqia recalcula el score como si analizara la imagen con IA.
+            En esta versión es un análisis SIMULADO para demostraciones.
           </p>
+
+          {lastAnalysis && (
+            <p className="mt-1 text-[11px] text-neutral-400">
+              {lastAnalysis}
+            </p>
+          )}
+
+          <div className="mt-2 rounded-md border border-neutral-800 bg-neutral-900/70 px-3 py-2">
+            <p className="text-[11px] text-neutral-300 font-medium mb-1">
+              ¿Cómo lo explicas en la demo?
+            </p>
+            <ul className="text-[11px] text-neutral-400 list-disc pl-4 space-y-1">
+              <li>“Subimos una imagen del perfil.”</li>
+              <li>
+                “El sistema aplica un análisis basado en IA y ajusta el Ethiqia Score en tiempo real.”
+              </li>
+              <li>
+                “En esta demo el cálculo está simulado, pero la experiencia es la misma que en producción.”
+              </li>
+            </ul>
+          </div>
         </div>
 
+        {/* Pie */}
         <div className="flex justify-between items-center pt-2">
           <button
             onClick={handleLogout}
