@@ -1,16 +1,18 @@
 'use client';
 
-import { useState } from 'react';
-import Link from 'next/link';
-import { getBase, setToken } from '@/lib/api';
+import { FormEvent, useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { getBase } from '../../lib/api';
+import { saveSession } from '../../lib/session';
 
 export default function LoginPage() {
+  const router = useRouter();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
 
-  async function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: FormEvent) {
     e.preventDefault();
     setError(null);
     setLoading(true);
@@ -18,80 +20,89 @@ export default function LoginPage() {
     try {
       const res = await fetch(`${getBase()}/api/auth/login`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+        },
         body: JSON.stringify({ email, password }),
       });
 
+      const data = await res.json();
+
       if (!res.ok) {
-        const data = await res.json().catch(() => null);
-        throw new Error(data?.error || 'No se pudo iniciar sesión');
+        throw new Error(data.error || 'Error al iniciar sesión');
       }
 
-      const data = await res.json();
-      // El backend devuelve { token, user: {...} }
-      setToken(data.token);
+      saveSession({
+        token: data.token,
+        user: {
+          id: data.user?.id,
+          name: data.user?.name,
+          email: data.user?.email,
+        },
+      });
 
-      // Redirigimos al feed
-      window.location.href = '/feed';
+      router.push('/profile');
     } catch (err: any) {
-      setError(err.message || 'Error inesperado');
+      setError(err.message ?? 'Error inesperado');
     } finally {
       setLoading(false);
     }
   }
 
   return (
-    <main className="min-h-[calc(100vh-64px)] flex items-center justify-center bg-neutral-950 text-neutral-50">
-      <section className="w-full max-w-md space-y-6 px-6">
-        <h1 className="text-3xl font-semibold tracking-tight text-center">
-          Entrar
-        </h1>
-
-        <form onSubmit={handleSubmit} className="space-y-4">
-          {error && (
-            <p className="text-sm text-red-400 bg-red-950/40 border border-red-800 rounded px-3 py-2">
-              {error}
-            </p>
-          )}
-
-          <div className="space-y-1">
-            <label className="text-sm text-neutral-200">Email</label>
-            <input
-              type="email"
-              className="w-full rounded bg-neutral-800 px-3 py-2 text-sm outline-none border border-neutral-700 focus:border-emerald-400"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              required
-            />
-          </div>
-
-          <div className="space-y-1">
-            <label className="text-sm text-neutral-200">Contraseña</label>
-            <input
-              type="password"
-              className="w-full rounded bg-neutral-800 px-3 py-2 text-sm outline-none border border-neutral-700 focus:border-emerald-400"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-            />
-          </div>
-
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full mt-4 rounded bg-emerald-400 text-neutral-950 font-medium py-2 text-sm hover:bg-emerald-300 transition disabled:opacity-60"
-          >
-            {loading ? 'Entrando…' : 'Entrar'}
-          </button>
-        </form>
-
-        <p className="text-center text-sm text-neutral-400">
-          ¿Aún no tienes cuenta?{' '}
-          <Link href="/profile" className="text-emerald-400 hover:underline">
-            Crear cuenta
-          </Link>
+    <main className="min-h-[calc(100vh-64px)] bg-neutral-950 text-neutral-100 flex items-center justify-center">
+      <form
+        onSubmit={handleSubmit}
+        className="w-full max-w-md space-y-4 bg-neutral-900/70 border border-neutral-800 rounded-xl px-6 py-8"
+      >
+        <h1 className="text-2xl font-semibold text-center">Iniciar sesión</h1>
+        <p className="text-sm text-neutral-400 text-center">
+          Accede a tu cuenta Ethiqia.
         </p>
-      </section>
+
+        <div>
+          <label className="block text-sm mb-1">Email</label>
+          <input
+            type="email"
+            className="w-full rounded-md bg-neutral-950 border border-neutral-700 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+            value={email}
+            onChange={e => setEmail(e.target.value)}
+            required
+            placeholder="tucorreo@ejemplo.com"
+          />
+        </div>
+
+        <div>
+          <label className="block text-sm mb-1">Contraseña</label>
+          <input
+            type="password"
+            className="w-full rounded-md bg-neutral-950 border border-neutral-700 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+            value={password}
+            onChange={e => setPassword(e.target.value)}
+            required
+            placeholder="Tu contraseña"
+          />
+        </div>
+
+        {error && (
+          <p className="text-sm text-red-400">{error}</p>
+        )}
+
+        <button
+          type="submit"
+          disabled={loading}
+          className="w-full rounded-md bg-emerald-500 py-2 text-sm font-medium text-black hover:bg-emerald-400 disabled:opacity-60"
+        >
+          {loading ? 'Entrando...' : 'Iniciar sesión'}
+        </button>
+
+        <p className="text-xs text-neutral-400 text-center">
+          ¿Aún no tienes cuenta?{' '}
+          <a href="/register" className="text-emerald-400 hover:text-emerald-300">
+            Crea tu cuenta aquí
+          </a>
+        </p>
+      </form>
     </main>
   );
 }
