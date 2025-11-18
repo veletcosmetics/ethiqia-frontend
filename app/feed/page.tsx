@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, FormEvent } from 'react';
 
 type ProfileType = 'persona' | 'organizacion';
 
@@ -22,6 +22,12 @@ type StoredDemoPost = {
   score: number;
   name?: string;
   createdAt?: number;
+};
+
+type Comment = {
+  id: string;
+  text: string;
+  status: 'pending' | 'approved' | 'blocked';
 };
 
 const MOCK_FEED: FeedItem[] = [
@@ -157,7 +163,7 @@ export default function FeedPage() {
           <p className="text-xs text-neutral-400">
             Versión demo del feed. Cada publicación combina la foto con su Ethiqia Score,
             probabilidad de que la imagen sea IA y acciones tipo Instagram: me gusta, comentarios
-            y compartir.
+            moderados por IA y compartir.
           </p>
         </header>
 
@@ -180,7 +186,10 @@ type PostCardProps = {
 function PostCard({ item }: PostCardProps) {
   const [liked, setLiked] = useState(false);
   const [likes, setLikes] = useState(() => (item.isDemo ? 12 : 48));
-  const [comments] = useState(() => (item.isDemo ? 3 : 11));
+  const [baseComments] = useState(() => (item.isDemo ? 3 : 11));
+  const [showComments, setShowComments] = useState(false);
+  const [commentText, setCommentText] = useState('');
+  const [comments, setComments] = useState<Comment[]>([]);
 
   const badge = getBadge(item.score);
   const initials = item.name
@@ -192,6 +201,8 @@ function PostCard({ item }: PostCardProps) {
 
   const aiProb = item.aiProbability ?? 18;
   const aiBadge = getAiBadge(aiProb);
+
+  const totalComments = baseComments + comments.length;
 
   function toggleLike() {
     setLiked((prev) => !prev);
@@ -212,14 +223,57 @@ function PostCard({ item }: PostCardProps) {
           // si el usuario cancela, no hacemos nada
         });
     } else {
-      // Fallback simple para la demo
       try {
         void navigator.clipboard.writeText(window.location.href);
-        // Podrías mostrar un pequeño mensaje visual aquí si quisieras.
       } catch {
         // ignoramos en la demo
       }
     }
+  }
+
+  function handleAddComment(e: FormEvent) {
+    e.preventDefault();
+    const text = commentText.trim();
+    if (!text) return;
+
+    const newComment: Comment = {
+      id: String(Date.now()),
+      text,
+      status: 'pending',
+    };
+
+    setComments((prev) => [newComment, ...prev]);
+    setCommentText('');
+
+    // Simular moderación por IA
+    setTimeout(() => {
+      setComments((prev) =>
+        prev.map((c) => {
+          if (c.id !== newComment.id) return c;
+
+          const lower = c.text.toLowerCase();
+
+          // Lista básica de insultos para la demo
+          const offensiveWords = [
+            'tonto',
+            'idiota',
+            'estupido',
+            'estúpido',
+            'imbecil',
+            'imbécil',
+            'gilipollas',
+            'payaso',
+          ];
+
+          const seemsOffensive = offensiveWords.some(word => lower.includes(word));
+
+          return {
+            ...c,
+            status: seemsOffensive ? 'blocked' : 'approved',
+          };
+        }),
+      );
+    }, 1000);
   }
 
   return (
@@ -281,10 +335,11 @@ function PostCard({ item }: PostCardProps) {
           </button>
           <button
             type="button"
+            onClick={() => setShowComments((v) => !v)}
             className="inline-flex items-center gap-1 text-xs text-neutral-300 hover:text-neutral-100"
           >
             <span>💬</span>
-            <span>{comments} comentarios</span>
+            <span>{totalComments} comentarios</span>
           </button>
         </div>
         <button
@@ -345,6 +400,73 @@ function PostCard({ item }: PostCardProps) {
             Vista de demostración: el contenido está simulado, pero la interacción y el diseño
             representan cómo será el feed real de Ethiqia.
           </p>
+        )}
+
+        {/* Zona de comentarios moderados por IA */}
+        {showComments && (
+          <div className="mt-3 space-y-2 border-t border-neutral-800 pt-3">
+            <p className="text-[11px] text-neutral-400">
+              Los comentarios se moderan automáticamente: no se permiten insultos, mensajes
+              ofensivos ni contenido racista. La IA analiza y valida cada mensaje antes de
+              mostrarlo.
+            </p>
+
+            <form onSubmit={handleAddComment} className="flex gap-2">
+              <input
+                type="text"
+                value={commentText}
+                onChange={(e) => setCommentText(e.target.value)}
+                placeholder="Escribe un comentario..."
+                className="flex-1 rounded-md bg-neutral-900 border border-neutral-700 px-3 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500"
+              />
+              <button
+                type="submit"
+                className="rounded-md bg-emerald-500 px-3 py-1.5 text-xs font-medium text-black hover:bg-emerald-400"
+              >
+                Enviar
+              </button>
+            </form>
+
+            <div className="space-y-1 max-h-40 overflow-y-auto">
+              {comments.map((c) => (
+                <div key={c.id} className="text-[11px]">
+                  <p className="text-neutral-200">
+                    <span className="font-medium mr-1">Tú:</span>
+                    <span
+                      className={
+                        c.status === 'blocked'
+                          ? 'line-through text-red-300/80'
+                          : ''
+                      }
+                    >
+                      {c.text}
+                    </span>
+                  </p>
+                  {c.status === 'pending' && (
+                    <p className="text-[10px] text-amber-300">
+                      IA revisando tu comentario...
+                    </p>
+                  )}
+                  {c.status === 'approved' && (
+                    <p className="text-[10px] text-emerald-300">
+                      Comentario verificado por la IA ✓
+                    </p>
+                  )}
+                  {c.status === 'blocked' && (
+                    <p className="text-[10px] text-red-300 font-medium">
+                      Comentario no publicado por infringir las normas.
+                    </p>
+                  )}
+                </div>
+              ))}
+
+              {comments.length === 0 && (
+                <p className="text-[11px] text-neutral-500">
+                  Aún no hay comentarios moderados en esta publicación.
+                </p>
+              )}
+            </div>
+          </div>
         )}
       </footer>
     </article>
