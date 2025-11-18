@@ -15,6 +15,7 @@ type FeedItem = {
   image?: string;
   isDemo?: boolean;     // viene de tu perfil
   aiProbability?: number; // % prob. de que sea IA (demo)
+  verified?: boolean;   // perfil verificado Ethiqia
 };
 
 type StoredDemoPost = {
@@ -41,6 +42,7 @@ const MOCK_FEED: FeedItem[] = [
     bio: 'Estudio de innovación especializado en cosmética, biotech y proyectos deeptech.',
     image: '/demo/studio-nebula.jpg',
     aiProbability: 14,
+    verified: true,
   },
   {
     id: '2',
@@ -52,6 +54,7 @@ const MOCK_FEED: FeedItem[] = [
     bio: 'Fundador de Velet y Ethiqia. Proyectos en internacionalización, I+D y regulación.',
     image: '/demo/david-guirao.jpg',
     aiProbability: 22,
+    verified: true,
   },
   {
     id: '3',
@@ -63,6 +66,7 @@ const MOCK_FEED: FeedItem[] = [
     bio: 'Startup de salud digital con foco en métricas de adherencia terapéutica.',
     image: '/demo/lumis-health.jpg',
     aiProbability: 9,
+    verified: true,
   },
   {
     id: '4',
@@ -74,6 +78,7 @@ const MOCK_FEED: FeedItem[] = [
     bio: 'Consultora en financiación pública y privada para proyectos de impacto.',
     image: '/demo/ana-lopez.jpg',
     aiProbability: 37,
+    verified: false,
   },
 ];
 
@@ -117,6 +122,7 @@ function getAiBadge(prob: number) {
 
 export default function FeedPage() {
   const [demoPost, setDemoPost] = useState<FeedItem | null>(null);
+  const [isLight, setIsLight] = useState(false);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -141,6 +147,7 @@ export default function FeedPage() {
         image: data.imageUrl,
         isDemo: true,
         aiProbability: Math.round(aiProb),
+        verified: true,
       };
       setDemoPost(item);
     } catch {
@@ -150,16 +157,31 @@ export default function FeedPage() {
 
   const items = demoPost ? [demoPost, ...MOCK_FEED] : MOCK_FEED;
 
+  const mainBgClass = isLight ? 'bg-neutral-50 text-neutral-900' : 'bg-neutral-950 text-neutral-50';
+  const sectionBgClass = isLight ? 'bg-neutral-50' : 'bg-neutral-950';
+
   return (
-    <main className="min-h-[calc(100vh-64px)] bg-neutral-950 text-neutral-50">
-      <section className="mx-auto max-w-xl px-4 py-8 space-y-6">
-        <header className="space-y-2">
-          <p className="text-xs uppercase tracking-[0.2em] text-emerald-400">
-            Feed
-          </p>
-          <h1 className="text-2xl font-semibold">
-            Actividad en Ethiqia
-          </h1>
+    <main className={`min-h-[calc(100vh-64px)] ${mainBgClass}`}>
+      <section className={`mx-auto max-w-xl px-4 py-8 space-y-6 ${sectionBgClass}`}>
+        <header className="space-y-3">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <p className="text-xs uppercase tracking-[0.2em] text-emerald-400">
+                Feed
+              </p>
+              <h1 className="text-2xl font-semibold">
+                Actividad en Ethiqia
+              </h1>
+            </div>
+            <button
+              type="button"
+              onClick={() => setIsLight(v => !v)}
+              className="text-xs rounded-full border border-neutral-700 px-3 py-1.5 hover:border-neutral-500"
+            >
+              {isLight ? '🌙 Modo oscuro' : '🔆 Modo claro'}
+            </button>
+          </div>
+
           <p className="text-xs text-neutral-400">
             Versión demo del feed. Cada publicación combina la foto con su Ethiqia Score,
             probabilidad de que la imagen sea IA y acciones tipo Instagram: me gusta, comentarios
@@ -190,6 +212,9 @@ function PostCard({ item }: PostCardProps) {
   const [showComments, setShowComments] = useState(false);
   const [commentText, setCommentText] = useState('');
   const [comments, setComments] = useState<Comment[]>([]);
+  const [saved, setSaved] = useState(false);
+  const [showAnalysis, setShowAnalysis] = useState(false);
+  const [showBigHeart, setShowBigHeart] = useState(false);
 
   const badge = getBadge(item.score);
   const initials = item.name
@@ -207,6 +232,15 @@ function PostCard({ item }: PostCardProps) {
   function toggleLike() {
     setLiked((prev) => !prev);
     setLikes((prev) => prev + (liked ? -1 : 1));
+  }
+
+  function handleDoubleTap() {
+    if (!liked) {
+      setLiked(true);
+      setLikes(prev => prev + 1);
+    }
+    setShowBigHeart(true);
+    setTimeout(() => setShowBigHeart(false), 700);
   }
 
   function handleShare() {
@@ -276,6 +310,13 @@ function PostCard({ item }: PostCardProps) {
     }, 1000);
   }
 
+  function commentAvatarColor(id: string) {
+    // Colores sencillos para avatares de comentarios
+    const colors = ['bg-emerald-500/30', 'bg-sky-500/30', 'bg-violet-500/30', 'bg-amber-500/30'];
+    const index = Math.abs(hashString(id)) % colors.length;
+    return colors[index];
+  }
+
   return (
     <article className="overflow-hidden rounded-2xl border border-neutral-800 bg-neutral-900/80">
       {/* Cabecera tipo Instagram */}
@@ -292,10 +333,15 @@ function PostCard({ item }: PostCardProps) {
           )}
         </div>
         <div className="flex-1">
-          <p className="text-sm font-medium">
+          <p className="text-sm font-medium flex items-center gap-1">
             {item.name}
+            {item.verified && (
+              <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-2 py-[1px] text-[10px] text-emerald-300 border border-emerald-500/40">
+                ✓ Verificado
+              </span>
+            )}
             {item.isDemo && (
-              <span className="ml-2 text-[10px] rounded-full bg-emerald-500/10 px-2 py-[1px] text-emerald-300 border border-emerald-500/40">
+              <span className="ml-1 text-[10px] rounded-full bg-neutral-800 px-2 py-[1px] text-neutral-300 border border-neutral-600">
                 Demo
               </span>
             )}
@@ -309,8 +355,11 @@ function PostCard({ item }: PostCardProps) {
         </span>
       </header>
 
-      {/* Imagen grande */}
-      <div className="relative w-full bg-neutral-800 aspect-[4/5] overflow-hidden">
+      {/* Imagen grande con doble tap */}
+      <div
+        className="relative w-full bg-neutral-800 aspect-[4/5] overflow-hidden cursor-pointer"
+        onDoubleClick={handleDoubleTap}
+      >
         {item.image ? (
           <img
             src={item.image}
@@ -319,6 +368,12 @@ function PostCard({ item }: PostCardProps) {
           />
         ) : (
           <div className="h-full w-full bg-gradient-to-br from-emerald-500/30 via-neutral-900 to-neutral-900" />
+        )}
+
+        {showBigHeart && (
+          <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+            <span className="text-6xl animate-pulse">❤️</span>
+          </div>
         )}
       </div>
 
@@ -342,19 +397,29 @@ function PostCard({ item }: PostCardProps) {
             <span>{totalComments} comentarios</span>
           </button>
         </div>
-        <button
-          type="button"
-          onClick={handleShare}
-          className="inline-flex items-center gap-1 text-xs text-neutral-300 hover:text-neutral-100"
-        >
-          <span>↗︎</span>
-          <span>Compartir</span>
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setSaved(v => !v)}
+            className="inline-flex items-center gap-1 text-xs text-neutral-300 hover:text-neutral-100"
+          >
+            <span>{saved ? '★' : '☆'}</span>
+            <span>{saved ? 'Guardado' : 'Guardar'}</span>
+          </button>
+          <button
+            type="button"
+            onClick={handleShare}
+            className="inline-flex items-center gap-1 text-xs text-neutral-300 hover:text-neutral-100"
+          >
+            <span>↗︎</span>
+            <span>Compartir</span>
+          </button>
+        </div>
       </div>
 
       {/* Métricas: Ethiqia Score + probabilidad IA */}
       <footer className="px-4 py-3 space-y-2 text-sm">
-        <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className "flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-baseline gap-2">
             <span className="text-xl font-semibold leading-none">
               {item.score}
@@ -384,6 +449,33 @@ function PostCard({ item }: PostCardProps) {
           </span>
         </div>
 
+        <button
+          type="button"
+          onClick={() => setShowAnalysis(v => !v)}
+          className="mt-1 text-[11px] text-emerald-300 hover:text-emerald-200"
+        >
+          {showAnalysis ? 'Ocultar análisis de imagen ▲' : 'Ver análisis de imagen (demo IA) ▼'}
+        </button>
+
+        {showAnalysis && (
+          <div className="mt-1 rounded-md border border-neutral-800 bg-neutral-900/80 px-3 py-2 text-[11px] space-y-1">
+            <p className="text-neutral-300 font-medium">Resumen IA sobre la imagen</p>
+            <p className="text-neutral-400">
+              • Autenticidad percibida: {100 - Math.round(aiProb / 1.3)} / 100
+            </p>
+            <p className="text-neutral-400">
+              • Riesgo de manipulación: {Math.round(aiProb * 0.7)} / 100
+            </p>
+            <p className="text-neutral-400">
+              • Coherencia con el perfil: {Math.round(item.score * 0.85)} / 100
+            </p>
+            <p className="text-neutral-500">
+              Estos valores están simulados para la demo, pero representan cómo Ethiqia puede
+              evaluar imágenes con IA en producción.
+            </p>
+          </div>
+        )}
+
         <p className="text-neutral-300 text-sm">
           {item.bio}
         </p>
@@ -408,7 +500,7 @@ function PostCard({ item }: PostCardProps) {
             <p className="text-[11px] text-neutral-400">
               Los comentarios se moderan automáticamente: no se permiten insultos, mensajes
               ofensivos ni contenido racista. La IA analiza y valida cada mensaje antes de
-              mostrarlo.
+              publicarlo.
             </p>
 
             <form onSubmit={handleAddComment} className="flex gap-2">
@@ -429,34 +521,43 @@ function PostCard({ item }: PostCardProps) {
 
             <div className="space-y-1 max-h-40 overflow-y-auto">
               {comments.map((c) => (
-                <div key={c.id} className="text-[11px]">
-                  <p className="text-neutral-200">
-                    <span className="font-medium mr-1">Tú:</span>
-                    <span
-                      className={
-                        c.status === 'blocked'
-                          ? 'line-through text-red-300/80'
-                          : ''
-                      }
-                    >
-                      {c.text}
-                    </span>
-                  </p>
-                  {c.status === 'pending' && (
-                    <p className="text-[10px] text-amber-300">
-                      IA revisando tu comentario...
+                <div key={c.id} className="flex items-start gap-2 text-[11px]">
+                  <div
+                    className={`mt-[2px] h-6 w-6 rounded-full flex items-center justify-center text-[10px] font-semibold ${commentAvatarColor(
+                      c.id,
+                    )}`}
+                  >
+                    T
+                  </div>
+                  <div className="flex-1">
+                    <p className="text-neutral-200">
+                      <span className="font-medium mr-1">Tú:</span>
+                      <span
+                        className={
+                          c.status === 'blocked'
+                            ? 'line-through text-red-300/80'
+                            : ''
+                        }
+                      >
+                        {c.text}
+                      </span>
                     </p>
-                  )}
-                  {c.status === 'approved' && (
-                    <p className="text-[10px] text-emerald-300">
-                      Comentario verificado por la IA ✓
-                    </p>
-                  )}
-                  {c.status === 'blocked' && (
-                    <p className="text-[10px] text-red-300 font-medium">
-                      Comentario no publicado por infringir las normas.
-                    </p>
-                  )}
+                    {c.status === 'pending' && (
+                      <p className="text-[10px] text-amber-300">
+                        IA revisando tu comentario...
+                      </p>
+                    )}
+                    {c.status === 'approved' && (
+                      <p className="text-[10px] text-emerald-300">
+                        Comentario verificado por la IA ✓
+                      </p>
+                    )}
+                    {c.status === 'blocked' && (
+                      <p className="text-[10px] text-red-300 font-medium">
+                        Comentario no publicado por infringir las normas.
+                      </p>
+                    )}
+                  </div>
                 </div>
               ))}
 
@@ -471,4 +572,25 @@ function PostCard({ item }: PostCardProps) {
       </footer>
     </article>
   );
+}
+
+/* Utilidad simple para colores de avatar de comentario */
+function hashString(str: string): number {
+  let hash = 0;
+  for (let i = 0; i < str.length; i += 1) {
+    hash = (hash << 5) - hash + str.charCodeAt(i);
+    hash |= 0;
+  }
+  return hash;
+}
+
+function commentAvatarColor(id: string) {
+  const colors = [
+    'bg-emerald-500/30',
+    'bg-sky-500/30',
+    'bg-violet-500/30',
+    'bg-amber-500/30',
+  ];
+  const index = Math.abs(hashString(id)) % colors.length;
+  return colors[index];
 }
