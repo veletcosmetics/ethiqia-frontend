@@ -40,7 +40,7 @@ const MOCK_FEED: FeedItem[] = [
     sector: 'Innovación & I+D',
     score: 86,
     bio: 'Estudio de innovación especializado en cosmética, biotech y proyectos deeptech.',
-    image: '/demo/studio-nebula.jpg',
+    image: '/demo/profile-stock.jpg',
     aiProbability: 14,
     verified: true,
   },
@@ -52,7 +52,7 @@ const MOCK_FEED: FeedItem[] = [
     sector: 'Emprendimiento · Cosmética & IA',
     score: 78,
     bio: 'Fundador de Velet y Ethiqia. Proyectos en internacionalización, I+D y regulación.',
-    image: '/demo/david-guirao.jpg',
+    image: '/demo/profile-stock.jpg',
     aiProbability: 22,
     verified: true,
   },
@@ -64,7 +64,7 @@ const MOCK_FEED: FeedItem[] = [
     sector: 'Healthtech',
     score: 92,
     bio: 'Startup de salud digital con foco en métricas de adherencia terapéutica.',
-    image: '/demo/lumis-health.jpg',
+    image: '/demo/profile-stock.jpg',
     aiProbability: 9,
     verified: true,
   },
@@ -76,7 +76,7 @@ const MOCK_FEED: FeedItem[] = [
     sector: 'Finanzas & Impacto social',
     score: 64,
     bio: 'Consultora en financiación pública y privada para proyectos de impacto.',
-    image: '/demo/ana-lopez.jpg',
+    image: '/demo/profile-stock.jpg',
     aiProbability: 37,
     verified: false,
   },
@@ -118,6 +118,27 @@ function getAiBadge(prob: number) {
     label: 'Alta prob. IA',
     color: 'bg-red-500/10 text-red-300 border-red-500/40',
   };
+}
+
+/* Utilidad simple para colores de avatar de comentario */
+function hashString(str: string): number {
+  let hash = 0;
+  for (let i = 0; i < str.length; i += 1) {
+    hash = (hash << 5) - hash + str.charCodeAt(i);
+    hash |= 0;
+  }
+  return hash;
+}
+
+function commentAvatarColor(id: string) {
+  const colors = [
+    'bg-emerald-500/30',
+    'bg-sky-500/30',
+    'bg-violet-500/30',
+    'bg-amber-500/30',
+  ];
+  const index = Math.abs(hashString(id)) % colors.length;
+  return colors[index];
 }
 
 export default function FeedPage() {
@@ -310,19 +331,12 @@ function PostCard({ item }: PostCardProps) {
     }, 1000);
   }
 
-  function commentAvatarColor(id: string) {
-    // Colores sencillos para avatares de comentarios
-    const colors = ['bg-emerald-500/30', 'bg-sky-500/30', 'bg-violet-500/30', 'bg-amber-500/30'];
-    const index = Math.abs(hashString(id)) % colors.length;
-    return colors[index];
-  }
-
   return (
     <article className="overflow-hidden rounded-2xl border border-neutral-800 bg-neutral-900/80">
       {/* Cabecera tipo Instagram */}
       <header className="flex items-center gap-3 px-4 py-3">
         <div className="h-9 w-9 rounded-full bg-neutral-800 flex items-center justify-center text-[11px] font-semibold overflow-hidden">
-          {item.image && item.isDemo ? (
+          {item.image ? (
             <img
               src={item.image}
               alt={item.name}
@@ -419,7 +433,7 @@ function PostCard({ item }: PostCardProps) {
 
       {/* Métricas: Ethiqia Score + probabilidad IA */}
       <footer className="px-4 py-3 space-y-2 text-sm">
-        <div className "flex flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-baseline gap-2">
             <span className="text-xl font-semibold leading-none">
               {item.score}
@@ -572,25 +586,4 @@ function PostCard({ item }: PostCardProps) {
       </footer>
     </article>
   );
-}
-
-/* Utilidad simple para colores de avatar de comentario */
-function hashString(str: string): number {
-  let hash = 0;
-  for (let i = 0; i < str.length; i += 1) {
-    hash = (hash << 5) - hash + str.charCodeAt(i);
-    hash |= 0;
-  }
-  return hash;
-}
-
-function commentAvatarColor(id: string) {
-  const colors = [
-    'bg-emerald-500/30',
-    'bg-sky-500/30',
-    'bg-violet-500/30',
-    'bg-amber-500/30',
-  ];
-  const index = Math.abs(hashString(id)) % colors.length;
-  return colors[index];
 }
