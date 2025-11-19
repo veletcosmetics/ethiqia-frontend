@@ -3,6 +3,7 @@
 import { useEffect, useState, FormEvent } from 'react';
 
 type ProfileType = 'persona' | 'organizacion';
+type SensitiveLevel = 'none' | 'teen' | 'adult';
 
 type FeedItem = {
   id: string;
@@ -16,6 +17,7 @@ type FeedItem = {
   isDemo?: boolean;     // viene de tu perfil
   aiProbability?: number; // % prob. de que sea IA (demo)
   verified?: boolean;   // perfil verificado Ethiqia
+  sensitiveLevel?: SensitiveLevel; // nivel de sensibilidad del contenido
 };
 
 type StoredDemoPost = {
@@ -43,6 +45,7 @@ const MOCK_FEED: FeedItem[] = [
     image: '/demo/profile-stock.jpg',
     aiProbability: 14,
     verified: true,
+    sensitiveLevel: 'none',
   },
   {
     id: '2',
@@ -55,6 +58,7 @@ const MOCK_FEED: FeedItem[] = [
     image: '/demo/profile-stock.jpg',
     aiProbability: 22,
     verified: true,
+    sensitiveLevel: 'none',
   },
   {
     id: '3',
@@ -67,6 +71,7 @@ const MOCK_FEED: FeedItem[] = [
     image: '/demo/profile-stock.jpg',
     aiProbability: 9,
     verified: true,
+    sensitiveLevel: 'none',
   },
   {
     id: '4',
@@ -79,6 +84,20 @@ const MOCK_FEED: FeedItem[] = [
     image: '/demo/profile-stock.jpg',
     aiProbability: 37,
     verified: false,
+    sensitiveLevel: 'none',
+  },
+  {
+    id: '5',
+    name: 'Marca X (contenido adulto demo)',
+    type: 'organizacion',
+    country: 'Internacional',
+    sector: 'Contenido adulto (ejemplo)',
+    score: 41,
+    bio: 'Ejemplo de publicación marcada como contenido adulto para la demo de modo seguro en Ethiqia.',
+    image: '/demo/profile-stock.jpg',
+    aiProbability: 55,
+    verified: false,
+    sensitiveLevel: 'adult',
   },
 ];
 
@@ -144,6 +163,7 @@ function commentAvatarColor(id: string) {
 export default function FeedPage() {
   const [demoPost, setDemoPost] = useState<FeedItem | null>(null);
   const [isLight, setIsLight] = useState(false);
+  const [safeMode, setSafeMode] = useState(true); // modo seguro activado por defecto
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -169,6 +189,7 @@ export default function FeedPage() {
         isDemo: true,
         aiProbability: Math.round(aiProb),
         verified: true,
+        sensitiveLevel: 'none',
       };
       setDemoPost(item);
     } catch {
@@ -177,6 +198,11 @@ export default function FeedPage() {
   }, []);
 
   const items = demoPost ? [demoPost, ...MOCK_FEED] : MOCK_FEED;
+
+  // Filtrado por modo seguro: oculta contenido adulto
+  const visibleItems = safeMode
+    ? items.filter(item => item.sensitiveLevel !== 'adult')
+    : items;
 
   const mainBgClass = isLight ? 'bg-neutral-50 text-neutral-900' : 'bg-neutral-950 text-neutral-50';
   const sectionBgClass = isLight ? 'bg-neutral-50' : 'bg-neutral-950';
@@ -194,13 +220,26 @@ export default function FeedPage() {
                 Actividad en Ethiqia
               </h1>
             </div>
-            <button
-              type="button"
-              onClick={() => setIsLight(v => !v)}
-              className="text-xs rounded-full border border-neutral-700 px-3 py-1.5 hover:border-neutral-500"
-            >
-              {isLight ? '🌙 Modo oscuro' : '🔆 Modo claro'}
-            </button>
+            <div className="flex flex-col items-end gap-2">
+              <button
+                type="button"
+                onClick={() => setIsLight(v => !v)}
+                className="text-xs rounded-full border border-neutral-700 px-3 py-1.5 hover:border-neutral-500"
+              >
+                {isLight ? '🌙 Modo oscuro' : '🔆 Modo claro'}
+              </button>
+              <button
+                type="button"
+                onClick={() => setSafeMode(v => !v)}
+                className={`text-[11px] rounded-full px-3 py-1 border ${
+                  safeMode
+                    ? 'border-emerald-500/60 text-emerald-300 bg-emerald-500/10'
+                    : 'border-neutral-700 text-neutral-300 bg-neutral-900'
+                }`}
+              >
+                {safeMode ? '🛡 Modo seguro activado' : '🛡 Modo seguro desactivado'}
+              </button>
+            </div>
           </div>
 
           <p className="text-xs text-neutral-400">
@@ -208,12 +247,25 @@ export default function FeedPage() {
             probabilidad de que la imagen sea IA y acciones tipo Instagram: me gusta, comentarios
             moderados por IA y compartir.
           </p>
+
+          {safeMode && (
+            <p className="text-[11px] text-emerald-300">
+              Modo seguro activo: Ethiqia oculta automáticamente contenido marcado como adulto para
+              proteger a menores y ofrecer una experiencia más segura.
+            </p>
+          )}
         </header>
 
         <div className="space-y-6 pb-10">
-          {items.map((item) => (
+          {visibleItems.map((item) => (
             <PostCard key={item.id} item={item} />
           ))}
+
+          {!visibleItems.length && (
+            <p className="text-xs text-neutral-500">
+              No hay publicaciones visibles con el modo seguro activo.
+            </p>
+          )}
         </div>
       </section>
     </main>
@@ -357,6 +409,11 @@ function PostCard({ item }: PostCardProps) {
             {item.isDemo && (
               <span className="ml-1 text-[10px] rounded-full bg-neutral-800 px-2 py-[1px] text-neutral-300 border border-neutral-600">
                 Demo
+              </span>
+            )}
+            {item.sensitiveLevel === 'adult' && (
+              <span className="ml-1 text-[10px] rounded-full bg-red-500/10 px-2 py-[1px] text-red-300 border border-red-500/40">
+                Contenido adulto (demo)
               </span>
             )}
           </p>
