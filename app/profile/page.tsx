@@ -11,20 +11,7 @@ type DemoPost = {
   createdAt?: number;
 };
 
-// Bio editable (solo en localStorage, modo demo)
-type ProfileBio = {
-  displayName: string;
-  handle: string;
-  bio: string;
-};
-
-const BIO_STORAGE_KEY = 'ethiqia_profile_bio';
-
-const DEFAULT_BIO: ProfileBio = {
-  displayName: 'Tu perfil Ethiqia',
-  handle: '@ethiqia_demo',
-  bio: 'Probando Ethiqia en modo demo: autenticidad, IA moderando y reputación digital medida con Ethiqia Score.',
-};
+const DEMO_IMAGE = '/demo/profile-stock.jpg';
 
 export default function ProfilePage() {
   const [loading, setLoading] = useState(true);
@@ -32,10 +19,6 @@ export default function ProfilePage() {
   const [userName, setUserName] = useState<string | null>(null);
   const [userEmail, setUserEmail] = useState<string | null>(null);
   const [demoPost, setDemoPost] = useState<DemoPost | null>(null);
-
-  // Bio editable
-  const [bio, setBio] = useState<ProfileBio>(DEFAULT_BIO);
-  const [isEditingBio, setIsEditingBio] = useState(false);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -61,46 +44,8 @@ export default function ProfilePage() {
       }
     }
 
-    // Cargar bio desde localStorage, usando nombre de sesión como base
-    try {
-      const rawBio = localStorage.getItem(BIO_STORAGE_KEY);
-      const baseBio: ProfileBio = {
-        displayName: session?.user?.name ?? DEFAULT_BIO.displayName,
-        handle: DEFAULT_BIO.handle,
-        bio: DEFAULT_BIO.bio,
-      };
-
-      if (rawBio) {
-        const stored = JSON.parse(rawBio) as ProfileBio;
-        setBio({
-          displayName: stored.displayName || baseBio.displayName,
-          handle: stored.handle || baseBio.handle,
-          bio: stored.bio || baseBio.bio,
-        });
-      } else {
-        setBio(baseBio);
-      }
-    } catch {
-      setBio({
-        displayName: session?.user?.name ?? DEFAULT_BIO.displayName,
-        handle: DEFAULT_BIO.handle,
-        bio: DEFAULT_BIO.bio,
-      });
-    }
-
     setLoading(false);
   }, []);
-
-  const handleBioChange = (field: keyof ProfileBio, value: string) => {
-    setBio((prev) => ({ ...prev, [field]: value }));
-  };
-
-  const handleSaveBio = () => {
-    if (typeof window !== 'undefined') {
-      localStorage.setItem(BIO_STORAGE_KEY, JSON.stringify(bio));
-    }
-    setIsEditingBio(false);
-  };
 
   if (loading) {
     return (
@@ -142,7 +87,7 @@ export default function ProfilePage() {
   }
 
   // Si hay sesión, mostramos perfil tipo Instagram
-  const initials = (bio.displayName || userName || userEmail || 'T')
+  const initials = (userName ?? userEmail ?? 'T')
     .split(' ')
     .map((p) => p[0])
     .join('')
@@ -152,20 +97,20 @@ export default function ProfilePage() {
   const publicationsCount = demoPost ? 1 : 0;
   const avgScore = demoPost?.score ?? 0;
 
-  // Grid demo ampliada (visual) — primera celda real, resto celdas demo
-  const gridSlots = 6;
-  const gridArray = Array.from({ length: gridSlots }, (_, i) => i);
+  const gridImages = demoPost
+    ? [demoPost.imageUrl, DEMO_IMAGE, DEMO_IMAGE]
+    : [DEMO_IMAGE, DEMO_IMAGE, DEMO_IMAGE];
 
   return (
     <main className="min-h-[calc(100vh-64px)]">
-      <section className="max-w-3xl mx-auto space-y-8 px-4 py-6">
+      <section className="max-w-3xl mx-auto space-y-8">
         {/* Cabecera tipo Instagram */}
         <header className="flex gap-6 items-center">
           <div className="h-24 w-24 rounded-full bg-neutral-800 flex items-center justify-center text-2xl font-semibold overflow-hidden">
             {demoPost?.imageUrl ? (
               <img
                 src={demoPost.imageUrl}
-                alt={bio.displayName || userName || 'Tu perfil'}
+                alt={userName ?? 'Tu perfil'}
                 className="h-full w-full object-cover"
               />
             ) : (
@@ -173,114 +118,47 @@ export default function ProfilePage() {
             )}
           </div>
 
-          <div className="flex-1 space-y-3">
+          <div className="flex-1 space-y-2">
             <div className="flex items-center gap-3 flex-wrap">
-              <div>
-                <h1 className="text-xl font-semibold">
-                  {bio.displayName || userName || 'Tu perfil Ethiqia'}
-                </h1>
-                <p className="text-xs text-neutral-400">
-                  {bio.handle || '@ethiqia_demo'}
-                </p>
-                {userEmail && (
-                  <p className="text-xs text-neutral-500 mt-1">{userEmail}</p>
-                )}
-              </div>
-
+              <h1 className="text-xl font-semibold">
+                {userName || 'Tu perfil Ethiqia'}
+              </h1>
               <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-2.5 py-[3px] text-[11px] text-emerald-300 border border-emerald-500/40">
                 ✓ Perfil demo verificado
               </span>
-
-              <button
-                type="button"
-                onClick={() => {
-                  if (isEditingBio) {
-                    handleSaveBio();
-                  } else {
-                    setIsEditingBio(true);
-                  }
-                }}
-                className="ml-auto text-[11px] rounded-md border border-neutral-700 px-3 py-1.5 text-neutral-200 hover:border-emerald-400 hover:text-emerald-300"
-              >
-                {isEditingBio ? 'Guardar bio' : 'Editar bio'}
-              </button>
             </div>
+            {userEmail && (
+              <p className="text-sm text-neutral-400">{userEmail}</p>
+            )}
 
-            {/* Stats estilo Instagram mejoradas */}
-            <div className="flex gap-4 text-sm text-neutral-300 mt-2">
-              <div className="flex-1 rounded-xl border border-neutral-800 bg-neutral-900/70 px-3 py-2">
-                <p className="text-[11px] text-neutral-400">Publicaciones</p>
-                <p className="text-lg font-semibold">
-                  {publicationsCount}
-                </p>
+            <div className="flex gap-6 text-sm text-neutral-300 mt-2">
+              <div>
+                <span className="font-semibold">{publicationsCount}</span>{' '}
+                publicaciones
               </div>
-              <div className="flex-1 rounded-xl border border-neutral-800 bg-neutral-900/70 px-3 py-2">
-                <p className="text-[11px] text-neutral-400">Ethiqia Score medio</p>
-                <p className="text-lg font-semibold">
+              <div>
+                <span className="font-semibold">
                   {avgScore ? `${avgScore}` : '—'}
-                </p>
-              </div>
-              <div className="flex-1 rounded-xl border border-neutral-800 bg-neutral-900/70 px-3 py-2">
-                <p className="text-[11px] text-neutral-400">Modo demo</p>
-                <p className="text-[12px] text-neutral-300">
-                  Datos locales
-                </p>
+                </span>{' '}
+                Ethiqia Score medio
               </div>
             </div>
           </div>
         </header>
 
-        {/* Bio / texto explicativo + edición */}
-        <section className="space-y-3 border border-neutral-800 rounded-2xl bg-neutral-900/60 p-4">
+        {/* Bio / texto explicativo */}
+        <section className="space-y-2">
           <h2 className="text-sm font-semibold text-neutral-200">Sobre tu espacio</h2>
-
-          {isEditingBio ? (
-            <div className="space-y-3">
-              <div>
-                <label className="block text-[11px] text-neutral-400 mb-1">
-                  Nombre visible
-                </label>
-                <input
-                  value={bio.displayName}
-                  onChange={(e) => handleBioChange('displayName', e.target.value)}
-                  className="w-full rounded-md bg-neutral-950 border border-neutral-700 px-3 py-1.5 text-sm text-neutral-100 outline-none focus:border-emerald-400"
-                />
-              </div>
-              <div>
-                <label className="block text-[11px] text-neutral-400 mb-1">
-                  Usuario / handle
-                </label>
-                <input
-                  value={bio.handle}
-                  onChange={(e) => handleBioChange('handle', e.target.value)}
-                  className="w-full rounded-md bg-neutral-950 border border-neutral-700 px-3 py-1.5 text-sm text-neutral-100 outline-none focus:border-emerald-400"
-                />
-              </div>
-              <div>
-                <label className="block text-[11px] text-neutral-400 mb-1">
-                  Bio
-                </label>
-                <textarea
-                  value={bio.bio}
-                  onChange={(e) => handleBioChange('bio', e.target.value)}
-                  rows={3}
-                  className="w-full rounded-md bg-neutral-950 border border-neutral-700 px-3 py-1.5 text-sm text-neutral-100 outline-none focus:border-emerald-400 resize-none"
-                />
-              </div>
-              <p className="text-[11px] text-neutral-500">
-                Esta bio se guarda solo en tu navegador (modo demo). No se envía a ningún servidor.
-              </p>
-            </div>
-          ) : (
-            <>
-              <p className="text-sm text-neutral-300 whitespace-pre-wrap">
-                {bio.bio}
-              </p>
-              <p className="text-xs text-neutral-500">
-                En la versión completa, aquí verás tu biografía, foto de perfil, enlaces y métricas de reputación.
-              </p>
-            </>
-          )}
+          <p className="text-sm text-neutral-300">
+            Este es tu espacio personal en Ethiqia. Aquí verás tu bio, tus fotos
+            publicadas y la reputación asociada a tu actividad. En la demo, se
+            muestra tu última publicación y un Ethiqia Score aproximado.
+          </p>
+          <p className="text-xs text-neutral-500">
+            En la versión completa, podrás editar tu biografía, cambiar tu foto
+            de perfil, gestionar tus publicaciones y consultar historiales de
+            reputación y verificaciones.
+          </p>
         </section>
 
         {/* Tus publicaciones: botón + cuadrícula + destacada */}
@@ -308,76 +186,39 @@ export default function ProfilePage() {
             </div>
           </div>
 
-          {/* Cuadrícula tipo Instagram (ampliada, modo demo) */}
+          {/* Cuadrícula tipo Instagram – siempre llena */}
           <div className="grid grid-cols-3 gap-[2px] bg-neutral-900 rounded-lg overflow-hidden">
-            {gridArray.map((slot) => {
-              if (slot === 0 && demoPost) {
-                // Primera celda: tu publicación real de demo
-                return (
-                  <div key={slot} className="relative w-full aspect-square">
-                    <img
-                      src={demoPost.imageUrl}
-                      alt="Tu publicación"
-                      className="w-full h-full object-cover"
-                    />
-                    <div className="absolute inset-0 flex items-end justify-between bg-gradient-to-t from-black/70 via-black/10 to-transparent px-2 pb-1 text-[10px] text-neutral-100 opacity-0 hover:opacity-100 transition-opacity">
-                      <span>Ethiqia Score: {demoPost.score}/100</span>
-                      <span>Demo</span>
-                    </div>
-                  </div>
-                );
-              }
-
-              // Celdas demo / placeholder
-              return (
-                <div
-                  key={slot}
-                  className="relative w-full aspect-square bg-neutral-800 flex items-center justify-center text-[10px] text-neutral-500"
-                >
-                  <span className="opacity-70">
-                    Slot demo
-                  </span>
-                </div>
-              );
-            })}
+            {gridImages.map((src, index) => (
+              <img
+                key={index}
+                src={src}
+                alt={index === 0 && demoPost ? 'Tu publicación' : `Publicación demo ${index + 1}`}
+                className="w-full aspect-square object-cover"
+              />
+            ))}
           </div>
 
-          {/* Publicación destacada debajo (más “bonita”) */}
+          {/* Publicación destacada debajo */}
           {demoPost ? (
-            <div className="border border-neutral-800 rounded-2xl overflow-hidden bg-gradient-to-b from-neutral-900 to-black mt-4">
-              <div className="relative w-full bg-neutral-800 aspect-[4/5]">
+            <div className="border border-neutral-800 rounded-xl overflow-hidden bg-neutral-900/60 mt-4">
+              <div className="w-full bg-neutral-800 aspect-[4/5]">
                 <img
                   src={demoPost.imageUrl}
                   alt="Tu última publicación"
                   className="h-full w-full object-cover"
                 />
-                <div className="absolute top-2 left-2 flex gap-2">
-                  <span className="text-[11px] rounded-full bg-black/70 px-2 py-[3px] text-neutral-100 border border-neutral-700">
-                    Publicación destacada
-                  </span>
-                  <span className="text-[11px] rounded-full bg-emerald-500/80 px-2 py-[3px] text-black font-semibold">
-                    Score {demoPost.score}/100
-                  </span>
-                </div>
-                <div className="absolute bottom-0 inset-x-0 bg-gradient-to-t from-black/80 via-black/40 to-transparent px-3 pb-3 pt-8 text-[11px] text-neutral-200">
-                  <p className="font-medium">
-                    Demo de cómo Ethiqia puntúa tu contenido.
-                  </p>
-                </div>
               </div>
               <div className="px-4 py-3 space-y-1 text-sm">
                 <p className="text-neutral-200 font-medium">
                   Última publicación de demo
                 </p>
                 <p className="text-[13px] text-neutral-400">
-                  Esta foto se genera en el flujo de demo para enseñar Ethiqia a inversores, Parque Científico y convocatorias públicas.
+                  Esta foto se ha generado desde tu perfil para enseñar Ethiqia a
+                  inversores, Parque Científico y convocatorias públicas.
                 </p>
                 <p className="text-[12px] text-neutral-300">
                   <span className="font-semibold">Ethiqia Score:</span>{' '}
                   {demoPost.score}/100
-                </p>
-                <p className="text-[11px] text-neutral-500">
-                  En la versión completa, aquí verías likes, comentarios y el detalle de cómo la IA ha calculado tu reputación.
                 </p>
               </div>
             </div>
@@ -387,10 +228,6 @@ export default function ProfilePage() {
             </p>
           )}
         </section>
-
-        <p className="text-center text-[11px] text-neutral-500">
-          Perfil demo de Ethiqia: experiencia similar a Instagram, pero con IA revisando autenticidad y reputación digital en segundo plano.
-        </p>
       </section>
     </main>
   );
