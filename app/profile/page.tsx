@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { getSession } from '../../lib/session';
+import { getUnreadCount } from '../../lib/notifications';
 
 type DemoPost = {
   imageUrl: string;
@@ -19,6 +20,7 @@ export default function ProfilePage() {
   const [userName, setUserName] = useState<string | null>(null);
   const [userEmail, setUserEmail] = useState<string | null>(null);
   const [demoPost, setDemoPost] = useState<DemoPost | null>(null);
+  const [unreadNotifications, setUnreadNotifications] = useState(0);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -42,6 +44,14 @@ export default function ProfilePage() {
       } catch {
         // ignoramos errores de parse
       }
+    }
+
+    // Notificaciones no leídas
+    try {
+      const count = getUnreadCount();
+      setUnreadNotifications(count);
+    } catch {
+      setUnreadNotifications(0);
     }
 
     setLoading(false);
@@ -103,7 +113,35 @@ export default function ProfilePage() {
 
   return (
     <main className="min-h-[calc(100vh-64px)]">
-      <section className="max-w-3xl mx-auto space-y-8">
+      <section className="max-w-3xl mx-auto space-y-8 px-4 py-6">
+        {/* BANDA DE NOTIFICACIONES ARRIBA */}
+        <div className="flex items-center justify-between rounded-xl border border-neutral-800 bg-neutral-900/70 px-4 py-2 text-xs text-neutral-200">
+          <div className="flex flex-col">
+            <span className="font-medium">
+              Panel de actividad de Ethiqia
+            </span>
+            {unreadNotifications > 0 ? (
+              <span className="text-[11px] text-emerald-300">
+                Tienes {unreadNotifications} notificacion
+                {unreadNotifications > 1 ? 'es' : ''} pendiente
+                {unreadNotifications > 1 ? 's' : ''} de la IA.
+              </span>
+            ) : (
+              <span className="text-[11px] text-neutral-400">
+                Todo al día. No hay notificaciones pendientes.
+              </span>
+            )}
+          </div>
+
+          <Link
+            href="/notifications"
+            className="inline-flex items-center gap-1 rounded-full border border-neutral-700 px-3 py-1 text-[11px] text-neutral-100 hover:border-emerald-400 hover:text-emerald-300"
+          >
+            <span>🔔</span>
+            <span>Ver notificaciones</span>
+          </Link>
+        </div>
+
         {/* Cabecera tipo Instagram */}
         <header className="flex gap-6 items-center">
           <div className="h-24 w-24 rounded-full bg-neutral-800 flex items-center justify-center text-2xl font-semibold overflow-hidden">
@@ -164,13 +202,15 @@ export default function ProfilePage() {
         {/* Tus publicaciones: botón + cuadrícula + destacada */}
         <section className="space-y-3">
           <div className="flex items-center justify-between gap-3 flex-wrap">
-            <h2 className="text-sm font-semibold text-neutral-200">Tus publicaciones</h2>
+            <h2 className="text-sm font-semibold text-neutral-200">
+              Tus publicaciones
+            </h2>
             <div className="flex items-center gap-2">
               <button
                 type="button"
                 onClick={() => {
                   alert(
-                    'En la demo, la publicación se genera subiendo una imagen y se muestra en el feed y en tu perfil. En la versión completa, este botón abrirá el flujo de “Añadir publicación”.'
+                    'En la demo, la publicación se genera subiendo una imagen en /demo/live y se muestra en el feed y en tu perfil. En la versión completa, este botón abrirá el flujo de “Añadir publicación”.'
                   );
                 }}
                 className="text-[11px] rounded-md border border-neutral-700 px-3 py-1.5 text-neutral-200 hover:border-emerald-400 hover:text-emerald-300"
@@ -192,7 +232,11 @@ export default function ProfilePage() {
               <img
                 key={index}
                 src={src}
-                alt={index === 0 && demoPost ? 'Tu publicación' : `Publicación demo ${index + 1}`}
+                alt={
+                  index === 0 && demoPost
+                    ? 'Tu publicación'
+                    : `Publicación demo ${index + 1}`
+                }
                 className="w-full aspect-square object-cover"
               />
             ))}
@@ -224,7 +268,8 @@ export default function ProfilePage() {
             </div>
           ) : (
             <p className="text-sm text-neutral-500 mt-3">
-              Aún no tienes publicaciones. Sube una imagen desde el flujo de demo y se mostrará aquí.
+              Aún no tienes publicaciones. Sube una imagen desde la demo en tiempo
+              real y se mostrará aquí.
             </p>
           )}
         </section>
