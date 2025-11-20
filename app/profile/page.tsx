@@ -206,17 +206,13 @@ export default function ProfilePage() {
               Tus publicaciones
             </h2>
             <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={() => {
-                  alert(
-                    'En la demo, la publicación se genera subiendo una imagen en /demo/live y se muestra en el feed y en tu perfil. En la versión completa, este botón abrirá el flujo de “Añadir publicación”.'
-                  );
-                }}
+              {/* AQUÍ ES DONDE CAMBIA: ahora es un Link a /demo/live */}
+              <Link
+                href="/demo/live"
                 className="text-[11px] rounded-md border border-neutral-700 px-3 py-1.5 text-neutral-200 hover:border-emerald-400 hover:text-emerald-300"
               >
-                + Añadir publicación demo
-              </button>
+                Subir foto en demo en vivo
+              </Link>
               <Link
                 href="/feed"
                 className="text-[11px] text-emerald-300 hover:text-emerald-200"
