@@ -11,7 +11,7 @@ export default function HomePage() {
               Demo funcional · IA · Reputación
             </p>
             <h1 className="text-3xl md:text-4xl font-semibold leading-tight">
-              Ethiqia, la capa de reputación digital
+              Ethiqia, tu reputación digital verificable
               <span className="block text-emerald-300">
                 para un mundo lleno de IA.
               </span>
