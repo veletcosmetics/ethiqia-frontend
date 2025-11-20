@@ -32,7 +32,6 @@ type Comment = {
 
 const DEMO_AVATAR = '/demo/profile-stock.jpg';
 
-// Posts falsos base del feed
 const BASE_POSTS: FeedPost[] = [
   {
     id: 'base-1',
@@ -105,6 +104,16 @@ function formatDate(ts: number) {
   }
 }
 
+// Hash sencillo para "trazabilidad"
+function simpleHash(input: string): string {
+  let hash = 0;
+  for (let i = 0; i < input.length; i++) {
+    hash = (hash << 5) - hash + input.charCodeAt(i);
+    hash |= 0;
+  }
+  return Math.abs(hash).toString(16).slice(0, 10);
+}
+
 export default function FeedPage() {
   const [posts, setPosts] = useState<FeedPost[]>([]);
   const [likes, setLikes] = useState<Record<string, number>>({});
@@ -116,7 +125,6 @@ export default function FeedPage() {
     Record<string, string | null>
   >({});
 
-  // Cargar posts del usuario (guardados desde /demo/live) + posts base
   useEffect(() => {
     if (typeof window === 'undefined') return;
 
@@ -127,7 +135,6 @@ export default function FeedPage() {
         const parsed = JSON.parse(raw) as StoredFeedPost[];
         if (Array.isArray(parsed)) {
           userPosts = parsed.map((p, index) => {
-            // Derivamos probabilidad IA y autenticidad a partir del score
             const aiProbability = Math.max(
               5,
               Math.min(95, Math.round((100 - p.score) * 0.6 + 10))
@@ -162,7 +169,6 @@ export default function FeedPage() {
     const merged = [...userPosts, ...BASE_POSTS];
     setPosts(merged);
 
-    // Inicializar likes y comentarios para cada post
     const initialLikesState: Record<string, number> = {};
     const initialLikedState: Record<string, boolean> = {};
     const initialSavedState: Record<string, boolean> = {};
@@ -177,7 +183,6 @@ export default function FeedPage() {
       initialModerationState[post.id] = null;
       initialInputs[post.id] = '';
 
-      // Cargar comentarios desde localStorage
       try {
         const rawComments = localStorage.getItem(
           `ethiqia_comments_${post.id}`
@@ -239,7 +244,6 @@ export default function FeedPage() {
       ...prev,
       [postId]: value,
     }));
-    // limpiar mensaje de moderación al escribir
     setModerationMessage((prev) => ({
       ...prev,
       [postId]: null,
@@ -250,7 +254,6 @@ export default function FeedPage() {
     const text = (commentInput[postId] || '').trim();
     if (!text) return;
 
-    // Moderación básica tipo IA
     const lower = text.toLowerCase();
     const hasProfanity = PROFANITY_LIST.some((bad) => lower.includes(bad));
 
@@ -273,7 +276,6 @@ export default function FeedPage() {
       const current = prev[postId] || [];
       const updated = [...current, newComment];
 
-      // Guardar en localStorage
       try {
         localStorage.setItem(
           `ethiqia_comments_${postId}`,
@@ -315,7 +317,6 @@ export default function FeedPage() {
           </p>
         </header>
 
-        {/* Lista de publicaciones */}
         <section className="space-y-6">
           {posts.length === 0 && (
             <p className="text-sm text-neutral-500">
@@ -335,6 +336,9 @@ export default function FeedPage() {
             const inputValue = commentInput[post.id] || '';
             const modMsg = moderationMessage[post.id] || null;
 
+            const hashId = simpleHash(post.id + post.imageUrl);
+            const isVerified = post.aiProbability <= 25;
+
             return (
               <article
                 key={post.id}
@@ -350,11 +354,16 @@ export default function FeedPage() {
                     />
                   </div>
                   <div className="flex-1">
-                    <p className="text-sm font-semibold text-neutral-100">
+                    <p className="text-sm font-semibold text-neutral-100 flex items-center gap-2">
                       {post.author}
                       {post.isDemoUserPost && (
-                        <span className="ml-2 rounded-full border border-emerald-400/50 bg-emerald-500/10 px-2 py-[1px] text-[10px] text-emerald-300">
+                        <span className="rounded-full border border-emerald-400/50 bg-emerald-500/10 px-2 py-[1px] text-[10px] text-emerald-300">
                           Tú (demo)
+                        </span>
+                      )}
+                      {isVerified && (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-2 py-[1px] text-[10px] text-emerald-300 border border-emerald-500/50">
+                          ✓ Imagen verificada
                         </span>
                       )}
                     </p>
@@ -367,9 +376,9 @@ export default function FeedPage() {
                   <span className="text-neutral-500 text-lg">⋯</span>
                 </header>
 
-                {/* Imagen con doble tap para like */}
+                {/* Imagen con doble tap para like + badge de IA */}
                 <div
-                  className="bg-neutral-900"
+                  className="relative bg-neutral-900"
                   onDoubleClick={() => handleDoubleClick(post.id)}
                 >
                   <img
@@ -377,6 +386,31 @@ export default function FeedPage() {
                     alt="Publicación"
                     className="w-full max-h-[480px] object-cover select-none"
                   />
+
+                  {/* Badge IA verificada / IA sospechosa */}
+                  <div className="absolute left-3 top-3 flex flex-col gap-1 text-[10px]">
+                    <span className="inline-flex items-center gap-1 rounded-full bg-black/60 px-2 py-[2px] text-neutral-100">
+                      ⭐ {post.score}/100
+                    </span>
+                    <span
+                      className={`inline-flex items-center gap-1 rounded-full px-2 py-[2px] border ${
+                        isVerified
+                          ? 'bg-emerald-500/10 text-emerald-300 border-emerald-500/60'
+                          : post.aiProbability >= 60
+                          ? 'bg-red-500/10 text-red-300 border-red-500/60'
+                          : 'bg-amber-500/10 text-amber-300 border-amber-500/60'
+                      }`}
+                    >
+                      {isVerified ? '✓ Real (baja prob. IA)' : ''}
+                      {!isVerified && post.aiProbability >= 60
+                        ? '⚠ Alta prob. IA'
+                        : ''}
+                      {!isVerified &&
+                        post.aiProbability < 60 &&
+                        post.aiProbability > 25 &&
+                        'Mixta / dudosa'}
+                    </span>
+                  </div>
                 </div>
 
                 {/* Barra de acciones */}
@@ -420,7 +454,7 @@ export default function FeedPage() {
                     {formatDate(post.createdAt)}
                   </p>
 
-                  {/* Bloque IA */}
+                  {/* Panel IA más completo */}
                   <div className="mt-2 rounded-lg border border-neutral-800 bg-neutral-950/60 px-3 py-2 text-[11px] space-y-1">
                     <p className="text-[11px] text-neutral-300">
                       <span className="font-semibold">Ethiqia Score:</span>{' '}
@@ -446,10 +480,19 @@ export default function FeedPage() {
                       </span>{' '}
                       {post.coherence}%
                     </p>
+                    <p className="text-[11px] text-neutral-300">
+                      <span className="font-semibold">
+                        Hash de autenticidad:
+                      </span>{' '}
+                      <code className="bg-neutral-900 px-1 py-[1px] rounded">
+                        {hashId}
+                      </code>
+                    </p>
                     <p className="text-[10px] text-neutral-500">
-                      Estos valores están simulados para la demo, pero ilustran
-                      cómo Ethiqia combina análisis de imagen y reputación
-                      digital.
+                      Hash simulado para trazabilidad. En la versión real,
+                      Ethiqia podría registrar este identificador en una
+                      infraestructura de confianza para auditar cambios en la
+                      imagen y su reputación.
                     </p>
                   </div>
                 </div>
@@ -472,7 +515,6 @@ export default function FeedPage() {
                     </div>
                   )}
 
-                  {/* Input de nuevo comentario */}
                   <div className="mt-2 space-y-1">
                     <div className="flex items-center gap-2">
                       <input
