@@ -91,6 +91,9 @@ export default function ScorePage() {
   const gaugeValue = agg?.globalScore ?? 0;
   const gaugeColorClass = getColorForValue(gaugeValue);
 
+  // Logros simulados en función del score / posts
+  const achievements = buildAchievements(agg);
+
   return (
     <main className="min-h-[calc(100vh-64px)] bg-neutral-950 text-neutral-50">
       <section className="max-w-4xl mx-auto px-4 py-6 space-y-8">
@@ -220,6 +223,58 @@ export default function ScorePage() {
           </div>
         </section>
 
+        {/* Logros recientes */}
+        <section className="space-y-3">
+          <h2 className="text-sm font-semibold text-neutral-200">
+            Logros recientes (demo)
+          </h2>
+          <div className="rounded-2xl border border-neutral-800 bg-neutral-900/70 p-4 space-y-2 text-[11px] text-neutral-300">
+            {achievements.length === 0 ? (
+              <p className="text-neutral-500">
+                Cuando generes algunas publicaciones en la demo, aquí aparecerán
+                logros simulados: rachas sin toxicidad, primeras publicaciones
+                analizadas o mejoras de score.
+              </p>
+            ) : (
+              <ul className="space-y-1">
+                {achievements.map((a) => (
+                  <li key={a.id} className="flex items-start gap-2">
+                    <span>{a.icon}</span>
+                    <div>
+                      <p className="text-neutral-200">{a.title}</p>
+                      <p className="text-[10px] text-neutral-500">
+                        {a.description}
+                      </p>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </section>
+
+        {/* Integraciones externas */}
+        <section className="rounded-2xl border border-neutral-800 bg-neutral-900/60 p-4 text-xs text-neutral-300 space-y-2">
+          <h2 className="text-sm font-semibold text-neutral-100">
+            Futuras integraciones externas (APIs)
+          </h2>
+          <p>
+            En versiones avanzadas, Ethiqia podrá conectar con aplicaciones
+            externas mediante APIs (salud, sostenibilidad, educación,
+            certificaciones, voluntariado...). Estas señales externas, siempre
+            con consentimiento del usuario, alimentarían bloques concretos del
+            Ethiqia Score (hábitos saludables, impacto ESG, reconocimiento
+            profesional, etc.).
+          </p>
+          <p className="text-[11px] text-neutral-500">
+            Ejemplos: pasos diarios verificados (Apple Health / Google Fit),
+            acciones sostenibles registradas en apps de huella de carbono,
+            credenciales profesionales emitidas por terceros, o voluntariado
+            certificado. Ethiqia podría actuar como capa de reputación neutra,
+            integrando estas señales en un score ético y explicable.
+          </p>
+        </section>
+
         {/* Nota conceptual */}
         <section className="rounded-2xl border border-neutral-800 bg-neutral-900/60 p-4 text-xs text-neutral-300 space-y-2">
           <h2 className="text-sm font-semibold text-neutral-100">
@@ -229,9 +284,10 @@ export default function ScorePage() {
             En esta versión demo, los valores de cada bloque se calculan de
             forma aproximada a partir de tus publicaciones y del score medio.
             En un producto real, Ethiqia utilizaría señales específicas para
-            cada bloque (autenticidad visual, conducta, impacto, etc.) y
-            ofrecería recomendaciones personalizadas para mejorar tu reputación
-            digital de forma ética y transparente.
+            cada bloque (autenticidad visual, conducta, impacto, evidencias,
+            integraciones externas...) y ofrecería recomendaciones
+            personalizadas para mejorar tu reputación digital de forma ética y
+            transparente.
           </p>
           <p className="text-[11px] text-neutral-500">
             La idea clave: no hay un único número mágico. Tu reputación se
@@ -252,7 +308,6 @@ function buildBlocksFromBase(baseScore: number, totalPosts: number): BlockScore[
   const safeBase = Number.isFinite(baseScore) ? baseScore : 0;
 
   // Pequeñas variaciones para que no todos los bloques sean iguales
-  // (en la demo se ve más "vivo")
   const authenticity = deriveBlock(safeBase, +5);
   const conduct = deriveBlock(safeBase, +2);
   const community = deriveBlock(safeBase, -3);
@@ -303,7 +358,7 @@ function buildBlocksFromBase(baseScore: number, totalPosts: number): BlockScore[
       description:
         'Integra señales vinculadas a sostenibilidad, impacto social y alineación con prácticas responsables.',
       tip:
-        'Comparte acciones reales (aunque sean pequeñas) relacionadas con impacto positivo, sostenibilidad o proyectos sociales verificables.',
+        'Comparte acciones reales (aunque sean pequeñas) relacionadas con impacto positivo, sostenibilidad o proyectos sociales verificables. En el futuro, podrás conectar apps externas para que estas acciones se verifiquen automáticamente.',
       value: sustainability,
     },
     {
@@ -318,4 +373,57 @@ function buildBlocksFromBase(baseScore: number, totalPosts: number): BlockScore[
   ];
 
   return blocks;
+}
+
+/**
+ * Construye una lista de logros simulados en función del score y número de posts.
+ */
+function buildAchievements(
+  agg: AggregatedScore | null
+): { id: string; icon: string; title: string; description: string }[] {
+  if (!agg) return [];
+
+  const items: { id: string; icon: string; title: string; description: string }[] = [];
+
+  if (agg.totalPosts > 0) {
+    items.push({
+      id: 'first-post',
+      icon: '🏅',
+      title: 'Primera publicación analizada',
+      description:
+        'Has generado al menos una publicación en la demo. Ethiqia ya puede empezar a calcular tu reputación.',
+    });
+  }
+
+  if (agg.totalPosts >= 3) {
+    items.push({
+      id: 'several-posts',
+      icon: '📈',
+      title: 'Actividad consistente',
+      description:
+        'Has generado varias publicaciones. En un sistema real, la constancia ayuda a estabilizar tu score.',
+    });
+  }
+
+  if (agg.globalScore >= 70) {
+    items.push({
+      id: 'good-score',
+      icon: '⭐',
+      title: 'Ethiqia Score notable',
+      description:
+        'Tu score global es superior a 70/100. En el futuro, esto podría desbloquear ventajas o verificaciones.',
+    });
+  }
+
+  if (agg.globalScore >= 80 && agg.totalPosts >= 3) {
+    items.push({
+      id: 'high-score',
+      icon: '🌱',
+      title: 'Base sólida para integraciones externas',
+      description:
+        'Con un buen score y algo de actividad, tendría sentido conectar señales externas (salud, sostenibilidad, certificaciones) para reforzar tu reputación.',
+    });
+  }
+
+  return items;
 }
