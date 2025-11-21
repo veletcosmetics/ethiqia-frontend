@@ -1,12 +1,12 @@
 import { NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabaseClient';
+import { supabase } from '../../../lib/supabaseClient';
 
 // Función simple para generar un score de IA en la demo
 function generateAIScore() {
   const score = Math.floor(Math.random() * 40) + 60; // entre 60 y 100
   const label =
     score > 85 ? 'Real' :
-    score > 70 ? 'Mixta / dudosa' : 
+    score > 70 ? 'Mixta / dudosa' :
     'Alta prob. IA';
 
   return { score, label };
@@ -49,7 +49,7 @@ export async function POST(req: Request) {
 
     // Obtener URL pública
     const {
-      data: { publicUrl }
+      data: { publicUrl },
     } = supabase
       .storage
       .from('ethiqia-images')
