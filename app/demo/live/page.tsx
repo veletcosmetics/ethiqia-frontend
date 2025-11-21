@@ -48,6 +48,7 @@ export default function LiveDemoPage() {
   const [analysis, setAnalysis] = useState<AnalysisResult | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [lastSaved, setLastSaved] = useState<DemoPost | null>(null);
+  const [backendStatus, setBackendStatus] = useState<string | null>(null);
 
   // Cargar última demo guardada (si existe)
   useEffect(() => {
@@ -72,6 +73,7 @@ export default function LiveDemoPage() {
     setIsAnalyzing(true);
     setFileName(file.name || 'Imagen subida');
     setAnalysis(null);
+    setBackendStatus(null);
 
     const reader = new FileReader();
     reader.onload = () => {
@@ -97,7 +99,7 @@ export default function LiveDemoPage() {
         // ignoramos errores de almacenamiento
       }
 
-      // Guardar la publicación también en el feed
+      // Guardar la publicación también en el feed demo (localStorage)
       try {
         const rawFeed = localStorage.getItem('ethiqia_feed_posts');
         const parsed = rawFeed ? JSON.parse(rawFeed) : [];
@@ -124,7 +126,41 @@ export default function LiveDemoPage() {
       } catch {
         // ignoramos errores de notificaciones
       }
+
+      // NUEVO: enviar también al backend real (/api/upload → Supabase)
+      (async () => {
+        try {
+          const formData = new FormData();
+          formData.append('file', file);
+          formData.append(
+            'caption',
+            `Demo: ${file.name || 'Publicación Ethiqia'} (Ethiqia Score: ${
+              generated.ethScore
+            })`
+          );
+
+          const res = await fetch('/api/upload', {
+            method: 'POST',
+            body: formData,
+          });
+
+          const data = await res.json();
+
+          if (!res.ok) {
+            console.error('Error al subir al backend:', data);
+            setBackendStatus('Error al guardar en la demo de backend.');
+            return;
+          }
+
+          setBackendStatus('Imagen guardada también en la demo de backend (Supabase).');
+          console.log('Post guardado en Supabase:', data);
+        } catch (err) {
+          console.error('Error inesperado al subir al backend:', err);
+          setBackendStatus('No se ha podido conectar con la demo de backend.');
+        }
+      })();
     };
+
     reader.readAsDataURL(file);
   };
 
@@ -142,7 +178,8 @@ export default function LiveDemoPage() {
             Esta demo está pensada para enseñar a inversores y al Parque Científico
             cómo funcionaría Ethiqia: subes una imagen, la IA analiza su
             autenticidad, la probabilidad de que sea IA y genera un Ethiqia Score
-            en tiempo real. La publicación se guarda en el feed demo y en tu perfil.
+            en tiempo real. La publicación se guarda en el feed demo, en tu perfil
+            y, en esta versión avanzada, también en el backend (Supabase).
           </p>
         </header>
 
@@ -155,7 +192,8 @@ export default function LiveDemoPage() {
               </h2>
               <p className="text-xs text-neutral-400">
                 Puede ser una foto real, un render, un mockup… La IA simula el análisis
-                y asigna un Ethiqia Score.
+                y asigna un Ethiqia Score. Además, la imagen se envía a la demo de backend
+                para guardarse en Supabase.
               </p>
             </div>
           </div>
@@ -165,7 +203,8 @@ export default function LiveDemoPage() {
             <span>
               Haz clic para elegir una imagen
               <span className="block text-[11px] text-neutral-500 mt-1">
-                (solo se procesa en tu navegador, no se sube a ningún servidor)
+                La imagen se procesa en tu navegador y se envía a la demo de backend
+                de Ethiqia (Supabase) para mostrarla en el feed real.
               </span>
             </span>
             <input
@@ -180,6 +219,12 @@ export default function LiveDemoPage() {
             <p className="text-[11px] text-neutral-500">
               Imagen seleccionada:{' '}
               <span className="text-neutral-300">{fileName}</span>
+            </p>
+          )}
+
+          {backendStatus && (
+            <p className="text-[11px] text-neutral-400">
+              {backendStatus}
             </p>
           )}
         </section>
@@ -278,7 +323,8 @@ export default function LiveDemoPage() {
                       Este score combina autenticidad, coherencia y la
                       probabilidad de que la imagen sea IA. En la versión real,
                       estos cálculos se harían con modelos de IA entrenados
-                      específicamente.
+                      específicamente y el resultado se usaría para alimentar
+                      el Ethiqia Score global.
                     </p>
                   </>
                 )}
@@ -302,16 +348,17 @@ export default function LiveDemoPage() {
             <li>
               Cada vez que subes una imagen aquí, se guarda como{' '}
               <code className="bg-neutral-800 px-1 py-[1px] rounded">
-                ethqia_demo_post
+                {STORAGE_KEY}
               </code>{' '}
-              en <span className="font-mono">localStorage</span>.
+              en <span className="font-mono">localStorage</span> para usarla en tu
+              bio y demostraciones locales.
             </li>
             <li>
-              También se añade al feed en{' '}
+              También se añade al feed local en{' '}
               <code className="bg-neutral-800 px-1 py-[1px] rounded">
                 ethqia_feed_posts
               </code>{' '}
-              para mostrarse en <code>/feed</code>.
+              para la versión de feed basada solo en navegador.
             </li>
             <li>
               Se genera una notificación del tipo{' '}
@@ -319,6 +366,17 @@ export default function LiveDemoPage() {
                 post-scored
               </code>{' '}
               que podrás ver en tu perfil y en la página de notificaciones.
+            </li>
+            <li>
+              Y, en esta versión avanzada, se envía la imagen a{' '}
+              <code className="bg-neutral-800 px-1 py-[1px] rounded">
+                /api/upload
+              </code>{' '}
+              para guardarla en Supabase (Storage + tabla{' '}
+              <code className="bg-neutral-800 px-1 py-[1px] rounded">
+                posts
+              </code>
+              ), lo que alimenta el feed real conectado a backend.
             </li>
           </ul>
 
