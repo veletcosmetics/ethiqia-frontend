@@ -3,16 +3,6 @@
 import { useEffect, useState } from 'react';
 import { getSession } from '@/lib/session';
 
-type SessionUser = {
-  id?: string;
-  name?: string;
-  email?: string;
-};
-
-type Session = {
-  user: SessionUser;
-};
-
 type DemoPost = {
   imageUrl: string;
   score: number;
@@ -31,7 +21,8 @@ const STORAGE_KEY_DEMO = 'ethiqia_demo_post';
 const STORAGE_KEY_FEED = 'ethiqia_feed_posts';
 
 export default function ProfilePage() {
-  const [session, setSession] = useState<Session | null>(null);
+  // ❗ Importante: usamos `any` para evitar el conflicto de tipos con SessionData
+  const [session, setSession] = useState<any>(null);
   const [demoPost, setDemoPost] = useState<DemoPost | null>(null);
   const [feedPosts, setFeedPosts] = useState<FeedPost[]>([]);
 
@@ -39,7 +30,7 @@ export default function ProfilePage() {
   useEffect(() => {
     if (typeof window === 'undefined') return;
     try {
-      const s = getSession();
+      const s = getSession() as any;
       if (s) setSession(s);
     } catch {
       // ignore
@@ -72,8 +63,16 @@ export default function ProfilePage() {
     }
   }, []);
 
-  const email = session?.user.email ?? 'demo@ethiqia.app';
-  const displayName = session?.user.name ?? email.split('@')[0] ?? 'Usuario Ethiqia';
+  const email: string =
+    session?.user?.email ??
+    session?.user?.mail ??
+    session?.user?.username ??
+    'demo@ethiqia.app';
+
+  const displayName: string =
+    session?.user?.name ??
+    email.split('@')[0] ??
+    'Usuario Ethiqia';
 
   return (
     <main className="min-h-[calc(100vh-64px)] bg-neutral-950 text-neutral-50">
