@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from 'react';
 import { addNotification } from '../../../lib/notifications';
-import { createFeedPost } from '../../../lib/feed';
 
 type AnalysisResult = {
   authenticity: number;
@@ -49,7 +48,6 @@ export default function LiveDemoPage() {
   const [analysis, setAnalysis] = useState<AnalysisResult | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [lastSaved, setLastSaved] = useState<DemoPost | null>(null);
-  const [backendStatus, setBackendStatus] = useState<string | null>(null);
 
   // Cargar última demo guardada (si existe)
   useEffect(() => {
@@ -74,7 +72,6 @@ export default function LiveDemoPage() {
     setIsAnalyzing(true);
     setFileName(file.name || 'Imagen subida');
     setAnalysis(null);
-    setBackendStatus(null);
 
     const reader = new FileReader();
     reader.onload = () => {
@@ -100,7 +97,7 @@ export default function LiveDemoPage() {
         // ignoramos errores de almacenamiento
       }
 
-      // Guardar la publicación también en el feed local (para compatibilidad)
+      // Guardar la publicación también en el feed (solo demo, en localStorage)
       try {
         const rawFeed = localStorage.getItem('ethiqia_feed_posts');
         const parsed = rawFeed ? JSON.parse(rawFeed) : [];
@@ -127,24 +124,6 @@ export default function LiveDemoPage() {
       } catch {
         // ignoramos errores de notificaciones
       }
-
-      // 🔥 Guardar en Supabase (feed REAL)
-      (async () => {
-        try {
-          await createFeedPost({
-            imageUrl: result,
-            score: generated.ethScore,
-          });
-          setBackendStatus(
-            '✅ Publicación guardada en el feed real de Ethiqia (Supabase).'
-          );
-        } catch (err) {
-          console.error(err);
-          setBackendStatus(
-            '⚠️ La imagen se ha analizado y se ve en la demo, pero hubo un error al guardar en el backend real.'
-          );
-        }
-      })();
     };
     reader.readAsDataURL(file);
   };
@@ -161,10 +140,10 @@ export default function LiveDemoPage() {
           </h1>
           <p className="text-sm text-neutral-400 max-w-2xl">
             Esta demo está pensada para enseñar a inversores y al Parque
-            Científico cómo funcionaría Ethiqia: subes una imagen, la IA analiza
-            su autenticidad, la probabilidad de que sea IA y genera un Ethiqia
-            Score en tiempo real. La publicación se guarda en el feed real
-            (Supabase) y en tu perfil demo.
+            Científico cómo funcionaría Ethiqia: subes una imagen, la IA
+            analiza su autenticidad, la probabilidad de que sea IA y genera un
+            Ethiqia Score en tiempo real. La publicación se guarda en tu bio y
+            en el feed demo de tu navegador.
           </p>
         </header>
 
@@ -177,8 +156,7 @@ export default function LiveDemoPage() {
               </h2>
               <p className="text-xs text-neutral-400">
                 Puede ser una foto real, un render, un mockup… La IA simula el
-                análisis y asigna un Ethiqia Score. Además, la imagen se guardará
-                en el feed real de prueba.
+                análisis y asigna un Ethiqia Score.
               </p>
             </div>
           </div>
@@ -188,8 +166,7 @@ export default function LiveDemoPage() {
             <span>
               Haz clic para elegir una imagen
               <span className="block text-[11px] text-neutral-500 mt-1">
-                (para el MVP se guarda como dataURL en Supabase; en producción
-                usaríamos storage dedicado)
+                (solo se procesa en tu navegador, no se sube a ningún servidor)
               </span>
             </span>
             <input
@@ -204,12 +181,6 @@ export default function LiveDemoPage() {
             <p className="text-[11px] text-neutral-500">
               Imagen seleccionada:{' '}
               <span className="text-neutral-300">{fileName}</span>
-            </p>
-          )}
-
-          {backendStatus && (
-            <p className="text-[11px] text-neutral-400 mt-1">
-              {backendStatus}
             </p>
           )}
         </section>
@@ -337,19 +308,18 @@ export default function LiveDemoPage() {
               en <span className="font-mono">localStorage</span>.
             </li>
             <li>
-              También se añade a un feed local en{' '}
+              También se añade al feed en{' '}
               <code className="bg-neutral-800 px-1 py-[1px] rounded">
                 ethqia_feed_posts
               </code>{' '}
-              para compatibilidad con la demo inicial.
+              para mostrarse en <code>/feed</code>.
             </li>
             <li>
-              Además, se guarda en la tabla{' '}
+              Se genera una notificación del tipo{' '}
               <code className="bg-neutral-800 px-1 py-[1px] rounded">
-                posts
+                post-scored
               </code>{' '}
-              de Supabase, vinculada a tu usuario real. Es el feed “serio” que
-              podremos escalar y conectar a score global, APIs externas, etc.
+              que podrás ver en tu bio y en la página de notificaciones.
             </li>
           </ul>
 
