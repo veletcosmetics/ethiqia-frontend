@@ -1,34 +1,55 @@
 // lib/session.ts
 
-const STORAGE_KEY = 'ethiqia_session';
+const SESSION_KEY = 'ethiqia_session';
+const TOKEN_KEY = 'ethiqia_token';
 
-export type SessionData = {
-  token: string;
-  user?: {
-    id?: string;
-    name?: string;
-    email?: string;
-  };
+export type SessionUser = {
+  id?: string;
+  name?: string;
+  email?: string;
 };
 
-export function saveSession(data: SessionData) {
-  if (typeof window === 'undefined') return;
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-}
+export type Session = {
+  user: SessionUser;
+};
 
-export function getSession(): SessionData | null {
+// Leer sesión desde localStorage
+export function getSession(): Session | null {
   if (typeof window === 'undefined') return null;
-  const raw = localStorage.getItem(STORAGE_KEY);
+  const raw = window.localStorage.getItem(SESSION_KEY);
   if (!raw) return null;
-
   try {
-    return JSON.parse(raw) as SessionData;
+    return JSON.parse(raw) as Session;
   } catch {
     return null;
   }
 }
 
+// Guardar sesión en localStorage
+export function setSession(session: Session) {
+  if (typeof window === 'undefined') return;
+  window.localStorage.setItem(SESSION_KEY, JSON.stringify(session));
+}
+
+// Borrar sesión
 export function clearSession() {
   if (typeof window === 'undefined') return;
-  localStorage.removeItem(STORAGE_KEY);
+  window.localStorage.removeItem(SESSION_KEY);
+  window.localStorage.removeItem(TOKEN_KEY);
+}
+
+// --- Token (por si tu API lo usa) ---
+
+export function getToken(): string | null {
+  if (typeof window === 'undefined') return null;
+  return window.localStorage.getItem(TOKEN_KEY);
+}
+
+export function setToken(token: string | null) {
+  if (typeof window === 'undefined') return;
+  if (!token) {
+    window.localStorage.removeItem(TOKEN_KEY);
+  } else {
+    window.localStorage.setItem(TOKEN_KEY, token);
+  }
 }
