@@ -76,7 +76,7 @@ export default function LiveDemoPage() {
     const file = event.target.files?.[0];
     if (!file) return;
 
-    // No queremos HEIC ni formatos raros en la demo
+    // Evitamos HEIC y formatos raros
     if (!file.type.startsWith('image/')) {
       alert('Sube solo archivos de imagen (jpg, png, webp...)');
       return;
@@ -108,7 +108,7 @@ export default function LiveDemoPage() {
         localStorage.setItem(STORAGE_KEY, JSON.stringify(demoPost));
         setLastSaved(demoPost);
       } catch {
-        // ignorar errores de almacenamiento
+        // ignoramos errores de almacenamiento
       }
 
       // 3) Guardar la publicación también en un "feed" local de la demo
@@ -129,18 +129,14 @@ export default function LiveDemoPage() {
         // ignoramos errores
       }
 
-      // 4) GUARDAR EN SUPABASE (backend real de la demo)
+      // 4) GUARDAR EN SUPABASE (solo columnas que existen)
       try {
         const userId = session?.user?.id ?? null;
 
         const { error } = await supabase.from('posts').insert({
           user_id: userId,
-          image_url: result, // en demo guardamos el dataURL directamente
+          image_url: result, // en esta demo guardamos el dataURL directamente
           caption: file.name || 'Imagen subida en la demo en vivo',
-          ai_score: generated.ethScore,
-          ai_probability: generated.aiProbability,
-          authenticity: generated.authenticity,
-          coherence: generated.coherence,
         });
 
         if (error) {
@@ -323,9 +319,8 @@ export default function LiveDemoPage() {
                       </span>
                     </div>
                     <p className="text-[11px] text-neutral-500">
-                      En producción este score vendría de modelos entrenados
-                      para detectar IA, coherencia y autenticidad. Aquí es una
-                      simulación para enseñar el flujo completo.
+                      En producción este score vendría de modelos entrenados.
+                      Aquí es una simulación para enseñar el flujo completo.
                     </p>
                   </>
                 )}
@@ -352,8 +347,7 @@ export default function LiveDemoPage() {
             </li>
             <li>
               También se guarda una entrada real en Supabase en la tabla{' '}
-              <code>posts</code> con Ethiqia Score y métricas de autenticidad /
-              IA.
+              <code>posts</code> (usuario + imagen + texto).
             </li>
             <li>
               Esa publicación aparecerá en tu bio y en el feed real si todo está
