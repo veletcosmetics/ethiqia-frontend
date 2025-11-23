@@ -8,7 +8,6 @@ type Post = {
   image_url: string;
   caption: string | null;
   created_at: string;
-  ai_score: number | null;
 };
 
 export default function FeedPage() {
@@ -46,9 +45,7 @@ export default function FeedPage() {
             Publicaciones reales en Ethiqia (demo)
           </h1>
           <p className="text-sm text-neutral-400">
-            Aquí solo se muestran fotos subidas desde la demo en vivo. No hay
-            imágenes falsas ni perfiles simulados: todo pasa por el análisis de
-            Ethiqia y se guarda en Supabase.
+            Aquí solo se muestran fotos subidas desde la demo en vivo.
           </p>
         </header>
 
@@ -79,15 +76,9 @@ export default function FeedPage() {
                   Publicación analizada por Ethiqia
                 </p>
                 <p className="text-xs text-neutral-400">
-                  Esta imagen se ha subido desde la demo en vivo y se ha
-                  guardado en Supabase con un Ethiqia Score basado en
-                  autenticidad, coherencia y probabilidad de IA.
+                  Esta imagen se ha subido desde la demo en tiempo real y se ha
+                  guardado en Supabase.
                 </p>
-                {post.ai_score !== null && (
-                  <p className="text-xs text-emerald-400">
-                    Ethiqia Score: {post.ai_score}/100
-                  </p>
-                )}
               </div>
             </article>
           ))}
