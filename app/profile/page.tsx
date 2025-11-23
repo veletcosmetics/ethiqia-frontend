@@ -1,241 +1,235 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { getSession } from '@/lib/session';
+import { supabase } from '@/lib/supabaseClient';
+import { getSession, clearSession } from '@/lib/session';
 
-type DemoPost = {
-  imageUrl: string;
-  score: number;
-  name?: string;
-  createdAt?: number;
-};
-
-type FeedPost = {
+type Post = {
   id: string;
-  imageUrl: string;
-  score: number;
-  createdAt: number;
+  image_url: string;
+  caption: string | null;
+  created_at: string;
+  ai_score: number | null;
 };
-
-const STORAGE_KEY_DEMO = 'ethiqia_demo_post';
-const STORAGE_KEY_FEED = 'ethiqia_feed_posts';
 
 export default function ProfilePage() {
-  // ❗ Importante: usamos `any` para evitar el conflicto de tipos con SessionData
-  const [session, setSession] = useState<any>(null);
-  const [demoPost, setDemoPost] = useState<DemoPost | null>(null);
-  const [feedPosts, setFeedPosts] = useState<FeedPost[]>([]);
+  const [session, setSessionState] = useState<any>(null);
+  const [posts, setPosts] = useState<Post[]>([]);
+  const [loadingPosts, setLoadingPosts] = useState(true);
 
-  // Cargar sesión (correo / nombre) desde localStorage
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    try {
-      const s = getSession() as any;
-      if (s) setSession(s);
-    } catch {
-      // ignore
-    }
+    const s = getSession();
+    if (s) setSessionState(s);
   }, []);
 
-  // Cargar última publicación demo
   useEffect(() => {
-    if (typeof window === 'undefined') return;
-    try {
-      const raw = localStorage.getItem(STORAGE_KEY_DEMO);
-      if (raw) {
-        const data = JSON.parse(raw) as DemoPost;
-        if (data.imageUrl) setDemoPost(data);
+    const load = async () => {
+      if (!session?.user?.id) {
+        setPosts([]);
+        setLoadingPosts(false);
+        return;
       }
-    } catch {
-      // ignore
+
+      setLoadingPosts(true);
+      const { data, error } = await supabase
+        .from('posts')
+        .select('*')
+        .eq('user_id', session.user.id)
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        console.error('Error cargando posts del usuario', error);
+        setPosts([]);
+      } else {
+        setPosts((data || []) as Post[]);
+      }
+      setLoadingPosts(false);
+    };
+
+    load();
+  }, [session?.user?.id]);
+
+  const email = session?.user?.email as string | undefined;
+  const displayName =
+    session?.user?.name ||
+    (email ? email.split('@')[0] : 'Usuario Ethiqia demo');
+
+  const handleLogout = async () => {
+    clearSession();
+    await supabase.auth.signOut();
+    if (typeof window !== 'undefined') {
+      window.location.href = '/';
     }
-  }, []);
+  };
 
-  // Cargar posts del feed (reales, sin falsos)
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    try {
-      const raw = localStorage.getItem(STORAGE_KEY_FEED);
-      const parsed: FeedPost[] = raw ? JSON.parse(raw) : [];
-      setFeedPosts(parsed);
-    } catch {
-      setFeedPosts([]);
-    }
-  }, []);
-
-  const email: string =
-    session?.user?.email ??
-    session?.user?.mail ??
-    session?.user?.username ??
-    'demo@ethiqia.app';
-
-  const displayName: string =
-    session?.user?.name ??
-    email.split('@')[0] ??
-    'Usuario Ethiqia';
+  const lastPost = posts[0];
+  const mosaicPosts = posts.slice(0, 6);
 
   return (
     <main className="min-h-[calc(100vh-64px)] bg-neutral-950 text-neutral-50">
-      <section className="max-w-5xl mx-auto px-4 py-8 space-y-8">
-        {/* Cabecera perfil */}
-        <header className="flex flex-col md:flex-row md:items-center md:justify-between gap-6">
-          <div className="flex items-center gap-4">
-            <div className="flex h-16 w-16 items-center justify-center rounded-full bg-neutral-800 text-xl font-semibold">
-              {displayName.charAt(0).toUpperCase()}
+      <section className="max-w-5xl mx-auto px-4 py-6 space-y-6">
+        {/* Cabecera */}
+        <header className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+          <div className="flex items-center gap-3">
+            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-emerald-500/20 text-sm font-semibold text-emerald-300">
+              {displayName.slice(0, 2).toUpperCase()}
             </div>
             <div className="space-y-1">
-              <div className="flex items-center gap-2">
-                <h1 className="text-xl font-semibold">{displayName}</h1>
-                <span className="rounded-full border border-emerald-500/40 bg-emerald-500/10 px-2 py-[2px] text-[11px] text-emerald-300">
-                  Perfil demo conectado a Supabase
-                </span>
-              </div>
-              <p className="text-sm text-neutral-400">Email: {email}</p>
-              <p className="text-xs text-neutral-500">
-                En esta versión demo, tu sesión y publicaciones se guardan de forma local
-                en este navegador (localStorage).
-              </p>
+              <h1 className="text-lg font-semibold">{displayName}</h1>
+              {email && (
+                <p className="text-xs text-neutral-400">Email: {email}</p>
+              )}
+              <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-2 py-[2px] text-[11px] text-emerald-300">
+                Perfil demo conectado a Supabase
+              </span>
             </div>
           </div>
 
-          <div className="flex flex-wrap gap-2 text-xs">
-            <a
-              href="/profile"
-              className="rounded-full border border-neutral-700 px-3 py-1 text-neutral-200 hover:border-emerald-400 hover:text-emerald-300"
-            >
-              Tu bio
-            </a>
-            <a
-              href="/demo/live"
-              className="rounded-full border border-neutral-700 px-3 py-1 text-neutral-200 hover:border-emerald-400 hover:text-emerald-300"
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => (window.location.href = '/demo/live')}
+              className="rounded-full border border-emerald-500/60 px-3 py-1 text-xs font-medium text-emerald-300 hover:bg-emerald-500/10"
             >
               Subir foto en demo live
-            </a>
-            <a
-              href="/feed"
-              className="rounded-full border border-neutral-700 px-3 py-1 text-neutral-200 hover:border-emerald-400 hover:text-emerald-300"
+            </button>
+            <button
+              onClick={handleLogout}
+              className="rounded-full border border-neutral-700 px-3 py-1 text-xs text-neutral-300 hover:bg-neutral-800"
             >
-              Ver en el feed →
-            </a>
+              Cerrar sesión
+            </button>
           </div>
         </header>
 
-        {/* Sección bio */}
-        <section className="space-y-4">
+        {/* Bio */}
+        <section className="rounded-2xl border border-neutral-800 bg-neutral-900/70 p-4 text-sm space-y-2">
           <h2 className="text-sm font-semibold text-neutral-100">Tu bio</h2>
-          <p className="text-sm text-neutral-300 max-w-2xl">
-            Este es tu espacio personal en Ethiqia. Aquí verás tu bio, tus fotos publicadas
-            y la reputación asociada a tu actividad. En esta demo las imágenes y el
-            Ethiqia Score se guardan en tu navegador para que puedas enseñar el flujo
-            completo a inversores y amigos sin usar un backend real.
+          <p className="text-xs text-neutral-300">
+            Este es tu espacio personal en Ethiqia. Aquí verás tu bio, tus fotos
+            publicadas y la reputación asociada a tu actividad. En esta demo las
+            imágenes y el Ethiqia Score se guardan en Supabase para enseñar el
+            flujo completo a inversores y amigos.
           </p>
         </section>
 
         {/* Tus publicaciones */}
-        <section className="space-y-3">
-          <div className="flex items-center justify-between">
-            <h2 className="text-sm font-semibold text-neutral-100">
-              Tus publicaciones
-            </h2>
-            <a
-              href="/demo/live"
-              className="text-xs text-emerald-400 hover:text-emerald-300"
-            >
-              + Subir foto en demo live
-            </a>
+        <section className="grid gap-4 md:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
+          <div className="rounded-2xl border border-neutral-800 bg-neutral-900/70 p-4 space-y-3">
+            <div className="flex items-center justify-between">
+              <h2 className="text-sm font-semibold text-neutral-100">
+                Tus publicaciones
+              </h2>
+              <button
+                onClick={() => (window.location.href = '/feed')}
+                className="text-[11px] text-emerald-300 hover:underline"
+              >
+                Ver en el feed →
+              </button>
+            </div>
+
+            {loadingPosts && (
+              <p className="text-xs text-neutral-400">
+                Cargando tus publicaciones…
+              </p>
+            )}
+
+            {!loadingPosts && !lastPost && (
+              <p className="text-xs text-neutral-400">
+                Aún no has subido ninguna foto. Sube una desde la demo en vivo.
+              </p>
+            )}
+
+            {lastPost && (
+              <div className="overflow-hidden rounded-xl border border-neutral-800 bg-black/40">
+                <img
+                  src={lastPost.image_url}
+                  alt={lastPost.caption || 'Tu publicación'}
+                  className="w-full max-h-[320px] object-cover"
+                />
+                <div className="border-t border-neutral-800 px-3 py-2 text-xs space-y-1">
+                  <p className="font-medium text-neutral-100">
+                    Última publicación
+                  </p>
+                  {lastPost.ai_score !== null && (
+                    <p className="text-[11px] text-emerald-400">
+                      Ethiqia Score: {lastPost.ai_score}/100
+                    </p>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-            {/* Bloque principal: última demo */}
-            <article className="md:col-span-2 rounded-2xl border border-neutral-800 bg-neutral-900 overflow-hidden">
-              <div className="relative w-full bg-neutral-900">
-                {demoPost?.imageUrl ? (
-                  <img
-                    src={demoPost.imageUrl}
-                    alt="Tu publicación"
-                    className="w-full max-h-[420px] object-cover"
-                  />
-                ) : (
-                  <div className="flex h-64 items-center justify-center text-sm text-neutral-500">
-                    Aún no has subido ninguna imagen desde la demo live.
-                  </div>
-                )}
-                <div className="absolute left-3 top-3 rounded-full bg-black/60 px-3 py-[3px] text-xs text-neutral-100">
-                  Tu publicación
-                </div>
-                {demoPost?.score != null && (
-                  <div className="absolute right-3 bottom-3 rounded-full bg-black/70 px-3 py-[3px] text-xs text-emerald-300">
-                    Ethiqia Score: {demoPost.score}/100
-                  </div>
-                )}
-              </div>
-            </article>
-
-            {/* Columna lateral: mini feed propio */}
-            <div className="space-y-2 rounded-2xl border border-neutral-800 bg-neutral-900 p-3 text-xs text-neutral-300">
-              <p className="font-semibold text-neutral-100">
-                Resumen de actividad
-              </p>
-              {demoPost ? (
-                <>
-                  <p>
-                    Última publicación con{' '}
-                    <span className="font-semibold">
-                      {demoPost.score}/100 Ethiqia Score
-                    </span>
-                    .
-                  </p>
-                  <p className="text-neutral-400">
-                    Esta imagen también se muestra en el feed general de la demo
-                    (solo fotos reales subidas por usuarios).
-                  </p>
-                  <a
-                    href="/feed"
-                    className="inline-flex items-center text-emerald-400 hover:text-emerald-300 mt-1"
-                  >
-                    Ver en el feed →
-                  </a>
-                </>
-              ) : (
-                <p className="text-neutral-400">
-                  Sube una foto desde la demo live para ver aquí tu primera
-                  publicación y su Ethiqia Score.
+          {/* Resumen / CTA */}
+          <div className="rounded-2xl border border-neutral-800 bg-neutral-900/70 p-4 text-xs space-y-2">
+            <h2 className="text-sm font-semibold text-neutral-100">
+              Resumen de actividad
+            </h2>
+            {lastPost ? (
+              <>
+                <p className="text-neutral-300">
+                  Última publicación con{' '}
+                  <span className="text-emerald-300">
+                    {lastPost.ai_score ?? '—'}/100 Ethiqia Score
+                  </span>
+                  .
                 </p>
-              )}
-            </div>
+                <p className="text-neutral-400">
+                  Esta imagen también se muestra en el feed general de la demo
+                  solo para fotos reales subidas por usuarios.
+                </p>
+              </>
+            ) : (
+              <p className="text-neutral-400">
+                Cuando subas tus primeras fotos, aquí verás un resumen rápido de
+                tu Ethiqia Score.
+              </p>
+            )}
           </div>
         </section>
 
-        {/* Vista rápida de tus posts del feed (si hay varios) */}
-        {feedPosts.length > 0 && (
-          <section className="space-y-3">
-            <div className="flex items-center justify-between">
-              <h2 className="text-sm font-semibold text-neutral-100">
-                Mosaico de tus fotos reales
-              </h2>
-              <a
-                href="/feed"
-                className="text-xs text-emerald-400 hover:text-emerald-300"
+        {/* Mosaico */}
+        <section className="space-y-3">
+          <div className="flex items-center justify-between">
+            <h2 className="text-sm font-semibold text-neutral-100">
+              Mosaico de tus fotos reales
+            </h2>
+            <button
+              onClick={() => (window.location.href = '/feed')}
+              className="text-[11px] text-emerald-300 hover:underline"
+            >
+              Ver todas en el feed →
+            </button>
+          </div>
+
+          {mosaicPosts.length === 0 && !loadingPosts && (
+            <p className="text-xs text-neutral-400">
+              Cuando subas varias fotos, aquí aparecerá un mosaico tipo
+              Instagram con tus publicaciones.
+            </p>
+          )}
+
+          <div className="grid grid-cols-3 gap-2">
+            {mosaicPosts.map((post) => (
+              <div
+                key={post.id}
+                className="relative aspect-square overflow-hidden rounded-xl border border-neutral-800 bg-neutral-900"
               >
-                Ver todas en el feed →
-              </a>
-            </div>
-            <div className="grid grid-cols-3 md:grid-cols-6 gap-[2px] overflow-hidden rounded-xl bg-neutral-900">
-              {feedPosts.slice(0, 12).map((post) => (
-                <div
-                  key={post.id}
-                  className="relative aspect-square overflow-hidden"
-                >
-                  <img
-                    src={post.imageUrl}
-                    alt="Foto del feed"
-                    className="h-full w-full object-cover"
-                  />
-                </div>
-              ))}
-            </div>
-          </section>
-        )}
+                <img
+                  src={post.image_url}
+                  alt={post.caption || 'Foto del mosaico'}
+                  className="h-full w-full object-cover"
+                />
+                {post.ai_score !== null && (
+                  <span className="absolute bottom-1 right-1 rounded-full bg-black/60 px-2 py-[1px] text-[10px] text-emerald-300">
+                    {post.ai_score}/100
+                  </span>
+                )}
+              </div>
+            ))}
+          </div>
+        </section>
       </section>
     </main>
   );
