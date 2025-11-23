@@ -9,7 +9,6 @@ type Post = {
   image_url: string;
   caption: string | null;
   created_at: string;
-  ai_score: number | null;
 };
 
 export default function ProfilePage() {
@@ -108,8 +107,8 @@ export default function ProfilePage() {
           <p className="text-xs text-neutral-300">
             Este es tu espacio personal en Ethiqia. Aquí verás tu bio, tus fotos
             publicadas y la reputación asociada a tu actividad. En esta demo las
-            imágenes y el Ethiqia Score se guardan en Supabase para enseñar el
-            flujo completo a inversores y amigos.
+            imágenes se guardan en Supabase para enseñar el flujo completo a
+            inversores y amigos.
           </p>
         </section>
 
@@ -151,11 +150,10 @@ export default function ProfilePage() {
                   <p className="font-medium text-neutral-100">
                     Última publicación
                   </p>
-                  {lastPost.ai_score !== null && (
-                    <p className="text-[11px] text-emerald-400">
-                      Ethiqia Score: {lastPost.ai_score}/100
-                    </p>
-                  )}
+                  <p className="text-[11px] text-neutral-400">
+                    Guardada en Supabase y visible en el feed general de la
+                    demo.
+                  </p>
                 </div>
               </div>
             )}
@@ -169,21 +167,18 @@ export default function ProfilePage() {
             {lastPost ? (
               <>
                 <p className="text-neutral-300">
-                  Última publicación con{' '}
-                  <span className="text-emerald-300">
-                    {lastPost.ai_score ?? '—'}/100 Ethiqia Score
-                  </span>
-                  .
+                  Tu última publicación ya está conectada con el feed real de la
+                  demo.
                 </p>
                 <p className="text-neutral-400">
-                  Esta imagen también se muestra en el feed general de la demo
-                  solo para fotos reales subidas por usuarios.
+                  Esta imagen también se muestra en el feed general solo para
+                  fotos reales subidas por usuarios.
                 </p>
               </>
             ) : (
               <p className="text-neutral-400">
                 Cuando subas tus primeras fotos, aquí verás un resumen rápido de
-                tu Ethiqia Score.
+                tu actividad.
               </p>
             )}
           </div>
@@ -221,11 +216,6 @@ export default function ProfilePage() {
                   alt={post.caption || 'Foto del mosaico'}
                   className="h-full w-full object-cover"
                 />
-                {post.ai_score !== null && (
-                  <span className="absolute bottom-1 right-1 rounded-full bg-black/60 px-2 py-[1px] text-[10px] text-emerald-300">
-                    {post.ai_score}/100
-                  </span>
-                )}
               </div>
             ))}
           </div>
