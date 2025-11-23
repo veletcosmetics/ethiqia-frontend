@@ -129,12 +129,9 @@ export default function LiveDemoPage() {
         // ignoramos errores
       }
 
-      // 4) GUARDAR EN SUPABASE (solo columnas que existen)
+      // 4) GUARDAR EN SUPABASE (SIN user_id, solo imagen + caption)
       try {
-        const userId = session?.user?.id ?? null;
-
         const { error } = await supabase.from('posts').insert({
-          user_id: userId,
           image_url: result, // en esta demo guardamos el dataURL directamente
           caption: file.name || 'Imagen subida en la demo en vivo',
         });
@@ -145,6 +142,7 @@ export default function LiveDemoPage() {
             '⚠️ La imagen se ha analizado y se ve en la demo, pero hubo un error al guardar en el backend real.'
           );
         } else {
+          console.log('✅ Post guardado en Supabase correctamente');
           setBackendError(null);
         }
       } catch (e) {
@@ -347,7 +345,7 @@ export default function LiveDemoPage() {
             </li>
             <li>
               También se guarda una entrada real en Supabase en la tabla{' '}
-              <code>posts</code> (usuario + imagen + texto).
+              <code>posts</code> (imagen + texto).
             </li>
             <li>
               Esa publicación aparecerá en tu bio y en el feed real si todo está
