@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { addNotification } from '../../../lib/notifications';
 
 type AnalysisResult = {
   authenticity: number;
@@ -16,17 +17,11 @@ type DemoPost = {
   createdAt?: number;
 };
 
-type FeedPost = {
-  id: string;
-  imageUrl: string;
-  score: number;
-  createdAt: number;
-};
-
-const STORAGE_KEY_DEMO = 'ethiqia_demo_post';
-const STORAGE_KEY_FEED = 'ethiqia_feed_posts';
+const PROFILE_STORAGE_KEY = 'ethiqia_demo_post';
+const FEED_STORAGE_KEY = 'ethiqia_feed_posts';
 
 function generateAnalysis(): AnalysisResult {
+  // Valores simulados para la demo
   const aiProbability = Math.round(Math.random() * 70) + 10; // 10–80 %
   const authenticity =
     100 - aiProbability + Math.round((Math.random() - 0.5) * 10);
@@ -55,10 +50,10 @@ export default function LiveDemoPage() {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [lastSaved, setLastSaved] = useState<DemoPost | null>(null);
 
-  // Cargar última demo guardada (para mostrar texto al final)
+  // Cargar última demo guardada (si existe)
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    const raw = localStorage.getItem(STORAGE_KEY_DEMO);
+    const raw = localStorage.getItem(PROFILE_STORAGE_KEY);
     if (raw) {
       try {
         const data = JSON.parse(raw) as DemoPost;
@@ -75,8 +70,12 @@ export default function LiveDemoPage() {
     const file = event.target.files?.[0];
     if (!file) return;
 
-    // NOTA: solo aceptamos formatos estándar (png, jpg, jpeg, webp, etc.)
-    // HEIC puede dar problemas, mejor evitarlo.
+    // Solo aceptamos formatos de imagen típicos; HEIC puede dar problemas
+    if (!file.type.startsWith('image/')) {
+      alert('Por ahora solo aceptamos imágenes estándar (jpg, png, webp…).');
+      return;
+    }
+
     setIsAnalyzing(true);
     setFileName(file.name || 'Imagen subida');
     setAnalysis(null);
@@ -91,7 +90,7 @@ export default function LiveDemoPage() {
       setAnalysis(generated);
       setIsAnalyzing(false);
 
-      // 2) Guardar como publicación demo (para la Bio)
+      // 2) Guardar como publicación demo principal (para la bio)
       try {
         const demoPost: DemoPost = {
           imageUrl: result,
@@ -99,31 +98,40 @@ export default function LiveDemoPage() {
           name: file.name || 'Demo Ethiqia',
           createdAt: Date.now(),
         };
-        localStorage.setItem(STORAGE_KEY_DEMO, JSON.stringify(demoPost));
+        localStorage.setItem(PROFILE_STORAGE_KEY, JSON.stringify(demoPost));
         setLastSaved(demoPost);
       } catch {
         // ignoramos errores de almacenamiento
       }
 
-      // 3) Guardar también en el feed REAL de demo (sin posts falsos)
+      // 3) Guardar también en el feed local
       try {
-        const rawFeed = localStorage.getItem(STORAGE_KEY_FEED);
-        const parsed: FeedPost[] = rawFeed ? JSON.parse(rawFeed) : [];
+        const rawFeed = localStorage.getItem(FEED_STORAGE_KEY);
+        const parsed: DemoPost[] = rawFeed ? JSON.parse(rawFeed) : [];
 
-        const newPost: FeedPost = {
-          id: `feed-${Date.now()}`,
+        const newPost: DemoPost = {
           imageUrl: result,
           score: generated.ethScore,
+          name: file.name || 'Demo Ethiqia',
           createdAt: Date.now(),
         };
 
         const updated = [newPost, ...parsed];
-        localStorage.setItem(STORAGE_KEY_FEED, JSON.stringify(updated));
+        localStorage.setItem(FEED_STORAGE_KEY, JSON.stringify(updated));
       } catch {
         // ignoramos errores
       }
-    };
 
+      // 4) Notificación de score (sistema de notificaciones de la demo)
+      try {
+        addNotification(
+          'post-scored',
+          `Tu publicación generó ${generated.ethScore} puntos de Ethiqia Score.`
+        );
+      } catch {
+        // ignoramos errores de notificaciones
+      }
+    };
     reader.readAsDataURL(file);
   };
 
@@ -138,11 +146,11 @@ export default function LiveDemoPage() {
             Sube una foto y deja que Ethiqia la analice
           </h1>
           <p className="text-sm text-neutral-400 max-w-2xl">
-            Esta demo está pensada para enseñar a inversores y al Parque
-            Científico cómo funcionaría Ethiqia: subes una imagen, la IA
-            analiza su autenticidad, la probabilidad de que sea IA y genera un
-            Ethiqia Score en tiempo real. La publicación se guarda en tu bio y
-            en el feed real de demo (sin fotos falsas).
+            Esta demo está pensada para enseñar a inversores y amigos cómo
+            funcionaría Ethiqia: subes una imagen, la IA analiza su
+            autenticidad, la probabilidad de que sea IA y genera un Ethiqia
+            Score en tiempo real. La publicación se guarda en tu bio y en el
+            feed de esta demo (solo en este navegador).
           </p>
         </header>
 
@@ -154,8 +162,9 @@ export default function LiveDemoPage() {
                 1. Sube una imagen de demo
               </h2>
               <p className="text-xs text-neutral-400">
-                Usa formatos estándar (JPG, PNG, WEBP). Formatos como HEIC
-                pueden no mostrarse correctamente en el navegador.
+                Puede ser una foto real, un render, un mockup… La IA simula el
+                análisis y asigna un Ethiqia Score. Las fotos HEIC pueden fallar;
+                usa JPG/PNG/WebP para la demo.
               </p>
             </div>
           </div>
@@ -165,8 +174,7 @@ export default function LiveDemoPage() {
             <span>
               Haz clic para elegir una imagen
               <span className="block text-[11px] text-neutral-500 mt-1">
-                (solo se procesa en tu navegador, no se sube a ningún servidor
-                externo)
+                (solo se procesa en tu navegador)
               </span>
             </span>
             <input
@@ -301,18 +309,25 @@ export default function LiveDemoPage() {
           </h2>
           <ul className="list-disc pl-4 space-y-1">
             <li>
-              La última imagen subida se guarda como{' '}
+              Cada vez que subes una imagen aquí, se guarda como{' '}
               <code className="bg-neutral-800 px-1 py-[1px] rounded">
-                ethiqia_demo_post
+                {PROFILE_STORAGE_KEY}
               </code>{' '}
-              y se muestra en tu bio.
+              en <span className="font-mono">localStorage</span> para tu bio.
             </li>
             <li>
-              Cada subida también se añade a{' '}
+              También se añade al feed en{' '}
               <code className="bg-neutral-800 px-1 py-[1px] rounded">
-                ethiqia_feed_posts
+                {FEED_STORAGE_KEY}
               </code>{' '}
-              y aparece en el feed general, sin fotos falsas precargadas.
+              para mostrarse en <code>/feed</code>.
+            </li>
+            <li>
+              Se genera una notificación del tipo{' '}
+              <code className="bg-neutral-800 px-1 py-[1px] rounded">
+                post-scored
+              </code>{' '}
+              que podrás ver en la sección de notificaciones.
             </li>
           </ul>
 
