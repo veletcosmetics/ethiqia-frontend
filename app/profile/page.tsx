@@ -2,7 +2,15 @@
 
 import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabaseClient';
-import { getSession, type Session } from '@/lib/session';
+import { getSession } from '@/lib/session';
+
+type SessionData = {
+  user?: {
+    id?: string;
+    email?: string | null;
+    name?: string | null;
+  };
+};
 
 type ProfilePost = {
   id: string;
@@ -11,87 +19,88 @@ type ProfilePost = {
   created_at: string | null;
 };
 
-type DemoLocalPost = {
-  imageUrl: string;
+type LastDemoData = {
   score: number;
   name?: string;
   createdAt?: number;
 };
 
-const LOCAL_DEMO_KEY = 'ethiqia_demo_post';
+const DEMO_STORAGE_KEY = 'ethiqia_demo_post';
 
 export default function ProfilePage() {
-  const [session, setSessionState] = useState<Session | null>(null);
+  const [session, setSessionState] = useState<SessionData | null>(null);
   const [posts, setPosts] = useState<ProfilePost[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [isLoadingPosts, setIsLoadingPosts] = useState(true);
+  const [lastDemo, setLastDemo] = useState<LastDemoData | null>(null);
 
-  const [lastDemoScore, setLastDemoScore] = useState<number | null>(null);
-  const [lastDemoDate, setLastDemoDate] = useState<string | null>(null);
-
-  // Cargar sesión (demo) y último análisis local
+  // 1) Recuperar sesión guardada en localStorage (demo)
   useEffect(() => {
     if (typeof window === 'undefined') return;
-
     const s = getSession();
-    if (s) setSessionState(s);
+    if (s) {
+      // s ya tiene forma { user: { id, email, name } }
+      setSessionState(s as SessionData);
+    }
 
-    // Último análisis guardado en localStorage por /demo/live
-    try {
-      const raw = window.localStorage.getItem(LOCAL_DEMO_KEY);
-      if (raw) {
-        const data = JSON.parse(raw) as DemoLocalPost;
-        if (typeof data.score === 'number') {
-          setLastDemoScore(data.score);
+    // Último análisis de demo (/demo/live)
+    const raw = window.localStorage.getItem(DEMO_STORAGE_KEY);
+    if (raw) {
+      try {
+        const parsed = JSON.parse(raw) as { score?: number; name?: string; createdAt?: number };
+        if (parsed.score !== undefined) {
+          setLastDemo({
+            score: parsed.score,
+            name: parsed.name,
+            createdAt: parsed.createdAt,
+          });
         }
-        if (data.createdAt) {
-          const d = new Date(data.createdAt);
-          setLastDemoDate(d.toLocaleString());
-        }
+      } catch {
+        // ignoramos errores
       }
-    } catch {
-      // ignoramos errores de parseo
     }
   }, []);
 
-  // Cargar publicaciones reales desde Supabase
+  // 2) Cargar publicaciones reales desde Supabase (tabla posts)
   useEffect(() => {
     const loadPosts = async () => {
-      if (!session?.user?.id) {
-        setLoading(false);
+      setIsLoadingPosts(true);
+
+      const userId = session?.user?.id;
+      if (!userId) {
+        setPosts([]);
+        setIsLoadingPosts(false);
         return;
       }
 
       const { data, error } = await supabase
         .from('posts')
         .select('id, image_url, caption, created_at')
-        .eq('user_id', session.user.id)
+        .eq('user_id', userId)
         .order('created_at', { ascending: false });
 
-      if (!error && data) {
-        setPosts(data as ProfilePost[]);
+      if (error) {
+        console.error('Error cargando posts del perfil:', error);
+        setPosts([]);
       } else {
-        console.error('Error cargando posts de Supabase', error);
+        setPosts((data ?? []) as ProfilePost[]);
       }
 
-      setLoading(false);
+      setIsLoadingPosts(false);
     };
 
-    loadPosts();
+    // Solo cargar cuando tengamos sesión
+    if (session?.user?.id) {
+      loadPosts();
+    }
   }, [session?.user?.id]);
 
-  const latestPost = posts[0] ?? null;
-  const totalPosts = posts.length;
-
-  const displayName =
+  const userEmail = session?.user?.email ?? 'usuario@demo';
+  const userName =
     session?.user?.name ||
-    (session?.user?.email
-      ? session.user.email.split('@')[0]
-      : 'Usuario demo');
+    (userEmail ? userEmail.split('@')[0] : 'Usuario Ethiqia');
 
-  const avatarInitial =
-    displayName && displayName.length > 0
-      ? displayName.charAt(0).toUpperCase()
-      : 'E';
+  const publicacionesReales = posts.length;
+  const ultimoScoreDemo = lastDemo?.score ?? 87; // fallback para que no se vea vacío
 
   return (
     <main className="min-h-[calc(100vh-64px)] bg-neutral-950 text-neutral-50">
@@ -99,259 +108,203 @@ export default function ProfilePage() {
         {/* CABECERA PERFIL */}
         <header className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
           <div className="flex items-center gap-4">
-            <div className="flex h-16 w-16 items-center justify-center rounded-full bg-emerald-500/10 text-2xl font-semibold text-emerald-400 border border-emerald-500/40">
-              {avatarInitial}
+            {/* Avatar simple con iniciales */}
+            <div className="flex h-14 w-14 items-center justify-center rounded-full bg-neutral-800 text-lg font-semibold">
+              {userName.charAt(0).toUpperCase()}
             </div>
             <div className="space-y-1">
-              <h1 className="text-xl font-semibold">{displayName}</h1>
-              {session?.user?.email && (
-                <p className="text-sm text-neutral-400">
-                  {session.user.email}
-                </p>
-              )}
-              <span className="inline-flex items-center rounded-full bg-emerald-500/10 px-3 py-1 text-[11px] font-medium text-emerald-300 border border-emerald-500/30">
-                ● Perfil demo conectado a Supabase
-              </span>
+              <h1 className="text-lg font-semibold">{userName}</h1>
+              <p className="text-xs text-neutral-400">{userEmail}</p>
+              <div className="inline-flex items-center gap-2 rounded-full bg-emerald-500/10 px-3 py-1 text-[11px] text-emerald-300">
+                <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
+                Perfil demo conectado a Supabase
+              </div>
             </div>
           </div>
 
-          {/* Resumen arriba a la derecha */}
-          <div className="grid grid-cols-2 gap-3 text-xs md:text-sm">
-            <div className="rounded-2xl border border-neutral-800 bg-neutral-900/60 px-4 py-3">
-              <p className="text-neutral-400">Publicaciones reales</p>
-              <p className="mt-1 text-lg font-semibold text-neutral-50">
-                {totalPosts}
-              </p>
-              <p className="mt-1 text-[11px] text-neutral-500">
-                Guardadas en la tabla <code>posts</code> de Supabase.
-              </p>
-            </div>
-            <div className="rounded-2xl border border-neutral-800 bg-neutral-900/60 px-4 py-3">
-              <p className="text-neutral-400">Último Ethiqia Score (demo)</p>
-              <p className="mt-1 text-lg font-semibold text-emerald-400">
-                {lastDemoScore != null ? `${lastDemoScore}/100` : '—'}
-              </p>
-              <p className="mt-1 text-[11px] text-neutral-500">
-                Guardado localmente desde <code>/demo/live</code>.
-              </p>
-            </div>
+          {/* Botones (visual, todavía sin lógica de editar) */}
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              className="rounded-full border border-neutral-700 px-3 py-1 text-xs text-neutral-200 hover:border-neutral-500"
+            >
+              Tu bio
+            </button>
+            <button
+              type="button"
+              className="rounded-full border border-neutral-700 px-3 py-1 text-xs text-neutral-200 hover:border-neutral-500"
+            >
+              Editar perfil (próximamente)
+            </button>
           </div>
         </header>
 
-        {/* BIO + PUBLICACIONES */}
-        <div className="grid gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(0,1.2fr)]">
-          {/* Columna izquierda */}
-          <div className="space-y-4">
-            {/* Tarjeta Bio */}
-            <section className="rounded-2xl border border-neutral-800 bg-neutral-900/60 p-4 space-y-2">
+        {/* RESUMEN RÁPIDO */}
+        <section className="grid gap-4 md:grid-cols-3">
+          <div className="rounded-2xl border border-neutral-800 bg-neutral-900/60 p-4 text-xs">
+            <p className="text-[11px] uppercase tracking-[0.17em] text-neutral-500">
+              Publicaciones reales guardadas
+            </p>
+            <p className="mt-2 text-2xl font-semibold text-emerald-400">
+              {publicacionesReales}
+            </p>
+            <p className="mt-1 text-[11px] text-neutral-400">
+              Imágenes que se han subido desde la demo en vivo y se han
+              guardado como posts reales en Supabase.
+            </p>
+          </div>
+
+          <div className="rounded-2xl border border-neutral-800 bg-neutral-900/60 p-4 text-xs">
+            <p className="text-[11px] uppercase tracking-[0.17em] text-neutral-500">
+              Ethiqia Score (última demo)
+            </p>
+            <p className="mt-2 text-2xl font-semibold text-emerald-400">
+              {ultimoScoreDemo}/100
+            </p>
+            <p className="mt-1 text-[11px] text-neutral-400">
+              Último análisis simulado realizado desde <code>/demo/live</code>.
+              Se guarda solo en tu navegador.
+            </p>
+          </div>
+
+          <div className="rounded-2xl border border-neutral-800 bg-neutral-900/60 p-4 text-xs">
+            <p className="text-[11px] uppercase tracking-[0.17em] text-neutral-500">
+              Estado de la demo
+            </p>
+            <p className="mt-2 text-sm text-neutral-200">
+              Esta versión está pensada para enseñar el flujo a inversores y
+              amigos: sesión, bio, publicaciones reales y feed sin perfiles
+              falsos.
+            </p>
+          </div>
+        </section>
+
+        {/* BIO EXPLICATIVA */}
+        <section className="rounded-2xl border border-neutral-800 bg-neutral-900/60 p-5 text-sm space-y-2">
+          <h2 className="text-sm font-semibold text-neutral-100">Tu bio</h2>
+          <p className="text-sm text-neutral-300">
+            Este es tu espacio personal en Ethiqia. Aquí verás tu bio, tus fotos
+            publicadas y la reputación asociada a tu actividad.
+          </p>
+          <p className="text-xs text-neutral-400">
+            En esta demo las imágenes se suben desde{' '}
+            <code className="rounded bg-neutral-800 px-1 py-[1px] text-[11px]">
+              /demo/live
+            </code>{' '}
+            y se guardan como publicaciones reales en Supabase en la tabla{' '}
+            <code className="rounded bg-neutral-800 px-1 py-[1px] text-[11px]">
+              posts
+            </code>
+            .
+          </p>
+        </section>
+
+        {/* TUS PUBLICACIONES */}
+        <section className="grid gap-4 md:grid-cols-[minmax(0,_2fr)_minmax(0,_1.2fr)] items-start">
+          <div className="rounded-2xl border border-neutral-800 bg-neutral-900/60 p-4">
+            <div className="flex items-center justify-between gap-2 mb-3">
               <h2 className="text-sm font-semibold text-neutral-100">
-                Tu bio
+                Tus publicaciones
               </h2>
-              <p className="text-sm text-neutral-300">
-                Este es tu espacio personal en Ethiqia. Aquí verás tu bio, tus
-                fotos publicadas y la reputación asociada a tu actividad.
+              <a
+                href="/demo/live"
+                className="text-[11px] text-emerald-400 hover:text-emerald-300"
+              >
+                + Subir foto en demo live
+              </a>
+            </div>
+
+            {isLoadingPosts ? (
+              <p className="text-xs text-neutral-400">
+                Cargando tus publicaciones reales…
               </p>
-              <p className="text-xs text-neutral-500">
-                En esta demo las imágenes se suben desde{' '}
-                <code>/demo/live</code> y se guardan como publicaciones reales
-                en Supabase en la tabla <code>posts</code>. En la versión
-                completa podrás personalizar tu biografía, enlaces y más datos
-                de perfil.
+            ) : posts.length === 0 ? (
+              <p className="text-xs text-neutral-400">
+                Todavía no has subido ninguna foto desde la demo en vivo. Ve a{' '}
+                <a href="/demo/live" className="text-emerald-400">
+                  Demo &gt; Live
+                </a>{' '}
+                y sube tu primera imagen.
               </p>
-
-              {/* Sobre mí (demo, editable localmente en el futuro) */}
-              <div className="mt-3 rounded-xl border border-neutral-800 bg-neutral-950/60 p-3 space-y-1">
-                <p className="text-xs font-medium text-neutral-300">
-                  Sobre mí (demo)
-                </p>
-                <p className="text-xs text-neutral-400">
-                  Aquí podrías contar a inversores o amigos quién eres, a qué se
-                  dedica tu proyecto y por qué tu reputación en Ethiqia importa.
-                  En la versión real este texto sería editable desde tu perfil.
-                </p>
-              </div>
-            </section>
-
-            {/* Tus publicaciones */}
-            <section className="rounded-2xl border border-neutral-800 bg-neutral-900/60 p-4 space-y-3">
-              <div className="flex items-center justify-between gap-2">
-                <h2 className="text-sm font-semibold text-neutral-100">
-                  Tus publicaciones
-                </h2>
-                <a
-                  href="/demo/live"
-                  className="text-[11px] font-medium text-emerald-400 hover:text-emerald-300 underline-offset-2 hover:underline"
-                >
-                  + Subir foto en demo live
-                </a>
-              </div>
-
-              {loading && (
-                <p className="text-xs text-neutral-400">
-                  Cargando publicaciones reales…
-                </p>
-              )}
-
-              {!loading && !latestPost && (
-                <p className="text-xs text-neutral-400">
-                  Todavía no has subido ninguna foto desde la demo en vivo.
-                  Ve a <span className="font-medium">Demo &gt; Live</span> y
-                  sube tu primera imagen.
-                </p>
-              )}
-
-              {latestPost && (
-                <>
-                  {/* Publicación principal */}
-                  <div className="overflow-hidden rounded-2xl border border-neutral-800 bg-neutral-950">
-                    {latestPost.image_url ? (
+            ) : (
+              <div className="space-y-4">
+                {posts.map((post) => (
+                  <article
+                    key={post.id}
+                    className="overflow-hidden rounded-2xl border border-neutral-800 bg-neutral-950"
+                  >
+                    {post.image_url ? (
                       <img
-                        src={latestPost.image_url}
-                        alt={latestPost.caption || 'Tu publicación'}
+                        src={post.image_url}
+                        alt={post.caption ?? 'Tu publicación'}
                         className="w-full max-h-[420px] object-cover"
                       />
                     ) : (
                       <div className="flex h-64 items-center justify-center text-sm text-neutral-500">
-                        Publicación sin imagen.
+                        Imagen sin vista previa
                       </div>
                     )}
-                    <div className="border-t border-neutral-900 px-4 py-3 text-xs space-y-1">
-                      <p className="font-medium text-neutral-100">
-                        Tu última publicación analizada por Ethiqia
+                    <div className="border-t border-neutral-900 px-4 py-3 text-xs">
+                      <p className="text-neutral-200">
+                        {post.caption || 'Publicación analizada por Ethiqia.'}
                       </p>
-                      <p className="text-neutral-400">
-                        {latestPost.caption ||
-                          'Imagen subida desde la demo en vivo.'}
-                      </p>
-                      {latestPost.created_at && (
-                        <p className="text-[11px] text-neutral-500">
-                          Publicada el{' '}
-                          {new Date(
-                            latestPost.created_at
-                          ).toLocaleString()}
+                      {post.created_at && (
+                        <p className="mt-1 text-[11px] text-neutral-500">
+                          Subida el{' '}
+                          {new Date(post.created_at).toLocaleString('es-ES')}
                         </p>
                       )}
                     </div>
-                  </div>
-
-                  {/* Mosaicito pequeño si hubiera más posts */}
-                  {posts.length > 1 && (
-                    <div className="mt-3 space-y-1">
-                      <p className="text-[11px] text-neutral-400">
-                        Otras fotos reales subidas a la demo:
-                      </p>
-                      <div className="grid grid-cols-3 gap-2">
-                        {posts.slice(1, 7).map((p) => (
-                          <div
-                            key={p.id}
-                            className="overflow-hidden rounded-xl border border-neutral-800 bg-neutral-950"
-                          >
-                            {p.image_url ? (
-                              <img
-                                src={p.image_url}
-                                alt={p.caption || 'Publicación'}
-                                className="h-24 w-full object-cover"
-                              />
-                            ) : (
-                              <div className="flex h-24 items-center justify-center text-[11px] text-neutral-500">
-                                Sin imagen
-                              </div>
-                            )}
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </>
-              )}
-            </section>
+                  </article>
+                ))}
+              </div>
+            )}
           </div>
 
-          {/* Columna derecha: actividad y redes */}
-          <div className="space-y-4">
-            {/* Resumen de actividad */}
-            <section className="rounded-2xl border border-neutral-800 bg-neutral-900/60 p-4 space-y-3">
-              <h2 className="text-sm font-semibold text-neutral-100">
-                Resumen de actividad
-              </h2>
-              {latestPost ? (
-                <>
-                  <p className="text-xs text-neutral-400">
-                    Última publicación guardada en Supabase:
-                  </p>
-                  <p className="text-xs text-neutral-300">
-                    {latestPost.created_at
-                      ? new Date(
-                          latestPost.created_at
-                        ).toLocaleString()
-                      : 'Fecha no disponible'}
-                  </p>
-                  <p className="mt-2 text-[11px] text-neutral-500">
-                    Esta imagen se ha subido desde la demo en vivo y se muestra
-                    tanto aquí como en el feed general de la demo. En la versión
-                    de producción el Ethiqia Score real se calcularía en el
-                    backend.
-                  </p>
-                </>
-              ) : (
-                <p className="text-xs text-neutral-400">
-                  Aún no hay actividad real. Sube una foto desde la demo en vivo
-                  para ver aquí tu historial.
-                </p>
-              )}
+          {/* RESUMEN DE ACTIVIDAD */}
+          <aside className="rounded-2xl border border-neutral-800 bg-neutral-900/60 p-4 text-xs space-y-2">
+            <h2 className="text-sm font-semibold text-neutral-100">
+              Resumen de actividad
+            </h2>
 
-              {/* Bloque Ethiqia Score con barra */}
-              <div className="mt-3 rounded-xl border border-neutral-800 bg-neutral-950/70 p-3 space-y-2">
-                <div className="flex items-center justify-between text-xs">
-                  <span className="text-neutral-300">
-                    Último Ethiqia Score (demo)
-                  </span>
-                  <span className="font-semibold text-emerald-400">
-                    {lastDemoScore != null ? `${lastDemoScore}/100` : '—'}
-                  </span>
-                </div>
-                <div className="h-1.5 w-full rounded-full bg-neutral-800 overflow-hidden">
-                  <div
-                    className="h-full rounded-full bg-emerald-500 transition-all"
-                    style={{
-                      width: `${
-                        lastDemoScore != null ? lastDemoScore : 0
-                      }%`,
-                    }}
-                  />
-                </div>
-                {lastDemoDate && (
-                  <p className="text-[11px] text-neutral-500 mt-1">
-                    Último análisis registrado el {lastDemoDate}.
-                  </p>
-                )}
-              </div>
-            </section>
-
-            {/* Redes sociales / enlaces (demo) */}
-            <section className="rounded-2xl border border-neutral-800 bg-neutral-900/60 p-4 space-y-2">
-              <h2 className="text-sm font-semibold text-neutral-100">
-                Presencia pública (demo)
-              </h2>
+            {posts.length === 0 ? (
               <p className="text-xs text-neutral-400">
-                Aquí podrías enlazar otras redes (LinkedIn, Instagram, web,
-                etc.) para enseñar cómo Ethiqia podría cruzar tu actividad
-                pública con tu reputación verificada.
+                Aún no hay actividad real. Sube una foto desde la demo en vivo
+                para ver aquí tu historial.
               </p>
-              <div className="mt-2 flex flex-wrap gap-2">
-                <button className="rounded-full border border-neutral-700 bg-neutral-950/60 px-3 py-1 text-[11px] text-neutral-300 hover:border-emerald-400 hover:text-emerald-300">
-                  LinkedIn (demo)
-                </button>
-                <button className="rounded-full border border-neutral-700 bg-neutral-950/60 px-3 py-1 text-[11px] text-neutral-300 hover:border-emerald-400 hover:text-emerald-300">
-                  Instagram (demo)
-                </button>
-                <button className="rounded-full border border-neutral-700 bg-neutral-950/60 px-3 py-1 text-[11px] text-neutral-300 hover:border-emerald-400 hover:text-emerald-300">
-                  Web / portfolio (demo)
-                </button>
-              </div>
-            </section>
-          </div>
-        </div>
+            ) : (
+              <>
+                <p className="text-xs text-neutral-300">
+                  Última publicación guardada en Supabase:
+                </p>
+                <p className="text-[11px] text-neutral-400">
+                  {posts[0].created_at
+                    ? new Date(posts[0].created_at).toLocaleString('es-ES')
+                    : 'Fecha desconocida'}
+                </p>
+              </>
+            )}
+
+            <div className="mt-2 rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2">
+              <p className="text-[11px] text-neutral-400">
+                Último análisis de la demo:
+              </p>
+              <p className="mt-1 text-sm text-emerald-300">
+                Ethiqia Score: {ultimoScoreDemo}/100
+              </p>
+              <p className="mt-1 text-[11px] text-neutral-500">
+                Guardado localmente en este navegador para la demo.
+              </p>
+            </div>
+
+            <a
+              href="/feed"
+              className="inline-flex items-center text-[11px] text-emerald-400 hover:text-emerald-300 mt-2"
+            >
+              Ver publicaciones reales en el feed →
+            </a>
+          </aside>
+        </section>
       </section>
     </main>
   );
