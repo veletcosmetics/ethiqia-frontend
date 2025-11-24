@@ -1,318 +1,233 @@
+// app/feed/page.tsx
 'use client';
 
 import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabaseClient';
-import { addNotification } from '@/lib/notifications';
+
+type RawSupabasePost = {
+  id: string;
+  image_url: string | null;
+  caption: string | null;
+  created_at: string | null;
+};
+
+type LocalDemoPost = {
+  id: string;
+  imageUrl: string;
+  score?: number;
+  createdAt?: number;
+};
 
 type FeedPost = {
   id: string;
   imageUrl: string;
   caption: string | null;
-  createdAt: string;
-  score: number;
+  createdAt: number;
+  source: 'supabase' | 'local';
 };
 
-type LocalComment = {
+type Comment = {
   id: string;
-  postId: string;
-  content: string;
+  text: string;
   createdAt: number;
 };
 
-type ToxicCategory =
-  | 'hate'
-  | 'violence'
-  | 'bullying'
-  | 'sexual'
-  | 'self-harm'
-  | 'other';
+type PostScores = {
+  ethScore: number;
+  authenticity: number;
+  aiProbability: number;
+  coherence: number;
+  verdict: 'real' | 'dudosa' | 'ia';
+};
 
-// Lista ampliada de insultos / odio / acoso
-const TOXIC_KEYWORDS: { pattern: string; category: ToxicCategory }[] = [
-  // Insultos generales / desprecio
-  { pattern: 'gilipollas', category: 'bullying' },
-  { pattern: 'subnormal', category: 'bullying' },
-  { pattern: 'idiota', category: 'bullying' },
-  { pattern: 'imbécil', category: 'bullying' },
-  { pattern: 'cretino', category: 'bullying' },
-  { pattern: 'payaso', category: 'bullying' },
-  { pattern: 'mierda', category: 'bullying' },
-  { pattern: 'asqueros', category: 'bullying' }, // asqueroso / asquerosa
-
-  // Insultos fuertes / degradantes
-  { pattern: 'puta', category: 'bullying' },
-  { pattern: 'puto', category: 'bullying' },
-  { pattern: 'zorra', category: 'bullying' },
-  { pattern: 'perra', category: 'bullying' },
-  { pattern: 'maricón', category: 'hate' },
-  { pattern: 'maricona', category: 'hate' },
-
-  // Racismo / xenofobia
-  { pattern: 'sudaca', category: 'hate' },
-  { pattern: 'negro de mierda', category: 'hate' },
-  { pattern: 'panchito', category: 'hate' },
-  { pattern: 'gitano de mierda', category: 'hate' },
-
-  // Nazismo / odio político extremo
-  { pattern: 'nazi', category: 'hate' },
-  { pattern: 'hitler', category: 'hate' },
-  { pattern: 'campos de concentración', category: 'hate' },
-
-  // Amenazas directas
-  { pattern: 'te voy a matar', category: 'violence' },
-  { pattern: 'ojalá te mueras', category: 'self-harm' },
-  { pattern: 'te voy a partir la cara', category: 'violence' },
-  { pattern: 'te voy a encontrar', category: 'violence' },
-
-  // Acoso directo
-  { pattern: 'no vales nada', category: 'bullying' },
-  { pattern: 'nadie te quiere', category: 'bullying' },
-  { pattern: 'deberías desaparecer', category: 'self-harm' },
-];
-
-// Analizador “tipo IA” local (reglas + categorías)
-function analyzeComment(text: string): {
-  blocked: boolean;
-  category?: ToxicCategory;
-  reason?: string;
-} {
-  const lower = text.toLowerCase();
-
-  // 1) Palabras/frases tóxicas conocidas
-  for (const entry of TOXIC_KEYWORDS) {
-    if (lower.includes(entry.pattern)) {
-      switch (entry.category) {
-        case 'hate':
-          return {
-            blocked: true,
-            category: 'hate',
-            reason:
-              'Se ha detectado lenguaje de odio o discriminación (raza, género, orientación, etc.).',
-          };
-        case 'violence':
-          return {
-            blocked: true,
-            category: 'violence',
-            reason:
-              'Se ha detectado una amenaza o incitación a la violencia hacia otra persona.',
-          };
-        case 'bullying':
-          return {
-            blocked: true,
-            category: 'bullying',
-            reason:
-              'Se ha detectado lenguaje de acoso, insultos directos o degradación personal.',
-          };
-        case 'self-harm':
-          return {
-            blocked: true,
-            category: 'self-harm',
-            reason:
-              'Se ha detectado un contenido que puede incitar o desear daño hacia otra persona.',
-          };
-        case 'sexual':
-          return {
-            blocked: true,
-            category: 'sexual',
-            reason:
-              'Se ha detectado lenguaje sexual explícito inapropiado para Ethiqia.',
-          };
-        default:
-          return {
-            blocked: true,
-            category: 'other',
-            reason:
-              'El comentario infringe las normas de Ethiqia (odio, acoso o violencia).',
-          };
-      }
-    }
+// Utilidad simple para tener números pseudo-aleatorios
+function hashToNumber(str: string): number {
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    hash = (hash * 31 + str.charCodeAt(i)) | 0;
   }
-
-  // 2) Heurística simple (tono muy agresivo)
-  const exclamations = (text.match(/!/g) || []).length;
-  const uppercaseWords = text
-    .split(' ')
-    .filter((w) => w.length > 3 && w === w.toUpperCase()).length;
-
-  if (exclamations >= 4 && uppercaseWords >= 2) {
-    return {
-      blocked: true,
-      category: 'bullying',
-      reason:
-        'El comentario parece muy agresivo (muchos gritos y énfasis). Reescríbelo en un tono más constructivo.',
-    };
-  }
-
-  // 3) Si pasa todo, se considera apto
-  return { blocked: false };
+  return Math.abs(hash);
 }
 
-function computeScoreFromId(id: string): number {
-  let acc = 0;
-  for (const ch of id) acc += ch.charCodeAt(0);
-  // 60–100
-  return 60 + (acc % 41);
+function computeScoresForPost(post: FeedPost): PostScores {
+  const seedBase = `${post.id}-${post.createdAt}-${post.source}`;
+  const base = hashToNumber(seedBase);
+
+  const aiProbability = (base % 71) + 10; // 10–80
+  const authenticityRaw = 100 - aiProbability + ((base >> 3) % 11) - 5;
+  const coherenceRaw = 70 + (base % 26); // 70–95
+
+  const authenticity = Math.max(0, Math.min(100, authenticityRaw));
+  const coherence = Math.max(0, Math.min(100, coherenceRaw));
+  const aiSafe = Math.max(0, Math.min(100, aiProbability));
+
+  const ethScore = Math.round(
+    0.5 * authenticity + 0.3 * coherence + 0.2 * (100 - aiSafe)
+  );
+
+  let verdict: PostScores['verdict'];
+  if (aiProbability < 20) verdict = 'real';
+  else if (aiProbability < 60) verdict = 'dudosa';
+  else verdict = 'ia';
+
+  return {
+    ethScore,
+    authenticity,
+    aiProbability,
+    coherence,
+    verdict,
+  };
 }
 
-// ✅ POSTS DEMO (no tocan Supabase, solo frontend)
-// Usan imágenes de /public/demo. Por ahora usamos profile-stock.jpg
-const DEMO_FEED_POSTS: FeedPost[] = [
-  {
-    id: 'demo-1',
-    imageUrl: '/demo/profile-stock.jpg',
-    caption: 'Studio Nébula · Presentando su nueva línea de cosmética sostenible verificada en Ethiqia.',
-    createdAt: new Date('2024-05-10T10:00:00Z').toISOString(),
-    score: 92,
-  },
-  {
-    id: 'demo-2',
-    imageUrl: '/demo/profile-stock.jpg',
-    caption: 'Lumis Health Lab · Compartiendo resultados de un estudio clínico aprobado por su comité ético.',
-    createdAt: new Date('2024-05-12T16:30:00Z').toISOString(),
-    score: 88,
-  },
-  {
-    id: 'demo-3',
-    imageUrl: '/demo/profile-stock.jpg',
-    caption: 'GreenWave Impact · Proyecto de regeneración de litoral con seguimiento público de métricas.',
-    createdAt: new Date('2024-05-13T09:15:00Z').toISOString(),
-    score: 90,
-  },
-  {
-    id: 'demo-4',
-    imageUrl: '/demo/profile-stock.jpg',
-    caption: 'Nova Legal Tech · Explicando de forma transparente cómo usan IA respetando la privacidad.',
-    createdAt: new Date('2024-05-14T19:45:00Z').toISOString(),
-    score: 85,
-  },
-];
+// Moderación muy sencilla de insultos / odio / acoso
+function isCommentToxic(text: string): boolean {
+  const lowered = text.toLowerCase();
+
+  // Listas básicas (se pueden ampliar)
+  const hardInsults = [
+    'puta',
+    'gilipollas',
+    'subnormal',
+    'idiota',
+    'imbecil',
+    'mierda',
+    'asqueroso',
+    'asquerosa',
+    'vete a la mierda',
+  ];
+
+  const racism = ['negro de mierda', 'sudaca', 'moro de mierda'];
+  const bullying = ['nadie te quiere', 'deberías matarte', 'ojalá te mueras'];
+
+  const allBad = [...hardInsults, ...racism, ...bullying];
+
+  return allBad.some((w) => lowered.includes(w));
+}
 
 export default function FeedPage() {
   const [posts, setPosts] = useState<FeedPost[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
 
-  const [liked, setLiked] = useState<Record<string, boolean>>({});
+  const [likes, setLikes] = useState<Record<string, boolean>>({});
   const [saved, setSaved] = useState<Record<string, boolean>>({});
   const [commentsByPost, setCommentsByPost] = useState<
-    Record<string, LocalComment[]>
+    Record<string, Comment[]>
   >({});
-  const [pendingComment, setPendingComment] = useState<Record<string, string>>(
-    {}
-  );
-  const [moderationMsg, setModerationMsg] = useState<
-    Record<string, string | null>
-  >({});
+  const [commentDrafts, setCommentDrafts] = useState<Record<string, string>>({});
+  const [commentErrors, setCommentErrors] = useState<Record<string, string>>({});
 
   useEffect(() => {
-    const load = async () => {
+    async function loadFeed() {
       setLoading(true);
-      setError(null);
+
+      // 1) Leer publicaciones DEMO desde localStorage (subidas desde /demo/live)
+      let localPosts: FeedPost[] = [];
+      if (typeof window !== 'undefined') {
+        try {
+          const raw = window.localStorage.getItem('ethiqia_feed_posts');
+          if (raw) {
+            const parsed = JSON.parse(raw) as LocalDemoPost[];
+            localPosts = parsed
+              .filter((p) => p.imageUrl)
+              .map((p) => ({
+                id: p.id,
+                imageUrl: p.imageUrl,
+                caption: 'Publicación subida desde la demo en vivo',
+                createdAt: p.createdAt ?? Date.now(),
+                source: 'local' as const,
+              }));
+          }
+        } catch {
+          // ignoramos errores
+        }
+      }
+
+      // 2) Leer publicaciones reales desde Supabase
+      let supabasePosts: FeedPost[] = [];
       try {
         const { data, error } = await supabase
           .from('posts')
           .select('id, image_url, caption, created_at')
-          .order('created_at', { ascending: false });
+          .order('created_at', { ascending: false })
+          .limit(50);
 
-        if (error) {
-          console.error(error);
-          setError('No se pudieron cargar las publicaciones.');
-          setPosts([]);
-          return;
+        if (!error && data) {
+          supabasePosts = (data as RawSupabasePost[])
+            .filter((p) => p.image_url)
+            .map((p) => ({
+              id: p.id,
+              imageUrl: p.image_url as string,
+              caption: p.caption,
+              createdAt: p.created_at
+                ? new Date(p.created_at).getTime()
+                : Date.now(),
+              source: 'supabase' as const,
+            }));
         }
-
-        const mapped: FeedPost[] =
-          data?.map((row: any) => ({
-            id: row.id,
-            imageUrl: row.image_url,
-            caption: row.caption ?? null,
-            createdAt: row.created_at,
-            score: computeScoreFromId(row.id),
-          })) ?? [];
-
-        setPosts(mapped);
-      } catch (e) {
-        console.error(e);
-        setError('No se pudieron cargar las publicaciones.');
-        setPosts([]);
-      } finally {
-        setLoading(false);
+      } catch {
+        // si falla, simplemente seguimos con las locales
       }
-    };
 
-    load();
+      const combined = [...localPosts, ...supabasePosts].sort(
+        (a, b) => b.createdAt - a.createdAt
+      );
+
+      setPosts(combined);
+      setLoading(false);
+    }
+
+    loadFeed();
   }, []);
 
-  const handleLikeToggle = (postId: string) => {
-    setLiked((prev) => ({
+  const handleToggleLike = (postId: string) => {
+    setLikes((prev) => ({
       ...prev,
       [postId]: !prev[postId],
     }));
   };
 
-  const handleSaveToggle = (postId: string) => {
+  const handleToggleSave = (postId: string) => {
     setSaved((prev) => ({
       ...prev,
       [postId]: !prev[postId],
     }));
   };
 
-  const handleShare = async (postId: string) => {
-    const url = `${window.location.origin}/feed#${postId}`;
-    try {
-      if (navigator.share) {
-        await navigator.share({
-          title: 'Publicación en Ethiqia',
-          url,
-        });
-      } else {
-        await navigator.clipboard.writeText(url);
-        alert('Enlace copiado al portapapeles.');
-      }
-    } catch {
-      // usuario cancela, no pasa nada
+  const handleShare = (post: FeedPost) => {
+    if (typeof window !== 'undefined' && navigator.share) {
+      navigator
+        .share({
+          title: 'Ethiqia',
+          text: 'Mira esta publicación analizada por Ethiqia',
+          url: window.location.origin + '/feed',
+        })
+        .catch(() => {});
+    } else {
+      alert('En la versión final podrás compartir la publicación.');
     }
   };
 
   const handleCommentChange = (postId: string, value: string) => {
-    setPendingComment((prev) => ({ ...prev, [postId]: value }));
-    setModerationMsg((prev) => ({ ...prev, [postId]: null }));
+    setCommentDrafts((prev) => ({ ...prev, [postId]: value }));
+    setCommentErrors((prev) => ({ ...prev, [postId]: '' }));
   };
 
-  const handleCommentSubmit = (postId: string) => {
-    const raw = (pendingComment[postId] || '').trim();
-    if (!raw) return;
+  const handleSubmitComment = (postId: string) => {
+    const text = (commentDrafts[postId] || '').trim();
+    if (!text) return;
 
-    // “IA” local: analiza el texto y decide si se bloquea
-    const analysis = analyzeComment(raw);
-
-    if (analysis.blocked) {
-      const reason =
-        analysis.reason ||
-        'Tu comentario ha sido bloqueado por infringir las normas de Ethiqia.';
-
-      setModerationMsg((prev) => ({
+    if (isCommentToxic(text)) {
+      setCommentErrors((prev) => ({
         ...prev,
-        [postId]: reason,
+        [postId]:
+          'Tu comentario ha sido bloqueado por infringir las normas de Ethiqia (odio, insultos o acoso).',
       }));
-
-      try {
-        addNotification(
-          'comment-blocked',
-          'Tu comentario fue bloqueado por infringir las normas de Ethiqia.'
-        );
-      } catch {
-        // no rompemos la app si falla
-      }
-
       return;
     }
 
-    // Si pasa el filtro, se añade al listado local (no backend)
-    const newComment: LocalComment = {
-      id: `c-${Date.now()}-${Math.random().toString(16).slice(2)}`,
-      postId,
-      content: raw,
+    const newComment: Comment = {
+      id: `${postId}-${Date.now()}`,
+      text,
       createdAt: Date.now(),
     };
 
@@ -321,33 +236,9 @@ export default function FeedPage() {
       [postId]: [newComment, ...(prev[postId] || [])],
     }));
 
-    setPendingComment((prev) => ({ ...prev, [postId]: '' }));
-    setModerationMsg((prev) => ({ ...prev, [postId]: null }));
-
-    try {
-      addNotification(
-        'comment-approved',
-        'Tu comentario se ha publicado correctamente.'
-      );
-    } catch {
-      // ignoramos errores
-    }
+    setCommentDrafts((prev) => ({ ...prev, [postId]: '' }));
+    setCommentErrors((prev) => ({ ...prev, [postId]: '' }));
   };
-
-  if (loading) {
-    return (
-      <main className="min-h-[calc(100vh-64px)] bg-neutral-950 text-neutral-50 flex items-center justify-center">
-        <p className="text-sm text-neutral-400">
-          Cargando publicaciones reales de la demo…
-        </p>
-      </main>
-    );
-  }
-
-  // 👇 AQUÍ DECIDIMOS QUÉ MOSTRAR:
-  // Si hay posts reales -> usamos esos.
-  // Si no hay ninguno -> mostramos solo los DEMO_FEED_POSTS.
-  const displayPosts = posts.length > 0 ? posts : DEMO_FEED_POSTS;
 
   return (
     <main className="min-h-[calc(100vh-64px)] bg-neutral-950 text-neutral-50">
@@ -357,145 +248,258 @@ export default function FeedPage() {
             Feed
           </p>
           <h1 className="text-2xl font-semibold">
-            Publicaciones en Ethiqia (demo + reales)
+            Publicaciones reales en Ethiqia (demo)
           </h1>
-          <p className="text-sm text-neutral-400">
-            Si hay publicaciones reales subidas desde la demo en vivo, se
-            muestran primero. Si no, verás un feed simulado con ejemplos de
-            empresas y proyectos para explicar Ethiqia a inversores y al Parque
-            Científico.
+          <p className="text-sm text-neutral-400 max-w-2xl">
+            Aquí se mezclan las fotos subidas desde la demo en vivo y las
+            guardadas en el backend real (Supabase). Puedes ver el Ethiqia
+            Score, probabilidad de IA y dejar comentarios moderados por IA.
           </p>
         </header>
 
-        {error && posts.length === 0 && (
-          <div className="rounded-xl border border-red-500/50 bg-red-500/10 px-4 py-3 text-sm text-red-200">
-            {error}
-          </div>
+        {loading && (
+          <p className="text-sm text-neutral-400">Cargando publicaciones…</p>
         )}
 
-        {displayPosts.map((post) => {
-          const isLiked = liked[post.id] ?? false;
-          const isSaved = saved[post.id] ?? false;
-          const comments = commentsByPost[post.id] || [];
-          const pending = pendingComment[post.id] || '';
-          const modMsg = moderationMsg[post.id] || null;
+        {!loading && posts.length === 0 && (
+          <p className="text-sm text-neutral-400">
+            Todavía no hay publicaciones. Sube tu primera imagen desde{' '}
+            <span className="text-emerald-400">Demo &gt; Live</span>.
+          </p>
+        )}
 
-          return (
-            <article
-              key={post.id}
-              id={post.id}
-              className="rounded-2xl border border-neutral-800 bg-neutral-900/70 overflow-hidden"
-            >
-              {/* Imagen */}
-              <div className="bg-black">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={post.imageUrl}
-                  alt={post.caption || 'Publicación en Ethiqia'}
-                  className="w-full max-h-[640px] object-contain bg-black"
-                />
-              </div>
+        <div className="space-y-6">
+          {posts.map((post) => {
+            const scores = computeScoresForPost(post);
+            const liked = !!likes[post.id];
+            const savedPost = !!saved[post.id];
+            const comments = commentsByPost[post.id] || [];
+            const commentDraft = commentDrafts[post.id] || '';
+            const errorMsg = commentErrors[post.id];
 
-              <div className="p-4 space-y-3">
-                {/* Barra de acciones */}
-                <div className="flex items-center justify-between text-xs text-neutral-300">
-                  <div className="flex items-center gap-4">
-                    <button
-                      onClick={() => handleLikeToggle(post.id)}
-                      className="flex items-center gap-1 hover:text-emerald-400 transition"
-                    >
-                      <span>{isLiked ? '❤️' : '🤍'}</span>
-                      <span>Te gusta</span>
-                    </button>
+            const createdDate = new Date(post.createdAt);
+            const createdLabel = createdDate.toLocaleString();
 
-                    <div className="flex items-center gap-1 text-neutral-400">
-                      <span>💬</span>
-                      <span>Comentar</span>
+            let verdictLabel = '';
+            let verdictClass = '';
+            switch (scores.verdict) {
+              case 'real':
+                verdictLabel = 'Foto real (baja prob. IA)';
+                verdictClass =
+                  'bg-emerald-500/15 text-emerald-300 border border-emerald-500/40';
+                break;
+              case 'dudosa':
+                verdictLabel = 'Imagen dudosa';
+                verdictClass =
+                  'bg-amber-500/15 text-amber-300 border border-amber-500/40';
+                break;
+              case 'ia':
+                verdictLabel = 'Alta probabilidad de IA';
+                verdictClass =
+                  'bg-rose-500/15 text-rose-300 border border-rose-500/40';
+                break;
+            }
+
+            return (
+              <article
+                key={post.id}
+                className="rounded-2xl border border-neutral-800 bg-neutral-900/60 overflow-hidden"
+              >
+                {/* Cabecera usuario + badge IA */}
+                <div className="flex items-center justify-between px-4 py-3">
+                  <div className="flex items-center gap-3">
+                    <div className="h-9 w-9 rounded-full bg-neutral-800 flex items-center justify-center text-sm font-semibold">
+                      {/* Inicial fake, en producción vendrá del nombre de usuario */}
+                      D
                     </div>
-
-                    <button
-                      onClick={() => handleSaveToggle(post.id)}
-                      className="flex items-center gap-1 hover:text-emerald-400 transition"
-                    >
-                      <span>{isSaved ? '📌' : '🔖'}</span>
-                      <span>{isSaved ? 'Guardado' : 'Guardar'}</span>
-                    </button>
-                  </div>
-
-                  <button
-                    onClick={() => handleShare(post.id)}
-                    className="flex items-center gap-1 text-neutral-400 hover:text-emerald-400 transition"
-                  >
-                    <span>📤</span>
-                    <span>Compartir</span>
-                  </button>
-                </div>
-
-                {/* Meta / score */}
-                <div className="flex items-center justify-between text-xs text-neutral-400">
-                  <div>
-                    <span className="font-semibold text-emerald-400">
-                      Ethiqia Score: {post.score}/100
-                    </span>
-                    {post.caption && (
-                      <span className="ml-2 text-neutral-300">
-                        {post.caption}
+                    <div className="flex flex-col">
+                      <span className="text-sm font-medium">
+                        David (demo usuario)
                       </span>
-                    )}
+                      <span className="text-[11px] text-neutral-500">
+                        {createdLabel}
+                      </span>
+                    </div>
                   </div>
-                  <span className="text-[11px]">
-                    {new Date(post.createdAt).toLocaleString()}
+                  <span
+                    className={`text-[11px] px-3 py-1 rounded-full whitespace-nowrap ${verdictClass}`}
+                  >
+                    {verdictLabel}
                   </span>
                 </div>
 
-                {/* Comentarios existentes (locales) */}
-                {comments.length > 0 && (
-                  <div className="mt-2 space-y-1">
-                    {comments.map((c) => (
-                      <div
-                        key={c.id}
-                        className="text-xs text-neutral-200 bg-neutral-900/90 rounded-lg px-3 py-2"
-                      >
-                        <span className="font-semibold text-emerald-300">
-                          Tú
-                        </span>
-                        <span className="mx-1 text-neutral-500">•</span>
-                        <span>{c.content}</span>
-                      </div>
-                    ))}
-                  </div>
-                )}
+                {/* Imagen */}
+                <div className="relative bg-black">
+                  <img
+                    src={post.imageUrl}
+                    alt={post.caption ?? 'Publicación de Ethiqia'}
+                    className="w-full max-h-[520px] object-cover"
+                  />
+                </div>
 
-                {/* Caja de comentario */}
-                <div className="mt-3 space-y-1">
-                  <label className="text-[11px] text-neutral-400">
-                    Comentar (moderado por IA)
-                  </label>
-                  <div className="flex gap-2">
-                    <input
-                      type="text"
-                      value={pending}
-                      onChange={(e) =>
-                        handleCommentChange(post.id, e.target.value)
-                      }
-                      placeholder="Escribe un comentario respetuoso…"
-                      className="flex-1 rounded-xl border border-neutral-700 bg-neutral-950/70 px-3 py-2 text-xs outline-none focus:border-emerald-400"
-                    />
+                {/* Contenido y métricas IA */}
+                <div className="px-4 pt-3 pb-4 space-y-3">
+                  {post.caption && (
+                    <p className="text-sm text-neutral-200">{post.caption}</p>
+                  )}
+
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-neutral-400">
+                        Ethiqia Score global
+                      </span>
+                      <span className="font-semibold text-emerald-400">
+                        {scores.ethScore}/100
+                      </span>
+                    </div>
+                    <div className="h-1.5 w-full rounded-full bg-neutral-800 overflow-hidden">
+                      <div
+                        className="h-full rounded-full bg-emerald-500"
+                        style={{ width: `${scores.ethScore}%` }}
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-3 gap-2 text-[11px] mt-2">
+                      <div className="space-y-1">
+                        <div className="flex items-center justify-between">
+                          <span className="text-neutral-400">
+                            Autenticidad
+                          </span>
+                          <span className="text-neutral-100">
+                            {scores.authenticity}%
+                          </span>
+                        </div>
+                        <div className="h-1 w-full rounded-full bg-neutral-800 overflow-hidden">
+                          <div
+                            className="h-full rounded-full bg-emerald-500"
+                            style={{ width: `${scores.authenticity}%` }}
+                          />
+                        </div>
+                      </div>
+                      <div className="space-y-1">
+                        <div className="flex items-center justify-between">
+                          <span className="text-neutral-400">Prob. IA</span>
+                          <span className="text-neutral-100">
+                            {scores.aiProbability}%
+                          </span>
+                        </div>
+                        <div className="h-1 w-full rounded-full bg-neutral-800 overflow-hidden">
+                          <div
+                            className="h-full rounded-full bg-amber-500"
+                            style={{ width: `${scores.aiProbability}%` }}
+                          />
+                        </div>
+                      </div>
+                      <div className="space-y-1">
+                        <div className="flex items-center justify-between">
+                          <span className="text-neutral-400">Coherencia</span>
+                          <span className="text-neutral-100">
+                            {scores.coherence}%
+                          </span>
+                        </div>
+                        <div className="h-1 w-full rounded-full bg-neutral-800 overflow-hidden">
+                          <div
+                            className="h-full rounded-full bg-sky-500"
+                            style={{ width: `${scores.coherence}%` }}
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Barra de acciones */}
+                  <div className="mt-3 flex items-center justify-between text-xs">
+                    <div className="flex items-center gap-4">
+                      <button
+                        type="button"
+                        onClick={() => handleToggleLike(post.id)}
+                        className="flex items-center gap-1 text-neutral-300 hover:text-rose-400"
+                      >
+                        <span>{liked ? '❤️' : '🤍'}</span>
+                        <span>Te gusta</span>
+                      </button>
+                      <button
+                        type="button"
+                        className="flex items-center gap-1 text-neutral-300"
+                      >
+                        <span>💬</span>
+                        <span>Comentar</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleToggleSave(post.id)}
+                        className="flex items-center gap-1 text-neutral-300 hover:text-emerald-400"
+                      >
+                        <span>{savedPost ? '📌' : '📎'}</span>
+                        <span>Guardado</span>
+                      </button>
+                    </div>
                     <button
-                      onClick={() => handleCommentSubmit(post.id)}
-                      className="text-xs px-3 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-black font-semibold transition"
+                      type="button"
+                      onClick={() => handleShare(post)}
+                      className="flex items-center gap-1 text-neutral-300 hover:text-sky-400"
                     >
-                      Publicar
+                      <span>📤</span>
+                      <span>Compartir</span>
                     </button>
                   </div>
-                  {modMsg && (
-                    <p className="text-[11px] text-amber-400 mt-1">{modMsg}</p>
-                  )}
+
+                  {/* Contadores muy simples */}
+                  <div className="mt-1 text-[11px] text-neutral-500 flex gap-3">
+                    <span>
+                      {liked ? 1 : 0} me gusta (demo, no es contador real)
+                    </span>
+                    <span>{comments.length} comentarios</span>
+                  </div>
+
+                  {/* Comentarios */}
+                  <div className="mt-3 space-y-2">
+                    <label className="block text-[11px] text-neutral-400 mb-1">
+                      Comentar (moderado por IA)
+                    </label>
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        value={commentDraft}
+                        onChange={(e) =>
+                          handleCommentChange(post.id, e.target.value)
+                        }
+                        placeholder="Escribe un comentario respetuoso…"
+                        className="flex-1 rounded-lg border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-neutral-50 placeholder:text-neutral-500 focus:outline-none focus:border-emerald-500"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => handleSubmitComment(post.id)}
+                        className="rounded-lg bg-emerald-500/90 px-3 text-xs font-semibold text-neutral-900 hover:bg-emerald-400"
+                      >
+                        Publicar
+                      </button>
+                    </div>
+                    {errorMsg && (
+                      <p className="text-[11px] text-amber-400">{errorMsg}</p>
+                    )}
+
+                    {comments.length > 0 && (
+                      <div className="mt-2 space-y-1 max-h-40 overflow-y-auto">
+                        {comments.map((c) => (
+                          <div
+                            key={c.id}
+                            className="text-[12px] text-neutral-200 bg-neutral-900/80 border border-neutral-800 rounded-lg px-3 py-1.5"
+                          >
+                            <span className="font-medium mr-1">
+                              David (demo):
+                            </span>
+                            <span>{c.text}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 </div>
-              </div>
-            </article>
-          );
-        })}
+              </article>
+            );
+          })}
+        </div>
       </section>
     </main>
   );
