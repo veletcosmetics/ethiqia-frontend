@@ -2,11 +2,6 @@
 
 import { useEffect, useState } from 'react';
 import { getSession } from '@/lib/session';
-import {
-  getDemoFeedPosts,
-  deleteDemoFeedPost,
-  type DemoFeedPost,
-} from '@/lib/feed';
 
 type SessionData = {
   user?: {
@@ -16,19 +11,46 @@ type SessionData = {
   };
 };
 
-type LastDemoData = {
+type FeedPost = {
+  id: string;
+  imageUrl: string;
   score: number;
-  name?: string;
-  createdAt?: number;
-  imageUrl?: string;
+  aiProbability: number;
+  createdAt: number;
 };
 
-const LAST_DEMO_KEY = 'ethiqia_demo_last_post';
+const FEED_KEY = 'ethiqia_feed_posts_v3';
+
+const PLACEHOLDERS = [
+  '/demo/profile-stock.jpg',
+  '/demo/profile-stock.jpg',
+  '/demo/profile-stock.jpg',
+  '/demo/profile-stock.jpg',
+  '/demo/profile-stock.jpg',
+  '/demo/profile-stock.jpg',
+];
+
+function loadFeed(): FeedPost[] {
+  if (typeof window === 'undefined') return [];
+  try {
+    const raw = window.localStorage.getItem(FEED_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as FeedPost[];
+    if (!Array.isArray(parsed)) return [];
+    return parsed;
+  } catch {
+    return [];
+  }
+}
+
+function saveFeed(posts: FeedPost[]) {
+  if (typeof window === 'undefined') return;
+  window.localStorage.setItem(FEED_KEY, JSON.stringify(posts));
+}
 
 export default function ProfilePage() {
   const [session, setSessionState] = useState<SessionData | null>(null);
-  const [posts, setPosts] = useState<DemoFeedPost[]>([]);
-  const [lastDemo, setLastDemo] = useState<LastDemoData | null>(null);
+  const [posts, setPosts] = useState<FeedPost[]>([]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -40,22 +62,13 @@ export default function ProfilePage() {
       // ignore
     }
 
-    setPosts(getDemoFeedPosts());
-
-    try {
-      const raw = window.localStorage.getItem(LAST_DEMO_KEY);
-      if (raw) {
-        const parsed = JSON.parse(raw) as LastDemoData;
-        if (parsed.score !== undefined) setLastDemo(parsed);
-      }
-    } catch {
-      // ignore
-    }
+    setPosts(loadFeed());
   }, []);
 
   const handleDeletePost = (id: string) => {
-    deleteDemoFeedPost(id);
-    setPosts(getDemoFeedPosts());
+    const updated = posts.filter((p) => p.id !== id);
+    setPosts(updated);
+    saveFeed(updated);
   };
 
   const userEmail = session?.user?.email ?? 'usuario@demo';
@@ -64,10 +77,15 @@ export default function ProfilePage() {
     (userEmail ? userEmail.split('@')[0] : 'Usuario Ethiqia');
 
   const publicaciones = posts.length;
-  const ultimoScoreDemo = lastDemo?.score ?? null;
-
   const ultimaFoto = posts[0] ?? null;
   const otrasFotos = posts.slice(1, 7);
+  const ultimoScoreDemo = ultimaFoto?.score ?? null;
+
+  // Para la cuadrícula tipo Instagram:
+  const gridImages: string[] =
+    posts.length > 0
+      ? posts.map((p) => p.imageUrl).slice(0, 6)
+      : PLACEHOLDERS.slice(0, 6);
 
   return (
     <main className="min-h-[calc(100vh-64px)] bg-neutral-950 text-neutral-50">
@@ -75,8 +93,16 @@ export default function ProfilePage() {
         {/* CABECERA PERFIL */}
         <header className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
           <div className="flex items-center gap-4">
-            <div className="flex h-14 w-14 items-center justify-center rounded-full bg-neutral-800 text-lg font-semibold">
-              {userName.charAt(0).toUpperCase()}
+            <div className="flex h-16 w-16 items-center justify-center rounded-full bg-neutral-800 text-xl font-semibold overflow-hidden">
+              {ultimaFoto ? (
+                <img
+                  src={ultimaFoto.imageUrl}
+                  alt="Foto de perfil"
+                  className="h-full w-full object-cover"
+                />
+              ) : (
+                <span>{userName.charAt(0).toUpperCase()}</span>
+              )}
             </div>
             <div className="space-y-1">
               <h1 className="text-lg font-semibold">{userName}</h1>
@@ -97,7 +123,8 @@ export default function ProfilePage() {
               + Subir foto en demo live
             </button>
             <p className="text-[11px] text-neutral-500 max-w-[220px] text-right">
-              Las fotos que subas desde la demo aparecerán aquí y en el feed.
+              Las fotos que subas desde la demo aparecerán aquí y en el feed de
+              este navegador.
             </p>
           </div>
         </header>
@@ -137,8 +164,8 @@ export default function ProfilePage() {
               Estado de la demo
             </p>
             <p className="mt-2 text-sm text-neutral-200">
-              Lista para enseñar a inversores: login, bio, feed, explorar y
-              subida de imágenes simuladas.
+              Lista para enseñar a inversores: login, bio, feed y subida de
+              imágenes simuladas.
             </p>
           </div>
         </section>
@@ -156,9 +183,9 @@ export default function ProfilePage() {
           </p>
         </section>
 
-        {/* TUS FOTOS + CUBO DE BASURA */}
-        <section className="grid gap-4 md:grid-cols-[minmax(0,_2fr)_minmax(0,_1.2fr)] items-start">
-          <div className="rounded-2xl border border-neutral-800 bg-neutral-900/60 p-4 space-y-3">
+        {/* TUS FOTOS + CUBO DE BASURA + CUADRÍCULA */}
+        <section className="grid gap-4 md:grid-cols-[minmax(0,_2.1fr)_minmax(0,_1.2fr)] items-start">
+          <div className="rounded-2xl border border-neutral-800 bg-neutral-900/60 p-4 space-y-4">
             <div className="flex items-center justify-between gap-2">
               <h2 className="text-sm font-semibold text-neutral-100">
                 Tus publicaciones
@@ -171,15 +198,29 @@ export default function ProfilePage() {
               </a>
             </div>
 
+            {/* Cuadrícula tipo Instagram */}
+            <div className="grid grid-cols-3 gap-[3px] rounded-xl overflow-hidden bg-neutral-900">
+              {gridImages.map((src, idx) => (
+                <div key={idx} className="relative aspect-square bg-neutral-800">
+                  <img
+                    src={src}
+                    alt="Publicación"
+                    className="h-full w-full object-cover"
+                  />
+                </div>
+              ))}
+            </div>
+
+            {/* Publicación destacada con cubo de basura */}
             {!ultimaFoto ? (
               <p className="text-xs text-neutral-400">
-                Aún no tienes publicaciones. Sube una imagen desde{' '}
+                Aún no tienes publicaciones reales. Sube una imagen desde{' '}
                 <span className="text-emerald-400">Demo &gt; Live</span> y se
                 mostrará aquí.
               </p>
             ) : (
               <>
-                <div className="relative overflow-hidden rounded-2xl border border-neutral-800 bg-neutral-950">
+                <div className="relative overflow-hidden rounded-2xl border border-neutral-800 bg-neutral-950 mt-2">
                   <img
                     src={ultimaFoto.imageUrl}
                     alt="Tu última publicación"
@@ -201,7 +242,7 @@ export default function ProfilePage() {
                     </p>
                     <p className="mt-1 text-[11px] text-neutral-400">
                       Esta imagen se ha subido desde la demo en vivo y se
-                      muestra en tu perfil y en el feed.
+                      muestra en tu perfil y en el feed de este navegador.
                     </p>
                     <p className="mt-1 text-[11px] text-neutral-500">
                       Subida el{' '}
