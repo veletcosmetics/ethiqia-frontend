@@ -4,293 +4,201 @@ import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabaseClient';
 import { getSession } from '@/lib/session';
 
-type SessionData = {
-  user?: {
-    id?: string;
-    email?: string | null;
-    name?: string | null;
-  };
-};
-
 type ProfilePost = {
   id: string;
   image_url: string;
   caption: string | null;
   created_at: string;
-  user_id: string | null;
 };
 
-const PLACEHOLDERS = [
-  '/demo/profile-stock.jpg',
-  '/demo/profile-stock.jpg',
-  '/demo/profile-stock.jpg',
-  '/demo/profile-stock.jpg',
-  '/demo/profile-stock.jpg',
-  '/demo/profile-stock.jpg',
-];
+type SessionData = {
+  user?: {
+    email?: string;
+    name?: string;
+  };
+};
 
 export default function ProfilePage() {
-  const [session, setSessionState] = useState<SessionData | null>(null);
+  const [session, setSession] = useState<SessionData | null>(null);
   const [posts, setPosts] = useState<ProfilePost[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (typeof window === 'undefined') return;
-
+    // 1) Cargar sesión local (demo)
     const s = getSession();
-    if (s) setSessionState(s as SessionData);
+    setSession(s as SessionData | null);
 
-    const fetchPosts = async () => {
+    // 2) Cargar publicaciones reales desde Supabase
+    const loadPosts = async () => {
       setLoading(true);
-      let query = supabase.from('posts').select('*').order('created_at', {
-        ascending: false,
-      });
-
-      if (s?.user?.id) {
-        query = query.eq('user_id', s.user.id);
-      }
-
-      const { data, error } = await query;
+      const { data, error } = await supabase
+        .from('posts')
+        .select('*')
+        .order('created_at', { ascending: false });
 
       if (error) {
-        console.error('Error al cargar posts para perfil:', error);
+        console.error('Error cargando posts para el perfil:', error);
         setPosts([]);
       } else {
-        setPosts((data || []) as ProfilePost[]);
+        setPosts(data as ProfilePost[]);
       }
 
       setLoading(false);
     };
 
-    fetchPosts();
+    loadPosts();
   }, []);
 
-  const userEmail = session?.user?.email ?? 'usuario@demo';
-  const userName =
-    session?.user?.name ||
-    (userEmail ? userEmail.split('@')[0] : 'Usuario Ethiqia');
-
-  const publicaciones = posts.length;
-  const ultimaFoto = posts[0] ?? null;
-  const otrasFotos = posts.slice(1, 7);
-
-  const gridImages: string[] =
-    posts.length > 0
-      ? posts.map((p) => p.image_url).slice(0, 6)
-      : PLACEHOLDERS.slice(0, 6);
-
-  const handleGoToDemoLive = () => {
-    if (typeof window !== 'undefined') {
-      window.location.href = '/demo/live';
-    }
-  };
+  const email = session?.user?.email || 'demo-user@ethiqia.app';
+  const name = session?.user?.name || 'Demo Ethiqia';
 
   return (
     <main className="min-h-[calc(100vh-64px)] bg-neutral-950 text-neutral-50">
-      <section className="max-w-5xl mx-auto px-4 py-8 space-y-6">
-        {/* CABECERA PERFIL */}
-        <header className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+      <section className="max-w-4xl mx-auto px-4 py-6 space-y-8">
+        {/* Cabecera del perfil */}
+        <header className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center gap-4">
-            <div className="flex h-16 w-16 items-center justify-center rounded-full bg-neutral-800 text-xl font-semibold overflow-hidden">
-              {ultimaFoto ? (
-                <img
-                  src={ultimaFoto.image_url}
-                  alt="Foto de perfil"
-                  className="h-full w-full object-cover"
-                />
-              ) : (
-                <span>{userName.charAt(0).toUpperCase()}</span>
-              )}
+            {/* Avatar simple con iniciales */}
+            <div className="flex h-14 w-14 items-center justify-center rounded-full bg-emerald-500 text-lg font-semibold text-black">
+              {name.charAt(0).toUpperCase()}
             </div>
             <div className="space-y-1">
-              <h1 className="text-lg font-semibold">{userName}</h1>
-              <p className="text-xs text-neutral-400">{userEmail}</p>
-              <span className="inline-flex items-center gap-2 rounded-full bg-emerald-500/10 px-3 py-1 text-[11px] text-emerald-300">
-                <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
-                Perfil demo conectado a backend (Supabase)
+              <h1 className="text-xl font-semibold">{name}</h1>
+              <p className="text-xs text-neutral-400">{email}</p>
+              <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-3 py-1 text-[11px] text-emerald-300">
+                ● Perfil demo conectado a backend (Supabase)
               </span>
             </div>
           </div>
 
-          <div className="flex flex-col items-end gap-2 text-xs">
+          <div className="flex flex-col items-end gap-2 text-right text-[11px] text-neutral-400">
             <button
+              className="rounded-full border border-neutral-700 px-3 py-1 text-xs hover:border-emerald-400"
               type="button"
-              onClick={handleGoToDemoLive}
-              className="rounded-full bg-emerald-500 px-4 py-1.5 font-semibold text-black hover:bg-emerald-400"
             >
-              + Subir foto en demo live
+              ✏️ Editar perfil (demo)
             </button>
-            <p className="text-[11px] text-neutral-500 max-w-[220px] text-right">
-              Las fotos que subas desde la demo aparecerán aquí y en el feed.
+            <p>
+              Publicaciones reales guardadas:{' '}
+              <span className="font-semibold text-emerald-400">
+                {posts.length}
+              </span>
             </p>
           </div>
         </header>
 
-        {/* RESUMEN */}
-        <section className="grid gap-4 md:grid-cols-3">
-          <div className="rounded-2xl border border-neutral-800 bg-neutral-900/60 p-4 text-xs">
-            <p className="text-[11px] uppercase tracking-[0.17em] text-neutral-500">
+        {/* Bloques de estado */}
+        <section className="grid gap-4 sm:grid-cols-3">
+          <div className="rounded-2xl border border-neutral-800 bg-neutral-900 p-4 text-xs space-y-1">
+            <p className="text-neutral-400 text-[11px] uppercase tracking-wide">
               Publicaciones
             </p>
-            <p className="mt-2 text-2xl font-semibold text-emerald-400">
-              {publicaciones}
+            <p className="text-2xl font-semibold text-emerald-400">
+              {posts.length}
             </p>
-            <p className="mt-1 text-[11px] text-neutral-400">
+            <p className="text-[11px] text-neutral-500">
               Imágenes subidas desde la demo y guardadas en la base de datos
               real.
             </p>
           </div>
 
-          <div className="rounded-2xl border border-neutral-800 bg-neutral-900/60 p-4 text-xs">
-            <p className="text-[11px] uppercase tracking-[0.17em] text-neutral-500">
+          <div className="rounded-2xl border border-neutral-800 bg-neutral-900 p-4 text-xs space-y-1">
+            <p className="text-neutral-400 text-[11px] uppercase tracking-wide">
               Estado
             </p>
-            <p className="mt-2 text-sm text-neutral-200">
-              Demo lista para enseñar a inversores: login, bio, feed y subida de
-              imágenes reales.
+            <p className="text-sm font-semibold text-neutral-100">
+              Demo lista para enseñar a inversores
+            </p>
+            <p className="text-[11px] text-neutral-500">
+              Login, bio conectada a backend y feed leyendo de la tabla{' '}
+              <code>posts</code>.
             </p>
           </div>
 
-          <div className="rounded-2xl border border-neutral-800 bg-neutral-900/60 p-4 text-xs">
-            <p className="text-[11px] uppercase tracking-[0.17em] text-neutral-500">
+          <div className="rounded-2xl border border-neutral-800 bg-neutral-900 p-4 text-xs space-y-1">
+            <p className="text-neutral-400 text-[11px] uppercase tracking-wide">
               Siguiente fase
             </p>
-            <p className="mt-2 text-sm text-neutral-200">
-              Conectar más bloques de score, panel empresa y APIs externas.
+            <p className="text-sm font-semibold text-neutral-100">
+              Conectar panel empresa y APIs externas
+            </p>
+            <p className="text-[11px] text-neutral-500">
+              Más bloques de score, reputación y casos de uso B2B.
             </p>
           </div>
         </section>
 
-        {/* BIO */}
-        <section className="rounded-2xl border border-neutral-800 bg-neutral-900/60 p-5 space-y-2 text-sm">
+        {/* Bio */}
+        <section className="rounded-2xl border border-neutral-800 bg-neutral-900 p-4 text-sm space-y-2">
           <h2 className="text-sm font-semibold text-neutral-100">Tu bio</h2>
-          <p className="text-sm text-neutral-300">
+          <p className="text-neutral-300 text-sm">
             Este es tu espacio personal en Ethiqia. Aquí verás tu bio, tus fotos
             publicadas y la reputación asociada a tu actividad.
           </p>
-          <p className="text-xs text-neutral-400">
-            En esta versión alfa, tus imágenes se guardan ya en Supabase como si
-            fueran publicaciones reales.
+          <p className="text-[11px] text-neutral-500">
+            En esta versión alfa, tus imágenes se guardan en Supabase en la
+            tabla <code>posts</code> como si fueran publicaciones reales. Más
+            adelante, cada perfil tendrá un histórico de Ethiqia Score,
+            verificaciones y logros.
           </p>
         </section>
 
-        {/* FOTOS + CUADRÍCULA */}
-        <section className="grid gap-4 md:grid-cols-[minmax(0,_2.1fr)_minmax(0,_1.2fr)] items-start">
-          <div className="rounded-2xl border border-neutral-800 bg-neutral-900/60 p-4 space-y-4">
-            <div className="flex items-center justify-between gap-2">
-              <h2 className="text-sm font-semibold text-neutral-100">
-                Tus publicaciones
-              </h2>
-              <a
-                href="/feed"
-                className="text-[11px] text-emerald-400 hover:text-emerald-300"
-              >
-                Ver en el feed →
-              </a>
-            </div>
+        {/* Tus publicaciones */}
+        <section className="space-y-3">
+          <div className="flex items-center justify-between">
+            <h2 className="text-sm font-semibold text-neutral-100">
+              Tus publicaciones reales
+            </h2>
+            <a
+              href="/feed"
+              className="text-[11px] text-emerald-400 hover:underline"
+            >
+              Ver en el feed →
+            </a>
+          </div>
 
-            {/* Cuadrícula tipo Instagram */}
-            <div className="grid grid-cols-3 gap-[3px] rounded-xl overflow-hidden bg-neutral-900">
-              {gridImages.map((src, idx) => (
-                <div key={idx} className="relative aspect-square bg-neutral-800">
-                  <img
-                    src={src}
-                    alt="Publicación"
-                    className="h-full w-full object-cover"
-                  />
+          {loading && (
+            <p className="text-xs text-neutral-500">
+              Cargando tus publicaciones…
+            </p>
+          )}
+
+          {!loading && posts.length === 0 && (
+            <p className="text-xs text-neutral-500">
+              Todavía no has subido ninguna foto desde la demo en vivo. Ve a{' '}
+              <a href="/demo/live" className="text-emerald-400 underline">
+                Demo &gt; Live
+              </a>{' '}
+              y sube tu primera imagen.
+            </p>
+          )}
+
+          {!loading && posts.length > 0 && (
+            <div className="grid gap-3 sm:grid-cols-2">
+              {posts.map((post) => (
+                <div
+                  key={post.id}
+                  className="overflow-hidden rounded-2xl border border-neutral-800 bg-neutral-900"
+                >
+                  <div className="bg-black">
+                    <img
+                      src={post.image_url}
+                      alt={post.caption || 'Publicación en Ethiqia'}
+                      className="w-full max-h-64 object-cover"
+                    />
+                  </div>
+                  <div className="p-3 space-y-1">
+                    <p className="text-[11px] text-neutral-400 truncate">
+                      {post.caption || 'Imagen subida desde la demo en vivo'}
+                    </p>
+                    <p className="text-[11px] text-emerald-400">
+                      Ethiqia Score: 72/100 (simulado)
+                    </p>
+                  </div>
                 </div>
               ))}
             </div>
-
-            {/* Publicación destacada */}
-            {!ultimaFoto ? (
-              <p className="text-xs text-neutral-400 mt-2">
-                Aún no tienes publicaciones. Sube una imagen desde{' '}
-                <span className="text-emerald-400">Demo &gt; Live</span> y se
-                mostrará aquí y en el feed.
-              </p>
-            ) : (
-              <div className="overflow-hidden rounded-2xl border border-neutral-800 bg-neutral-950 mt-2">
-                <img
-                  src={ultimaFoto.image_url}
-                  alt="Tu última publicación"
-                  className="w-full max-h-[420px] object-cover"
-                />
-                <div className="border-t border-neutral-900 px-4 py-3 text-xs">
-                  <p className="text-neutral-200 font-medium">
-                    Tu última publicación
-                  </p>
-                  <p className="mt-1 text-[11px] text-neutral-400">
-                    Subida desde la demo y registrada en el backend real.
-                  </p>
-                  <p className="mt-1 text-[11px] text-neutral-500">
-                    {new Date(ultimaFoto.created_at).toLocaleString('es-ES')}
-                  </p>
-                </div>
-              </div>
-            )}
-
-            {otrasFotos.length > 0 && (
-              <div className="space-y-2 mt-2">
-                <p className="text-[11px] text-neutral-400">
-                  Otras imágenes recientes:
-                </p>
-                <div className="grid grid-cols-3 gap-2">
-                  {otrasFotos.map((p) => (
-                    <div
-                      key={p.id}
-                      className="relative overflow-hidden rounded-xl border border-neutral-800 bg-neutral-950"
-                    >
-                      <img
-                        src={p.image_url}
-                        alt="Publicación anterior"
-                        className="h-24 w-full object-cover"
-                      />
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* LATERAL */}
-          <aside className="rounded-2xl border border-neutral-800 bg-neutral-900/60 p-4 text-xs space-y-2">
-            <h2 className="text-sm font-semibold text-neutral-100">
-              Resumen de actividad
-            </h2>
-
-            {loading && (
-              <p className="text-[11px] text-neutral-400">
-                Cargando publicaciones…
-              </p>
-            )}
-
-            {!loading && !ultimaFoto && (
-              <p className="text-[11px] text-neutral-400">
-                Aún no hay actividad. Sube tu primera foto en la demo.
-              </p>
-            )}
-
-            {!loading && ultimaFoto && (
-              <>
-                <p className="text-xs text-neutral-300">Última publicación:</p>
-                <p className="text-[11px] text-neutral-400">
-                  {new Date(ultimaFoto.created_at).toLocaleString('es-ES')}
-                </p>
-              </>
-            )}
-
-            <div className="mt-2 rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 space-y-1">
-              <p className="text-[11px] text-neutral-400">
-                Demo conectada a Supabase:
-              </p>
-              <p className="text-[11px] text-neutral-300">
-                Las publicaciones del feed y tu perfil están leyendo de la tabla{' '}
-                <code>posts</code>. Es el mismo backend que se puede escalar a
-                empresas reales.
-              </p>
-            </div>
-          </aside>
+          )}
         </section>
       </section>
     </main>
