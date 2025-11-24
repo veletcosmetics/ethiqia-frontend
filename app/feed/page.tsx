@@ -1,7 +1,14 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { getDemoFeedPosts, type DemoFeedPost } from '@/lib/feed';
+
+type FeedPost = {
+  id: string;
+  imageUrl: string;
+  score: number;
+  aiProbability: number;
+  createdAt: number;
+};
 
 type FeedComment = {
   id: string;
@@ -17,26 +24,103 @@ type Interactions = {
 
 type InteractionsState = Record<string, Interactions>;
 
-const INTERACTIONS_KEY = 'ethiqia_feed_interactions_v2';
+const FEED_KEY = 'ethiqia_feed_posts_v3';
+const INTERACTIONS_KEY = 'ethiqia_feed_interactions_v3';
 
+// Lista ampliada de insultos / lenguaje tóxico
 const BAD_WORDS = [
   'puta',
+  'puto',
   'gilipollas',
   'idiota',
+  'idiotas',
   'tonto',
+  'tonta',
+  'tontos',
+  'tontas',
   'mierda',
+  'mierdas',
   'cabrón',
+  'cabron',
+  'cabrona',
   'imbécil',
+  'imbecil',
+  'imbéciles',
+  'imbeciles',
   'subnormal',
+  'subnormales',
+  'cerda',
+  'cerdo',
+  'cerdas',
+  'cerdos',
+  'zorra',
+  'zorro',
+  'asqueroso',
+  'asquerosa',
+  'asquerosos',
+  'asquerosas',
+  'payaso',
+  'payasa',
+  'payasos',
+  'payasas',
+  'estúpido',
+  'estupido',
+  'estúpida',
+  'estupida',
+  'estúpidos',
+  'estupidos',
+  'retrasado',
+  'retrasada',
+  'retrasados',
+  'retrasadas',
+  'maricón',
+  'maricon',
+  'maricones',
+  'pendejo',
+  'pendeja',
+  'pendejos',
+  'pendejas',
+  'hijo de puta',
+  'hija de puta',
+  'hijos de puta',
 ];
+
+function loadFeed(): FeedPost[] {
+  if (typeof window === 'undefined') return [];
+  try {
+    const raw = window.localStorage.getItem(FEED_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as FeedPost[];
+    if (!Array.isArray(parsed)) return [];
+    return parsed;
+  } catch {
+    return [];
+  }
+}
 
 function isToxic(text: string) {
   const lower = text.toLowerCase();
   return BAD_WORDS.some((w) => lower.includes(w));
 }
 
+function getBadge(aiProbability: number) {
+  if (aiProbability <= 20) {
+    return { label: 'Real', className: 'bg-emerald-500/10 text-emerald-300 border-emerald-400/60' };
+  }
+  if (aiProbability <= 60) {
+    return {
+      label: 'Mixta / dudosa',
+      className: 'bg-amber-500/10 text-amber-300 border-amber-400/60',
+    };
+  }
+  return {
+    label: 'Alta prob. IA',
+    className: 'bg-red-500/10 text-red-300 border-red-400/60',
+  };
+}
+
 export default function FeedPage() {
-  const [posts, setPosts] = useState<DemoFeedPost[]>([]);
+  const [posts, setPosts] = useState<FeedPost[]>([]);
   const [interactions, setInteractions] = useState<InteractionsState>({});
   const [commentDrafts, setCommentDrafts] = useState<Record<string, string>>({});
   const [commentErrors, setCommentErrors] = useState<Record<string, string>>({});
@@ -44,7 +128,7 @@ export default function FeedPage() {
   useEffect(() => {
     if (typeof window === 'undefined') return;
 
-    setPosts(getDemoFeedPosts());
+    setPosts(loadFeed());
 
     try {
       const raw = window.localStorage.getItem(INTERACTIONS_KEY);
@@ -150,9 +234,9 @@ export default function FeedPage() {
             Publicaciones analizadas por Ethiqia
           </h1>
           <p className="text-sm text-neutral-400">
-            Aquí se muestran las imágenes que subes desde la demo en vivo. Los
-            likes, comentarios, guardados y compartidos son parte de esta demo
-            local.
+            Aquí se muestran las imágenes que subes desde la demo en vivo en
+            este navegador. Puedes dar like, comentar (moderado por IA),
+            guardar y simular compartir.
           </p>
         </header>
 
@@ -173,18 +257,27 @@ export default function FeedPage() {
             };
             const draft = commentDrafts[post.id] || '';
             const error = commentErrors[post.id] || '';
+            const badge = getBadge(post.aiProbability);
 
             return (
               <article
                 key={post.id}
                 className="overflow-hidden rounded-2xl border border-neutral-800 bg-neutral-900/70"
               >
-                <div className="w-full bg-black">
+                <div className="relative w-full bg-black">
                   <img
                     src={post.imageUrl}
                     alt={`Publicación Ethiqia (${post.score}/100)`}
                     className="w-full max-h-[480px] object-cover"
                   />
+                  {/* Badge IA en la imagen */}
+                  <div className="absolute left-3 top-3">
+                    <span
+                      className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-[3px] text-[11px] ${badge.className}`}
+                    >
+                      🤖 {badge.label}
+                    </span>
+                  </div>
                 </div>
 
                 <div className="px-4 py-3 space-y-3 text-sm">
