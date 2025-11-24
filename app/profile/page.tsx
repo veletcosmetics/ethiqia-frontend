@@ -19,22 +19,72 @@ type SessionData = {
   };
 };
 
+type ProfileInfo = {
+  displayName: string;
+  bio: string;
+  website: string;
+};
+
+const PROFILE_STORAGE_KEY = 'ethiqia_profile_info';
+
 export default function ProfilePage() {
   const [session, setSession] = useState<SessionData | null>(null);
   const [posts, setPosts] = useState<ProfilePost[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
+  const [profileInfo, setProfileInfo] = useState<ProfileInfo>({
+    displayName: 'Demo User',
+    bio: '',
+    website: '',
+  });
+  const [isEditing, setIsEditing] = useState(false);
+  const [editDraft, setEditDraft] = useState<ProfileInfo>({
+    displayName: '',
+    bio: '',
+    website: '',
+  });
+
+  // 1) Cargar sesión (demo) y perfil guardado en localStorage
   useEffect(() => {
     if (typeof window === 'undefined') return;
 
     try {
       const s = getSession();
       setSession(s as SessionData | null);
+
+      // Cargar datos del perfil (nombre, bio, web) desde localStorage
+      const raw = window.localStorage.getItem(PROFILE_STORAGE_KEY);
+      if (raw) {
+        try {
+          const parsed = JSON.parse(raw) as ProfileInfo;
+          setProfileInfo({
+            displayName:
+              parsed.displayName ||
+              s?.user?.name ||
+              'Demo User',
+            bio: parsed.bio || '',
+            website: parsed.website || '',
+          });
+        } catch {
+          // si falla el parse, usamos solo sesión
+          setProfileInfo((prev) => ({
+            ...prev,
+            displayName: s?.user?.name || prev.displayName,
+          }));
+        }
+      } else {
+        // No había nada guardado: usar datos de sesión como base
+        setProfileInfo((prev) => ({
+          ...prev,
+          displayName: s?.user?.name || 'Demo User',
+        }));
+      }
     } catch {
       // ignorar
     }
   }, []);
 
+  // 2) Cargar publicaciones desde Supabase
   useEffect(() => {
     const loadPosts = async () => {
       setIsLoading(true);
@@ -59,6 +109,7 @@ export default function ProfilePage() {
     loadPosts();
   }, []);
 
+  // 3) Borrar publicación (también la elimina del feed)
   const handleDeletePost = async (postId: string) => {
     const ok = window.confirm(
       '¿Seguro que quieres eliminar esta publicación de la demo?'
@@ -75,8 +126,42 @@ export default function ProfilePage() {
     setPosts((prev) => prev.filter((p) => p.id !== postId));
   };
 
+  // 4) Abrir modo edición de perfil
+  const openEditProfile = () => {
+    setEditDraft(profileInfo);
+    setIsEditing(true);
+  };
+
+  // 5) Guardar cambios de perfil en localStorage
+  const saveProfile = () => {
+    const cleaned: ProfileInfo = {
+      displayName: editDraft.displayName.trim() || 'Demo User',
+      bio: editDraft.bio.trim(),
+      website: editDraft.website.trim(),
+    };
+
+    setProfileInfo(cleaned);
+
+    try {
+      if (typeof window !== 'undefined') {
+        window.localStorage.setItem(
+          PROFILE_STORAGE_KEY,
+          JSON.stringify(cleaned)
+        );
+      }
+    } catch {
+      // ignorar errores de almacenamiento
+    }
+
+    setIsEditing(false);
+  };
+
+  const cancelEdit = () => {
+    setIsEditing(false);
+  };
+
   const userEmail: string = session?.user?.email ?? 'demo@ethiqia.app';
-  const userName: string = session?.user?.name ?? 'Demo User';
+  const displayName: string = profileInfo.displayName || 'Demo User';
   const publicationsCount = posts.length;
 
   return (
@@ -86,11 +171,23 @@ export default function ProfilePage() {
         <header className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
           <div className="flex items-center gap-4">
             <div className="flex h-14 w-14 items-center justify-center rounded-full bg-neutral-800 text-lg font-semibold">
-              {userName.charAt(0).toUpperCase()}
+              {displayName.charAt(0).toUpperCase()}
             </div>
             <div className="space-y-1">
-              <h1 className="text-xl font-semibold">{userName}</h1>
+              <h1 className="text-xl font-semibold">{displayName}</h1>
               <p className="text-xs text-neutral-400">{userEmail}</p>
+              {profileInfo.website && (
+                <p className="text-xs text-emerald-300">
+                  <a
+                    href={profileInfo.website}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="underline underline-offset-2"
+                  >
+                    {profileInfo.website}
+                  </a>
+                </p>
+              )}
               <span className="inline-flex items-center rounded-full bg-emerald-500/10 px-3 py-1 text-[11px] font-medium text-emerald-300">
                 ● Perfil demo conectado a backend (Supabase)
               </span>
@@ -98,12 +195,25 @@ export default function ProfilePage() {
           </div>
 
           <div className="flex flex-col items-end gap-2 text-right text-[11px] text-neutral-400">
-            <Link
-              href="/demo/live"
-              className="rounded-full bg-emerald-500 px-4 py-2 text-sm font-medium text-neutral-950 hover:bg-emerald-400 transition-colors"
-            >
-              + Subir foto en demo live
-            </Link>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={openEditProfile}
+                className="rounded-full border border-neutral-700 px-4 py-2 text-sm font-medium text-neutral-100 hover:border-emerald-400 hover:text-emerald-300 transition-colors"
+              >
+                Editar perfil
+              </button>
+              <Link
+                href="/demo/live"
+                className="rounded-full bg-emerald-500 px-4 py-2 text-sm font-medium text-neutral-950 hover:bg-emerald-400 transition-colors"
+              >
+                + Subir foto en demo live
+              </Link>
+            </div>
+            <p>
+              Login, bio, feed y subida de imágenes reales funcionando sobre
+              Supabase.
+            </p>
           </div>
         </header>
 
@@ -134,8 +244,8 @@ export default function ProfilePage() {
               Demo lista para enseñar a inversores.
             </p>
             <p className="mt-2 text-xs text-neutral-400">
-              Login, bio, feed y subida de imágenes reales funcionando sobre
-              Supabase.
+              Perfil editable, feed real y análisis IA simulada sobre un backend
+              real listo para escalar.
             </p>
           </div>
 
@@ -153,19 +263,25 @@ export default function ProfilePage() {
         </section>
 
         {/* Bio */}
-        <section className="rounded-2xl border border-neutral-800 bg-neutral-900 p-5 space-y-2">
+        <section className="rounded-2xl border border-neutral-800 bg-neutral-900 p-5 space-y-3">
           <h2 className="text-sm font-semibold text-neutral-100">Tu bio</h2>
-          <p className="text-xs text-neutral-300">
-            Este es tu espacio personal en Ethiqia. Aquí verás tu bio, tus fotos
-            publicadas y la reputación asociada a tu actividad.
-          </p>
+          {profileInfo.bio ? (
+            <p className="text-xs text-neutral-200 whitespace-pre-line">
+              {profileInfo.bio}
+            </p>
+          ) : (
+            <p className="text-xs text-neutral-300">
+              Este es tu espacio personal en Ethiqia. Aquí verás tu bio, tus fotos
+              publicadas y la reputación asociada a tu actividad. Puedes
+              personalizar esta descripción pulsando en{' '}
+              <span className="font-semibold">“Editar perfil”</span>.
+            </p>
+          )}
+
           <p className="text-xs text-neutral-500">
-            En esta versión alfa, tus imágenes se guardan ya en Supabase. El feed
-            y este perfil leen directamente de la tabla{' '}
-            <code className="bg-neutral-800 px-1 py-[1px] rounded">
-              posts
-            </code>
-            .
+            En esta versión alfa, tus imágenes se guardan en Supabase y los datos
+            de tu perfil (nombre, bio, web) se guardan en tu navegador. Así
+            podemos iterar rápido sin tocar el backend de usuarios.
           </p>
         </section>
 
@@ -291,6 +407,99 @@ export default function ProfilePage() {
           </aside>
         </section>
       </section>
+
+      {/* Panel de edición de perfil */}
+      {isEditing && (
+        <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/60 px-4">
+          <div className="w-full max-w-md rounded-2xl border border-neutral-800 bg-neutral-950 p-5 space-y-4">
+            <div className="flex items-center justify-between">
+              <h2 className="text-sm font-semibold text-neutral-100">
+                Editar perfil
+              </h2>
+              <button
+                type="button"
+                onClick={cancelEdit}
+                className="text-xs text-neutral-400 hover:text-neutral-200"
+              >
+                Cerrar ✕
+              </button>
+            </div>
+
+            <div className="space-y-3 text-xs">
+              <div className="space-y-1">
+                <label className="block text-neutral-300">
+                  Nombre público
+                </label>
+                <input
+                  type="text"
+                  value={editDraft.displayName}
+                  onChange={(e) =>
+                    setEditDraft((prev) => ({
+                      ...prev,
+                      displayName: e.target.value,
+                    }))
+                  }
+                  className="w-full rounded-lg border border-neutral-700 bg-neutral-950 px-3 py-2 text-xs text-neutral-100 outline-none focus:border-emerald-400"
+                  placeholder="Ej. Velet Cosmetics, Ana López, etc."
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="block text-neutral-300">
+                  Bio / descripción
+                </label>
+                <textarea
+                  value={editDraft.bio}
+                  onChange={(e) =>
+                    setEditDraft((prev) => ({
+                      ...prev,
+                      bio: e.target.value,
+                    }))
+                  }
+                  rows={4}
+                  className="w-full rounded-lg border border-neutral-700 bg-neutral-950 px-3 py-2 text-xs text-neutral-100 outline-none focus:border-emerald-400"
+                  placeholder="Cuenta brevemente quién eres, qué haces o qué tipo de reputación quieres construir en Ethiqia."
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="block text-neutral-300">
+                  Web / LinkedIn (opcional)
+                </label>
+                <input
+                  type="text"
+                  value={editDraft.website}
+                  onChange={(e) =>
+                    setEditDraft((prev) => ({
+                      ...prev,
+                      website: e.target.value,
+                    }))
+                  }
+                  className="w-full rounded-lg border border-neutral-700 bg-neutral-950 px-3 py-2 text-xs text-neutral-100 outline-none focus:border-emerald-400"
+                  placeholder="https://…"
+                />
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-2 pt-2">
+              <button
+                type="button"
+                onClick={cancelEdit}
+                className="rounded-lg border border-neutral-700 px-4 py-2 text-xs text-neutral-200 hover:border-neutral-500"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={saveProfile}
+                className="rounded-lg bg-emerald-500 px-4 py-2 text-xs font-semibold text-neutral-950 hover:bg-emerald-400"
+              >
+                Guardar cambios
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   );
 }
