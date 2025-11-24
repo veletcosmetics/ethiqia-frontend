@@ -1,7 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { addDemoFeedPost, type DemoFeedPost } from '@/lib/feed';
+import { useState } from 'react';
 
 type AnalysisResult = {
   authenticity: number;
@@ -10,14 +9,15 @@ type AnalysisResult = {
   ethScore: number;
 };
 
-type LastDemo = {
+type FeedPost = {
+  id: string;
   imageUrl: string;
   score: number;
-  name?: string;
+  aiProbability: number;
   createdAt: number;
 };
 
-const LAST_DEMO_KEY = 'ethiqia_demo_last_post';
+const FEED_KEY = 'ethiqia_feed_posts_v3';
 
 function generateAnalysis(): AnalysisResult {
   const aiProbability = Math.round(Math.random() * 70) + 10; // 10–80 %
@@ -41,32 +41,36 @@ function generateAnalysis(): AnalysisResult {
   };
 }
 
+function loadFeed(): FeedPost[] {
+  if (typeof window === 'undefined') return [];
+  try {
+    const raw = window.localStorage.getItem(FEED_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as FeedPost[];
+    if (!Array.isArray(parsed)) return [];
+    return parsed;
+  } catch {
+    return [];
+  }
+}
+
+function saveFeed(posts: FeedPost[]) {
+  if (typeof window === 'undefined') return;
+  window.localStorage.setItem(FEED_KEY, JSON.stringify(posts));
+}
+
 export default function LiveDemoPage() {
   const [imageSrc, setImageSrc] = useState<string | null>(null);
   const [fileName, setFileName] = useState<string | null>(null);
   const [analysis, setAnalysis] = useState<AnalysisResult | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
-  const [lastDemo, setLastDemo] = useState<LastDemo | null>(null);
-
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    const raw = window.localStorage.getItem(LAST_DEMO_KEY);
-    if (raw) {
-      try {
-        const parsed = JSON.parse(raw) as LastDemo;
-        if (parsed.imageUrl) setLastDemo(parsed);
-      } catch {
-        // ignore
-      }
-    }
-  }, []);
 
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
 
     if (!file.type.startsWith('image/')) {
-      alert('Sube solo archivos de imagen (jpg, png, webp...)');
+      alert('Sube solo archivos de imagen (jpg, png, webp...).');
       return;
     }
 
@@ -83,34 +87,25 @@ export default function LiveDemoPage() {
       setAnalysis(generated);
       setIsAnalyzing(false);
 
+      // 🔹 Guardar en el "feed" de la demo (localStorage)
       const createdAt = Date.now();
-
-      // Guardar último análisis demo
-      const last: LastDemo = {
-        imageUrl: result,
-        score: generated.ethScore,
-        name: file.name || 'Demo Ethiqia',
-        createdAt,
-      };
-      try {
-        window.localStorage.setItem(LAST_DEMO_KEY, JSON.stringify(last));
-        setLastDemo(last);
-      } catch {
-        // ignore
-      }
-
-      // Guardar en feed demo (USAMOS lib/feed.ts)
-      const newPost: DemoFeedPost = {
+      const newPost: FeedPost = {
         id: `p-${createdAt}`,
         imageUrl: result,
         score: generated.ethScore,
+        aiProbability: generated.aiProbability,
         createdAt,
       };
+
       try {
-        addDemoFeedPost(newPost);
+        const current = loadFeed();
+        const updated = [newPost, ...current];
+        saveFeed(updated);
       } catch {
-        // ignore
+        // ignoramos errores
       }
+
+      alert('✅ Imagen analizada y guardada en el feed y tu bio (en este navegador).');
     };
 
     reader.readAsDataURL(file);
@@ -128,8 +123,8 @@ export default function LiveDemoPage() {
           </h1>
           <p className="text-sm text-neutral-400 max-w-2xl">
             En esta demo todo ocurre en tu navegador: subes una imagen, se
-            simula un análisis con Ethiqia Score y la publicación se guarda en
-            tu feed y en tu perfil.
+            simula un análisis IA con Ethiqia Score y la publicación se guarda
+            en tu feed y en tu perfil de este navegador.
           </p>
         </header>
 
@@ -262,22 +257,6 @@ export default function LiveDemoPage() {
                 )}
               </div>
             </div>
-          </section>
-        )}
-
-        {/* Info */}
-        {lastDemo && (
-          <section className="rounded-2xl border border-neutral-800 bg-neutral-900/60 p-4 text-xs text-neutral-300 space-y-1">
-            <p>
-              Última imagen subida:{" "}
-              <span className="text-neutral-100">
-                {lastDemo.name || 'Sin nombre'}
-              </span>
-            </p>
-            <p>
-              Ethiqia Score:{" "}
-              <span className="text-emerald-300">{lastDemo.score}/100</span>
-            </p>
           </section>
         )}
       </section>
