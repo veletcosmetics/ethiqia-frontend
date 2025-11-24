@@ -1,82 +1,72 @@
 // lib/notifications.ts
 
 export type EthiqiaNotificationType =
-  | 'comment-approved'
   | 'post-scored'
-  | 'generic';
+  | 'comment-approved'
+  | 'comment-blocked'
+  | 'demo-info';
 
-export type EthiqiaNotification = {
+export interface EthiqiaNotification {
   id: string;
   type: EthiqiaNotificationType;
   message: string;
-  createdAt: string;
-  read: boolean;
-};
-
-const STORAGE_KEY = 'ethiqia_notifications';
-
-function getInitialNotifications(): EthiqiaNotification[] {
-  return [
-    {
-      id: 'n1',
-      type: 'comment-approved',
-      message: 'Tu comentario fue aprobado por la IA.',
-      createdAt: new Date().toISOString(),
-      read: false,
-    },
-    {
-      id: 'n2',
-      type: 'post-scored',
-      message: 'Tu publicación generó 87 puntos de Ethiqia Score.',
-      createdAt: new Date().toISOString(),
-      read: false,
-    },
-  ];
+  createdAt: number;
 }
 
-export function getNotifications(): EthiqiaNotification[] {
-  if (typeof window === 'undefined') return getInitialNotifications();
+// 🔔 Etiquetas por tipo de notificación
+export const NOTIFICATION_LABELS: Record<EthiqiaNotificationType, string> = {
+  'post-scored': 'Tu publicación ha recibido un Ethiqia Score.',
+  'comment-approved': 'Tu comentario fue publicado.',
+  'comment-blocked': 'Tu comentario fue bloqueado por la IA.',
+  'demo-info': 'Información de la demo.'
+};
+
+// 🔔 Guarda una notificación en localStorage (versión demo)
+export function addNotification(type: EthiqiaNotificationType, message: string) {
+  if (typeof window === 'undefined') return;
 
   try {
-    const raw = window.localStorage.getItem(STORAGE_KEY);
-    if (!raw) {
-      const initial = getInitialNotifications();
-      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(initial));
-      return initial;
-    }
-    const parsed = JSON.parse(raw) as EthiqiaNotification[];
-    return Array.isArray(parsed) ? parsed : getInitialNotifications();
-  } catch {
-    return getInitialNotifications();
+    const raw = localStorage.getItem('ethiqia_notifications');
+    const list: EthiqiaNotification[] = raw ? JSON.parse(raw) : [];
+
+    const newNotif: EthiqiaNotification = {
+      id: `n-${Date.now()}-${Math.floor(Math.random() * 9999)}`,
+      type,
+      message,
+      createdAt: Date.now()
+    };
+
+    const updated = [newNotif, ...list];
+    localStorage.setItem('ethiqia_notifications', JSON.stringify(updated));
+  } catch (e) {
+    console.error('Error guardando notificación:', e);
   }
 }
 
-export function saveNotifications(notifs: EthiqiaNotification[]) {
-  if (typeof window === 'undefined') return;
-  window.localStorage.setItem(STORAGE_KEY, JSON.stringify(notifs));
+// 🔔 Cargar todas las notificaciones
+export function getNotifications(): EthiqiaNotification[] {
+  if (typeof window === 'undefined') return [];
+  try {
+    const raw = localStorage.getItem('ethiqia_notifications');
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
 }
 
-export function addNotification(type: EthiqiaNotificationType, message: string) {
+// 🔔 Borrar una notificación concreta
+export function deleteNotification(id: string) {
   if (typeof window === 'undefined') return;
-  const current = getNotifications();
-  const newNotif: EthiqiaNotification = {
-    id: `n-${Date.now()}`,
-    type,
-    message,
-    createdAt: new Date().toISOString(),
-    read: false,
-  };
-  saveNotifications([newNotif, ...current]);
+  try {
+    const raw = localStorage.getItem('ethiqia_notifications');
+    const list: EthiqiaNotification[] = raw ? JSON.parse(raw) : [];
+    const updated = list.filter(n => n.id !== id);
+    localStorage.setItem('ethiqia_notifications', JSON.stringify(updated));
+  } catch {}
 }
 
-export function markAllAsRead() {
+// 🔔 Limpiar todo (por si lo necesitas)
+export function clearNotifications() {
   if (typeof window === 'undefined') return;
-  const current = getNotifications();
-  const updated = current.map((n) => ({ ...n, read: true }));
-  saveNotifications(updated);
-}
-
-export function getUnreadCount(): number {
-  const notifs = getNotifications();
-  return notifs.filter((n) => !n.read).length;
+  localStorage.removeItem('ethiqia_notifications');
 }
