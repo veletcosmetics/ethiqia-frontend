@@ -128,7 +128,7 @@ function analyzeComment(text: string): {
     }
   }
 
-  // 2) Heurísticas simples (no es IA real, pero imita una revisión)
+  // 2) Heurística simple (tono muy agresivo)
   const exclamations = (text.match(/!/g) || []).length;
   const uppercaseWords = text
     .split(' ')
@@ -153,6 +153,39 @@ function computeScoreFromId(id: string): number {
   // 60–100
   return 60 + (acc % 41);
 }
+
+// ✅ POSTS DEMO (no tocan Supabase, solo frontend)
+// Usan imágenes de /public/demo. Por ahora usamos profile-stock.jpg
+const DEMO_FEED_POSTS: FeedPost[] = [
+  {
+    id: 'demo-1',
+    imageUrl: '/demo/profile-stock.jpg',
+    caption: 'Studio Nébula · Presentando su nueva línea de cosmética sostenible verificada en Ethiqia.',
+    createdAt: new Date('2024-05-10T10:00:00Z').toISOString(),
+    score: 92,
+  },
+  {
+    id: 'demo-2',
+    imageUrl: '/demo/profile-stock.jpg',
+    caption: 'Lumis Health Lab · Compartiendo resultados de un estudio clínico aprobado por su comité ético.',
+    createdAt: new Date('2024-05-12T16:30:00Z').toISOString(),
+    score: 88,
+  },
+  {
+    id: 'demo-3',
+    imageUrl: '/demo/profile-stock.jpg',
+    caption: 'GreenWave Impact · Proyecto de regeneración de litoral con seguimiento público de métricas.',
+    createdAt: new Date('2024-05-13T09:15:00Z').toISOString(),
+    score: 90,
+  },
+  {
+    id: 'demo-4',
+    imageUrl: '/demo/profile-stock.jpg',
+    caption: 'Nova Legal Tech · Explicando de forma transparente cómo usan IA respetando la privacidad.',
+    createdAt: new Date('2024-05-14T19:45:00Z').toISOString(),
+    score: 85,
+  },
+];
 
 export default function FeedPage() {
   const [posts, setPosts] = useState<FeedPost[]>([]);
@@ -311,6 +344,11 @@ export default function FeedPage() {
     );
   }
 
+  // 👇 AQUÍ DECIDIMOS QUÉ MOSTRAR:
+  // Si hay posts reales -> usamos esos.
+  // Si no hay ninguno -> mostramos solo los DEMO_FEED_POSTS.
+  const displayPosts = posts.length > 0 ? posts : DEMO_FEED_POSTS;
+
   return (
     <main className="min-h-[calc(100vh-64px)] bg-neutral-950 text-neutral-50">
       <section className="max-w-3xl mx-auto px-4 py-6 space-y-6">
@@ -319,29 +357,23 @@ export default function FeedPage() {
             Feed
           </p>
           <h1 className="text-2xl font-semibold">
-            Publicaciones reales en Ethiqia (demo)
+            Publicaciones en Ethiqia (demo + reales)
           </h1>
           <p className="text-sm text-neutral-400">
-            Aquí solo se muestran las fotos que se han subido desde la demo en
-            vivo y que se han guardado en el backend real (Supabase). Puedes
-            dar like, comentar (moderado por IA), guardar y simular compartir.
+            Si hay publicaciones reales subidas desde la demo en vivo, se
+            muestran primero. Si no, verás un feed simulado con ejemplos de
+            empresas y proyectos para explicar Ethiqia a inversores y al Parque
+            Científico.
           </p>
         </header>
 
-        {error && (
+        {error && posts.length === 0 && (
           <div className="rounded-xl border border-red-500/50 bg-red-500/10 px-4 py-3 text-sm text-red-200">
             {error}
           </div>
         )}
 
-        {posts.length === 0 && !error && (
-          <div className="rounded-2xl border border-dashed border-neutral-800 bg-neutral-900/40 px-4 py-10 text-center text-sm text-neutral-400">
-            Aún no hay publicaciones reales. Sube una foto desde la demo en vivo
-            para verla aquí.
-          </div>
-        )}
-
-        {posts.map((post) => {
+        {displayPosts.map((post) => {
           const isLiked = liked[post.id] ?? false;
           const isSaved = saved[post.id] ?? false;
           const comments = commentsByPost[post.id] || [];
