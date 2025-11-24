@@ -2,319 +2,403 @@
 
 import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabaseClient';
+import { addNotification } from '@/lib/notifications';
+import { getSession } from '@/lib/session';
 
-type FeedPost = {
+type Post = {
   id: string;
   image_url: string;
   caption: string | null;
   created_at: string | null;
 };
 
-const BANNED_WORDS = [
-  'puta',
-  'puto',
-  'gilipollas',
+type Comment = {
+  id: string;
+  post_id: string;
+  content: string;
+  created_at: string | null;
+  is_flagged: boolean | null;
+};
+
+type FeedPost = Post & {
+  comments: Comment[];
+};
+
+type SessionData = {
+  user?: {
+    id?: string;
+    email?: string;
+    name?: string;
+  };
+};
+
+// Lista sencilla de palabras prohibidas / conflictivas
+const HARD_BLOCKED_WORDS = [
   'idiota',
-  'subnormal',
   'imbécil',
-  'cabron',
-  'cabrón',
-  'mierda',
-  'asco',
+  'gilipollas',
+  'maldito',
+  'vete a morir',
+  'te odio',
+  'asqueroso',
+  'puto',
 ];
 
-function containsInsult(text: string) {
-  const lower = text.toLowerCase();
-  return BANNED_WORDS.some((w) => lower.includes(w));
-}
+const SOFT_FLAG_WORDS = [
+  'odio',
+  'asco',
+  'estúpido',
+  'ridículo',
+  'basura',
+];
 
-// Métricas simuladas pero deterministas por post
-function getMetrics(post: FeedPost) {
-  const base = post.id
-    .split('')
-    .reduce((acc, ch) => acc + ch.charCodeAt(0), 0);
-  const score = 60 + (base % 35); // 60–94
-  const aiProbability = 5 + (base % 70); // 5–74
-  return { score, aiProbability };
-}
+function moderateComment(text: string): {
+  allowed: boolean;
+  flagged: boolean;
+  reason?: string;
+} {
+  const t = text.toLowerCase();
 
-function getAIBadge(ai: number) {
-  if (ai <= 20) {
+  // Bloqueo duro: insultos o frases agresivas claras
+  if (HARD_BLOCKED_WORDS.some((w) => t.includes(w))) {
     return {
-      label: 'Contenido real estimado',
-      className:
-        'bg-emerald-500/10 text-emerald-300 border-emerald-500/40',
+      allowed: false,
+      flagged: true,
+      reason:
+        'Comentario no publicado por infringir las normas (lenguaje de odio, acoso o insultos directos).',
     };
   }
-  if (ai <= 50) {
+
+  // Flag suave: tono agresivo / conflictivo
+  if (SOFT_FLAG_WORDS.some((w) => t.includes(w))) {
     return {
-      label: 'Contenido mixto / dudoso',
-      className: 'bg-amber-500/10 text-amber-300 border-amber-500/40',
+      allowed: true,
+      flagged: true,
+      reason:
+        'Comentario publicado, pero marcado para revisión por posible lenguaje tóxico.',
     };
   }
+
+  // Todo correcto
   return {
-    label: 'Alta prob. de IA',
-    className: 'bg-red-500/10 text-red-300 border-red-500/40',
+    allowed: true,
+    flagged: false,
   };
 }
 
 export default function FeedPage() {
+  const [session, setSession] = useState<SessionData | null>(null);
   const [posts, setPosts] = useState<FeedPost[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [commentDrafts, setCommentDrafts] = useState<Record<string, string>>(
-    {}
-  );
-  const [likes, setLikes] = useState<Record<string, boolean>>({});
-  const [saved, setSaved] = useState<Record<string, boolean>>({});
+  const [isLoading, setIsLoading] = useState(true);
+  const [commentDrafts, setCommentDrafts] = useState<Record<string, string>>({});
+  const [commentStatus, setCommentStatus] = useState<Record<string, string>>({});
 
+  // Cargar sesión demo
   useEffect(() => {
-    const loadPosts = async () => {
-      setLoading(true);
-      const { data, error } = await supabase
+    if (typeof window === 'undefined') return;
+    try {
+      const s = getSession();
+      setSession(s as SessionData | null);
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  // Cargar posts + comentarios desde Supabase
+  useEffect(() => {
+    const loadData = async () => {
+      setIsLoading(true);
+
+      // 1) Posts
+      const { data: postsData, error: postsError } = await supabase
         .from('posts')
         .select('id, image_url, caption, created_at')
         .order('created_at', { ascending: false });
 
-      if (error) {
-        console.error('Error cargando posts del feed:', error);
+      if (postsError || !postsData) {
+        console.error('Error loading posts:', postsError);
         setPosts([]);
-      } else {
-        setPosts(data as FeedPost[]);
+        setIsLoading(false);
+        return;
       }
 
-      setLoading(false);
+      const posts: Post[] = postsData.map((p: any) => ({
+        id: p.id,
+        image_url: p.image_url,
+        caption: p.caption ?? null,
+        created_at: p.created_at ?? null,
+      }));
+
+      // 2) Comentarios
+      const postIds = posts.map((p) => p.id);
+      let comments: Comment[] = [];
+
+      if (postIds.length > 0) {
+        const { data: commentsData, error: commentsError } = await supabase
+          .from('comments')
+          .select('id, post_id, content, created_at, is_flagged')
+          .in('post_id', postIds)
+          .order('created_at', { ascending: true });
+
+        if (!commentsError && commentsData) {
+          comments = commentsData.map((c: any) => ({
+            id: c.id,
+            post_id: c.post_id,
+            content: c.content,
+            created_at: c.created_at ?? null,
+            is_flagged: c.is_flagged ?? null,
+          }));
+        }
+      }
+
+      // 3) Mezclar posts + comentarios
+      const postsWithComments: FeedPost[] = posts.map((p) => ({
+        ...p,
+        comments: comments.filter((c) => c.post_id === p.id),
+      }));
+
+      setPosts(postsWithComments);
+      setIsLoading(false);
     };
 
-    loadPosts();
+    loadData();
   }, []);
 
   const handleCommentChange = (postId: string, value: string) => {
-    setCommentDrafts((prev) => ({ ...prev, [postId]: value }));
+    setCommentDrafts((prev) => ({
+      ...prev,
+      [postId]: value,
+    }));
   };
 
-  const handlePublishComment = (postId: string) => {
+  const handleSubmitComment = async (postId: string) => {
     const text = (commentDrafts[postId] || '').trim();
     if (!text) return;
 
-    if (containsInsult(text)) {
-      alert(
-        'Tu comentario contiene lenguaje ofensivo. La IA de Ethiqia bloquea insultos y discurso de odio.'
-      );
+    // Moderación "IA"
+    const result = moderateComment(text);
+
+    if (!result.allowed) {
+      setCommentStatus((prev) => ({
+        ...prev,
+        [postId]: result.reason ?? 'Comentario bloqueado por moderación.',
+      }));
+      // Notificación de comentario bloqueado
+      try {
+        addNotification(
+          'comment-blocked',
+          'Tu comentario fue bloqueado por infringir las normas de Ethiqia.'
+        );
+      } catch {
+        // ignore
+      }
       return;
     }
 
-    alert(
-      'Comentario aceptado por la IA. En esta demo no se guarda aún en el backend, solo muestra el flujo moderado.'
+    // Si está permitido, lo guardamos en Supabase
+    const userId = session?.user?.id ?? null;
+
+    const { data, error } = await supabase
+      .from('comments')
+      .insert({
+        post_id: postId,
+        user_id: userId,
+        content: text,
+        is_flagged: result.flagged,
+      })
+      .select('id, post_id, content, created_at, is_flagged')
+      .single();
+
+    if (error || !data) {
+      console.error('Error inserting comment:', error);
+      setCommentStatus((prev) => ({
+        ...prev,
+        [postId]: 'Error al publicar el comentario en el backend.',
+      }));
+      return;
+    }
+
+    const newComment: Comment = {
+      id: data.id,
+      post_id: data.post_id,
+      content: data.content,
+      created_at: data.created_at ?? null,
+      is_flagged: data.is_flagged ?? null,
+    };
+
+    // Actualizar estado local
+    setPosts((prev) =>
+      prev.map((p) =>
+        p.id === postId
+          ? { ...p, comments: [...p.comments, newComment] }
+          : p
+      )
     );
-    setCommentDrafts((prev) => ({ ...prev, [postId]: '' }));
-  };
 
-  const toggleLike = (postId: string) => {
-    setLikes((prev) => ({ ...prev, [postId]: !prev[postId] }));
-  };
+    setCommentDrafts((prev) => ({
+      ...prev,
+      [postId]: '',
+    }));
 
-  const toggleSaved = (postId: string) => {
-    setSaved((prev) => ({ ...prev, [postId]: !prev[postId] }));
+    let statusMsg = 'Comentario publicado.';
+    if (result.flagged && result.reason) {
+      statusMsg = result.reason;
+    }
+
+    setCommentStatus((prev) => ({
+      ...prev,
+      [postId]: statusMsg,
+    }));
+
+    // Notificación de comentario aprobado
+    try {
+      addNotification(
+        'comment-approved',
+        'Tu comentario fue aprobado por la capa de moderación de Ethiqia.'
+      );
+    } catch {
+      // ignore
+    }
   };
 
   return (
     <main className="min-h-[calc(100vh-64px)] bg-neutral-950 text-neutral-50">
       <section className="max-w-3xl mx-auto px-4 py-6 space-y-6">
         <header className="space-y-2">
+          <p className="text-[11px] uppercase tracking-[0.2em] text-emerald-400">
+            Feed
+          </p>
           <h1 className="text-2xl font-semibold">
-            Feed de publicaciones en Ethiqia (demo)
+            Publicaciones analizadas en Ethiqia
           </h1>
           <p className="text-sm text-neutral-400">
-            Aquí se muestran las imágenes que se han subido desde la demo en vivo
-            y se han guardado en la base de datos real (Supabase). Cada post tiene
-            un Ethiqia Score simulado, un indicador IA/real y acciones sociales.
+            Este feed muestra imágenes subidas desde la demo en vivo, junto con
+            sus comentarios moderados automáticamente. Los comentarios con
+            lenguaje de odio, acoso o insultos fuertes se bloquean; otros se
+            publican pero pueden marcarse para revisión.
           </p>
         </header>
 
-        {loading && (
-          <p className="text-sm text-neutral-500">Cargando publicaciones…</p>
-        )}
-
-        {!loading && posts.length === 0 && (
-          <p className="text-sm text-neutral-500">
-            Aún no hay publicaciones. Sube una foto desde{' '}
-            <a
-              href="/demo/live"
-              className="text-emerald-400 underline underline-offset-2"
-            >
-              la demo en vivo
-            </a>{' '}
-            para verla aquí.
+        {isLoading && (
+          <p className="text-xs text-neutral-500">
+            Cargando publicaciones desde Supabase…
           </p>
         )}
 
-        <div className="space-y-10">
-          {posts.map((post) => {
-            const metrics = getMetrics(post);
-            const badge = getAIBadge(metrics.aiProbability);
-            const created =
-              post.created_at &&
-              new Date(post.created_at).toLocaleString('es-ES', {
-                dateStyle: 'short',
-                timeStyle: 'short',
-              });
+        {!isLoading && posts.length === 0 && (
+          <p className="text-sm text-neutral-400">
+            Todavía no hay publicaciones. Sube una imagen desde la demo en vivo
+            para ver aquí el flujo completo.
+          </p>
+        )}
 
-            return (
-              <article
-                key={post.id}
-                className="overflow-hidden rounded-2xl border border-neutral-800 bg-neutral-900"
-              >
-                {/* Cabecera del post */}
-                <div className="flex items-center justify-between px-4 py-3 border-b border-neutral-800">
-                  <div className="flex items-center gap-3">
-                    <div className="flex h-9 w-9 items-center justify-center rounded-full bg-neutral-800 text-xs font-semibold">
-                      E
-                    </div>
-                    <div className="space-y-[2px]">
-                      <p className="text-xs font-medium text-neutral-100">
-                        Usuario demo Ethiqia
-                      </p>
-                      <p className="text-[11px] text-neutral-500">
-                        Publicación guardada en backend real
-                        {created ? ` · ${created}` : ''}
-                      </p>
-                    </div>
-                  </div>
-                  <span className="text-[18px] text-neutral-500">•••</span>
-                </div>
+        {!isLoading &&
+          posts.map((post) => (
+            <article
+              key={post.id}
+              className="overflow-hidden rounded-2xl border border-neutral-800 bg-neutral-900"
+            >
+              {/* Imagen */}
+              <div className="bg-neutral-950">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={post.image_url}
+                  alt={post.caption ?? 'Publicación Ethiqia'}
+                  className="w-full max-h-[420px] object-cover"
+                />
+              </div>
 
-                {/* Imagen */}
-                <div className="bg-black">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src={post.image_url}
-                    alt={post.caption || 'Publicación en Ethiqia'}
-                    className="w-full max-h-[520px] object-contain bg-black"
-                  />
-                </div>
+              {/* Texto + meta */}
+              <div className="p-4 space-y-3 text-sm">
+                {post.caption && (
+                  <p className="text-neutral-100">{post.caption}</p>
+                )}
+                {post.created_at && (
+                  <p className="text-[11px] text-neutral-500">
+                    Publicado el{' '}
+                    {new Date(post.created_at).toLocaleString('es-ES', {
+                      dateStyle: 'short',
+                      timeStyle: 'short',
+                    })}
+                  </p>
+                )}
+              </div>
 
-                {/* Contenido bajo la imagen */}
-                <div className="p-4 space-y-4">
-                  {/* Métricas IA + score */}
-                  <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-                    <div className="space-y-2">
-                      <p className="text-xs text-neutral-400">
-                        Ethiqia Score estimado
-                      </p>
-                      <div className="flex items-baseline gap-2">
-                        <span className="text-2xl font-semibold text-emerald-400">
-                          {metrics.score}
-                        </span>
-                        <span className="text-xs text-neutral-500">/100</span>
-                      </div>
-                      <div className="h-1.5 w-40 rounded-full bg-neutral-800 overflow-hidden">
-                        <div
-                          className="h-full rounded-full bg-emerald-500"
-                          style={{ width: `${metrics.score}%` }}
-                        />
-                      </div>
-                    </div>
+              {/* Comentarios */}
+              <div className="border-t border-neutral-800 px-4 py-3 space-y-3 text-xs">
+                <p className="font-semibold text-neutral-100">
+                  Comentarios moderados por IA
+                </p>
 
-                    <div className="space-y-2">
-                      <p className="text-xs text-neutral-400">
-                        Probabilidad de imagen IA
-                      </p>
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm font-semibold text-neutral-100">
-                          {metrics.aiProbability}%
-                        </span>
-                        <span
-                          className={`inline-flex items-center rounded-full border px-2 py-[2px] text-[10px] ${badge.className}`}
-                        >
-                          {badge.label}
-                        </span>
-                      </div>
-                      <div className="h-1.5 w-40 rounded-full bg-neutral-800 overflow-hidden">
-                        <div
-                          className="h-full rounded-full bg-amber-500"
-                          style={{ width: `${metrics.aiProbability}%` }}
-                        />
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Texto del post */}
-                  {post.caption && (
-                    <div className="text-sm text-neutral-200">
-                      <span className="font-semibold mr-1">
-                        Usuario demo:
-                      </span>
-                      <span>{post.caption}</span>
-                    </div>
+                {/* Lista de comentarios */}
+                <div className="space-y-2 max-h-40 overflow-y-auto pr-1">
+                  {post.comments.length === 0 && (
+                    <p className="text-[11px] text-neutral-500">
+                      Aún no hay comentarios en esta publicación.
+                    </p>
                   )}
 
-                  {/* Acciones sociales */}
-                  <div className="flex flex-wrap items-center gap-4 text-xs">
-                    <button
-                      onClick={() => toggleLike(post.id)}
-                      className="inline-flex items-center gap-1 rounded-full border border-neutral-700 px-3 py-1 hover:border-emerald-400"
+                  {post.comments.map((c) => (
+                    <div
+                      key={c.id}
+                      className="rounded-lg bg-neutral-900 px-3 py-2 border border-neutral-800"
                     >
-                      <span>{likes[post.id] ? '❤️' : '🤍'}</span>
-                      <span>Te gusta</span>
-                    </button>
-
-                    <button
-                      type="button"
-                      className="inline-flex items-center gap-1 rounded-full border border-neutral-700 px-3 py-1"
-                    >
-                      <span>💬</span>
-                      <span>Comentar</span>
-                    </button>
-
-                    <button
-                      onClick={() => toggleSaved(post.id)}
-                      className="inline-flex items-center gap-1 rounded-full border border-neutral-700 px-3 py-1 hover:border-emerald-400"
-                    >
-                      <span>{saved[post.id] ? '⭐' : '☆'}</span>
-                      <span>Guardar</span>
-                    </button>
-
-                    <button
-                      type="button"
-                      className="inline-flex items-center gap-1 rounded-full border border-neutral-700 px-3 py-1"
-                    >
-                      <span>📤</span>
-                      <span>Compartir</span>
-                    </button>
-                  </div>
-
-                  {/* Comentarios moderados por IA */}
-                  <div className="space-y-2">
-                    <p className="text-[11px] text-neutral-400">
-                      Comentar (moderado por IA)
-                    </p>
-                    <div className="flex flex-col gap-2 sm:flex-row">
-                      <input
-                        type="text"
-                        value={commentDrafts[post.id] || ''}
-                        onChange={(e) =>
-                          handleCommentChange(post.id, e.target.value)
-                        }
-                        placeholder="Escribe un comentario respetuoso…"
-                        className="flex-1 rounded-lg border border-neutral-700 bg-neutral-950 px-3 py-2 text-xs outline-none focus:border-emerald-400"
-                      />
-                      <button
-                        onClick={() => handlePublishComment(post.id)}
-                        className="rounded-lg bg-emerald-500 px-4 py-2 text-xs font-semibold text-black hover:bg-emerald-400"
-                      >
-                        Publicar
-                      </button>
+                      <p className="text-neutral-100 text-[13px]">
+                        {c.content}
+                      </p>
+                      <div className="mt-1 flex items-center justify-between text-[10px] text-neutral-500">
+                        <span>
+                          {c.created_at
+                            ? new Date(c.created_at).toLocaleString('es-ES', {
+                                dateStyle: 'short',
+                                timeStyle: 'short',
+                              })
+                            : ''}
+                        </span>
+                        {c.is_flagged && (
+                          <span className="rounded-full bg-amber-500/10 px-2 py-[1px] text-[10px] text-amber-300 border border-amber-500/50">
+                            Marcado para revisión
+                          </span>
+                        )}
+                      </div>
                     </div>
-                    <p className="text-[11px] text-neutral-500">
-                      La IA de Ethiqia bloquea insultos y discurso de odio antes
-                      de publicar el comentario.
-                    </p>
-                  </div>
+                  ))}
                 </div>
-              </article>
-            );
-          })}
-        </div>
+
+                {/* Formulario comentario */}
+                <div className="pt-2 space-y-1">
+                  <textarea
+                    rows={2}
+                    value={commentDrafts[post.id] || ''}
+                    onChange={(e) =>
+                      handleCommentChange(post.id, e.target.value)
+                    }
+                    placeholder="Escribe un comentario (la IA bloqueará insultos y acoso)…"
+                    className="w-full rounded-lg border border-neutral-700 bg-neutral-950 px-3 py-2 text-xs text-neutral-100 outline-none focus:border-emerald-400"
+                  />
+                  <div className="flex items-center justify-between">
+                    <p className="text-[10px] text-neutral-500">
+                      La moderación detecta lenguaje de odio, insultos directos,
+                      bullying y posible acoso, y puede bloquear o marcar
+                      comentarios.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => handleSubmitComment(post.id)}
+                      className="rounded-full bg-emerald-500 px-3 py-1.5 text-[11px] font-semibold text-neutral-950 hover:bg-emerald-400"
+                    >
+                      Publicar comentario
+                    </button>
+                  </div>
+                  {commentStatus[post.id] && (
+                    <p className="text-[11px] text-neutral-400 mt-1">
+                      {commentStatus[post.id]}
+                    </p>
+                  )}
+                </div>
+              </div>
+            </article>
+          ))}
       </section>
     </main>
   );
