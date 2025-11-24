@@ -2,6 +2,11 @@
 
 import { useEffect, useState } from 'react';
 import { getSession } from '@/lib/session';
+import {
+  getDemoFeedPosts,
+  deleteDemoFeedPost,
+  type DemoFeedPost,
+} from '@/lib/feed';
 
 type SessionData = {
   user?: {
@@ -11,64 +16,47 @@ type SessionData = {
   };
 };
 
-type FeedPost = {
-  id: string;
-  imageUrl: string;
-  score: number;
-  createdAt: number;
-};
-
 type LastDemoData = {
   score: number;
   name?: string;
   createdAt?: number;
+  imageUrl?: string;
 };
 
-const FEED_STORAGE_KEY = 'ethiqia_feed_posts';
-const DEMO_STORAGE_KEY = 'ethiqia_demo_post';
+const LAST_DEMO_KEY = 'ethiqia_demo_last_post';
 
 export default function ProfilePage() {
   const [session, setSessionState] = useState<SessionData | null>(null);
-  const [posts, setPosts] = useState<FeedPost[]>([]);
+  const [posts, setPosts] = useState<DemoFeedPost[]>([]);
   const [lastDemo, setLastDemo] = useState<LastDemoData | null>(null);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
 
-    // Sesión demo
     try {
       const s = getSession();
-      if (s) {
-        setSessionState(s as SessionData);
-      }
+      if (s) setSessionState(s as SessionData);
     } catch {
       // ignore
     }
 
-    // Posts del feed (local demo)
-    try {
-      const raw = window.localStorage.getItem(FEED_STORAGE_KEY);
-      if (raw) {
-        const parsed = JSON.parse(raw) as FeedPost[];
-        setPosts(parsed);
-      }
-    } catch {
-      setPosts([]);
-    }
+    setPosts(getDemoFeedPosts());
 
-    // Último análisis demo
     try {
-      const rawDemo = window.localStorage.getItem(DEMO_STORAGE_KEY);
-      if (rawDemo) {
-        const parsed = JSON.parse(rawDemo) as LastDemoData;
-        if (parsed.score !== undefined) {
-          setLastDemo(parsed);
-        }
+      const raw = window.localStorage.getItem(LAST_DEMO_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw) as LastDemoData;
+        if (parsed.score !== undefined) setLastDemo(parsed);
       }
     } catch {
       // ignore
     }
   }, []);
+
+  const handleDeletePost = (id: string) => {
+    deleteDemoFeedPost(id);
+    setPosts(getDemoFeedPosts());
+  };
 
   const userEmail = session?.user?.email ?? 'usuario@demo';
   const userName =
@@ -95,7 +83,7 @@ export default function ProfilePage() {
               <p className="text-xs text-neutral-400">{userEmail}</p>
               <span className="inline-flex items-center gap-2 rounded-full bg-emerald-500/10 px-3 py-1 text-[11px] text-emerald-300">
                 <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
-                Perfil demo con publicaciones reales en tu navegador
+                Perfil demo con publicaciones en este navegador
               </span>
             </div>
           </div>
@@ -124,7 +112,7 @@ export default function ProfilePage() {
               {publicaciones}
             </p>
             <p className="mt-1 text-[11px] text-neutral-400">
-              Se basan en las fotos que se han subido desde{' '}
+              Son las imágenes que has subido desde{' '}
               <code className="bg-neutral-800 rounded px-1 py-[1px]">
                 /demo/live
               </code>
@@ -140,7 +128,7 @@ export default function ProfilePage() {
               {ultimoScoreDemo != null ? `${ultimoScoreDemo}/100` : '—'}
             </p>
             <p className="mt-1 text-[11px] text-neutral-400">
-              Calculado de forma simulada al subir tu última imagen.
+              Calculado al subir la última imagen en la demo.
             </p>
           </div>
 
@@ -149,8 +137,8 @@ export default function ProfilePage() {
               Estado de la demo
             </p>
             <p className="mt-2 text-sm text-neutral-200">
-              Demo preparada para enseñar a inversores: sesión, bio, feed,
-              exploración y subida de imágenes simuladas.
+              Lista para enseñar a inversores: login, bio, feed, explorar y
+              subida de imágenes simuladas.
             </p>
           </div>
         </section>
@@ -164,14 +152,12 @@ export default function ProfilePage() {
           </p>
           <p className="text-xs text-neutral-400">
             En esta versión alfa, tus imágenes y tu Ethiqia Score se guardan
-            solo en este navegador usando almacenamiento local. Es suficiente
-            para demostrar el concepto a inversores y al Parque Científico.
+            solo en este navegador usando almacenamiento local.
           </p>
         </section>
 
-        {/* TUS FOTOS */}
+        {/* TUS FOTOS + CUBO DE BASURA */}
         <section className="grid gap-4 md:grid-cols-[minmax(0,_2fr)_minmax(0,_1.2fr)] items-start">
-          {/* Principal */}
           <div className="rounded-2xl border border-neutral-800 bg-neutral-900/60 p-4 space-y-3">
             <div className="flex items-center justify-between gap-2">
               <h2 className="text-sm font-semibold text-neutral-100">
@@ -193,12 +179,22 @@ export default function ProfilePage() {
               </p>
             ) : (
               <>
-                <div className="overflow-hidden rounded-2xl border border-neutral-800 bg-neutral-950">
+                <div className="relative overflow-hidden rounded-2xl border border-neutral-800 bg-neutral-950">
                   <img
                     src={ultimaFoto.imageUrl}
                     alt="Tu última publicación"
                     className="w-full max-h-[420px] object-cover"
                   />
+
+                  {/* Botón cubo de basura */}
+                  <button
+                    type="button"
+                    onClick={() => handleDeletePost(ultimaFoto.id)}
+                    className="absolute right-3 top-3 rounded-full bg-black/70 px-2.5 py-1 text-[11px] text-red-300 hover:bg-black hover:text-red-200"
+                  >
+                    🗑️ Eliminar
+                  </button>
+
                   <div className="border-t border-neutral-900 px-4 py-3 text-xs">
                     <p className="text-neutral-200 font-medium">
                       Tu última publicación analizada por Ethiqia
@@ -223,13 +219,20 @@ export default function ProfilePage() {
                       {otrasFotos.map((p) => (
                         <div
                           key={p.id}
-                          className="overflow-hidden rounded-xl border border-neutral-800 bg-neutral-950"
+                          className="relative overflow-hidden rounded-xl border border-neutral-800 bg-neutral-950"
                         >
                           <img
                             src={p.imageUrl}
                             alt="Publicación anterior"
                             className="h-24 w-full object-cover"
                           />
+                          <button
+                            type="button"
+                            onClick={() => handleDeletePost(p.id)}
+                            className="absolute right-1.5 top-1.5 rounded-full bg-black/70 px-1.5 py-[2px] text-[10px] text-red-300 hover:bg-black hover:text-red-200"
+                          >
+                            🗑️
+                          </button>
                         </div>
                       ))}
                     </div>
@@ -239,16 +242,14 @@ export default function ProfilePage() {
             )}
           </div>
 
-          {/* Info lateral */}
           <aside className="rounded-2xl border border-neutral-800 bg-neutral-900/60 p-4 text-xs space-y-2">
             <h2 className="text-sm font-semibold text-neutral-100">
               Resumen de actividad
             </h2>
+
             {ultimaFoto ? (
               <>
-                <p className="text-xs text-neutral-300">
-                  Última publicación:
-                </p>
+                <p className="text-xs text-neutral-300">Última publicación:</p>
                 <p className="text-[11px] text-neutral-400">
                   {new Date(ultimaFoto.createdAt).toLocaleString('es-ES')}
                 </p>
@@ -267,8 +268,8 @@ export default function ProfilePage() {
                 {ultimoScoreDemo != null ? `${ultimoScoreDemo}/100` : '—'}
               </p>
               <p className="text-[11px] text-neutral-500">
-                Este valor se calcula de forma simulada cuando subes una imagen
-                en <code>/demo/live</code>.
+                Se calcula cuando subes una imagen en{' '}
+                <code>/demo/live</code>.
               </p>
             </div>
           </aside>
