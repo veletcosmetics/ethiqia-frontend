@@ -1,13 +1,14 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { supabase } from '@/lib/supabaseClient';
 
 type FeedPost = {
   id: string;
-  imageUrl: string;
-  score: number;
-  aiProbability: number;
-  createdAt: number;
+  image_url: string;
+  caption: string | null;
+  created_at: string;
+  user_id: string | null;
 };
 
 type FeedComment = {
@@ -24,10 +25,9 @@ type Interactions = {
 
 type InteractionsState = Record<string, Interactions>;
 
-const FEED_KEY = 'ethiqia_feed_posts_v3';
-const INTERACTIONS_KEY = 'ethiqia_feed_interactions_v3';
+const INTERACTIONS_KEY = 'ethiqia_feed_interactions_v4';
 
-// Lista ampliada de insultos / lenguaje tóxico
+// insultos / lenguaje tóxico
 const BAD_WORDS = [
   'puta',
   'puto',
@@ -85,27 +85,25 @@ const BAD_WORDS = [
   'hijos de puta',
 ];
 
-function loadFeed(): FeedPost[] {
-  if (typeof window === 'undefined') return [];
-  try {
-    const raw = window.localStorage.getItem(FEED_KEY);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw) as FeedPost[];
-    if (!Array.isArray(parsed)) return [];
-    return parsed;
-  } catch {
-    return [];
-  }
-}
-
 function isToxic(text: string) {
   const lower = text.toLowerCase();
   return BAD_WORDS.some((w) => lower.includes(w));
 }
 
+// generamos un score y prob IA ficticia según fecha
+function deriveScoresFromPost(post: FeedPost) {
+  const base = new Date(post.created_at).getTime() % 100;
+  const score = 60 + (base % 40); // 60–99
+  const aiProbability = (base * 7) % 100; // 0–99
+  return { score, aiProbability };
+}
+
 function getBadge(aiProbability: number) {
   if (aiProbability <= 20) {
-    return { label: 'Real', className: 'bg-emerald-500/10 text-emerald-300 border-emerald-400/60' };
+    return {
+      label: 'Real',
+      className: 'bg-emerald-500/10 text-emerald-300 border-emerald-400/60',
+    };
   }
   if (aiProbability <= 60) {
     return {
@@ -121,24 +119,47 @@ function getBadge(aiProbability: number) {
 
 export default function FeedPage() {
   const [posts, setPosts] = useState<FeedPost[]>([]);
+  const [loading, setLoading] = useState(true);
   const [interactions, setInteractions] = useState<InteractionsState>({});
-  const [commentDrafts, setCommentDrafts] = useState<Record<string, string>>({});
-  const [commentErrors, setCommentErrors] = useState<Record<string, string>>({});
+  const [commentDrafts, setCommentDrafts] = useState<Record<string, string>>(
+    {}
+  );
+  const [commentErrors, setCommentErrors] = useState<Record<string, string>>(
+    {}
+  );
 
   useEffect(() => {
-    if (typeof window === 'undefined') return;
-
-    setPosts(loadFeed());
-
-    try {
-      const raw = window.localStorage.getItem(INTERACTIONS_KEY);
-      if (raw) {
-        const parsed = JSON.parse(raw) as InteractionsState;
-        setInteractions(parsed);
+    // cargar interacciones locales
+    if (typeof window !== 'undefined') {
+      try {
+        const raw = window.localStorage.getItem(INTERACTIONS_KEY);
+        if (raw) {
+          const parsed = JSON.parse(raw) as InteractionsState;
+          setInteractions(parsed);
+        }
+      } catch {
+        setInteractions({});
       }
-    } catch {
-      setInteractions({});
     }
+
+    // cargar posts desde Supabase
+    const fetchPosts = async () => {
+      setLoading(true);
+      const { data, error } = await supabase
+        .from('posts')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        console.error('Error al cargar posts desde Supabase:', error);
+        setPosts([]);
+      } else {
+        setPosts(data || []);
+      }
+      setLoading(false);
+    };
+
+    fetchPosts();
   }, []);
 
   const persistInteractions = (next: InteractionsState) => {
@@ -234,13 +255,17 @@ export default function FeedPage() {
             Publicaciones analizadas por Ethiqia
           </h1>
           <p className="text-sm text-neutral-400">
-            Aquí se muestran las imágenes que subes desde la demo en vivo en
-            este navegador. Puedes dar like, comentar (moderado por IA),
-            guardar y simular compartir.
+            Estas son las imágenes que se han subido desde la demo en vivo y se
+            han guardado en el backend real (Supabase). Puedes dar like,
+            comentar (moderado por IA), guardar y simular compartir.
           </p>
         </header>
 
-        {posts.length === 0 && (
+        {loading && (
+          <p className="text-xs text-neutral-400">Cargando publicaciones…</p>
+        )}
+
+        {!loading && posts.length === 0 && (
           <p className="text-xs text-neutral-400">
             Todavía no hay publicaciones. Ve a{' '}
             <span className="font-medium text-emerald-400">Demo &gt; Live</span>{' '}
@@ -250,24 +275,26 @@ export default function FeedPage() {
 
         <div className="space-y-6">
           {posts.map((post) => {
-            const inter = interactions[post.id] || {
+            const postId = post.id.toString();
+            const inter = interactions[postId] || {
               liked: false,
               saved: false,
               comments: [],
             };
-            const draft = commentDrafts[post.id] || '';
-            const error = commentErrors[post.id] || '';
-            const badge = getBadge(post.aiProbability);
+            const draft = commentDrafts[postId] || '';
+            const error = commentErrors[postId] || '';
+            const { score, aiProbability } = deriveScoresFromPost(post);
+            const badge = getBadge(aiProbability);
 
             return (
               <article
-                key={post.id}
+                key={postId}
                 className="overflow-hidden rounded-2xl border border-neutral-800 bg-neutral-900/70"
               >
                 <div className="relative w-full bg-black">
                   <img
-                    src={post.imageUrl}
-                    alt={`Publicación Ethiqia (${post.score}/100)`}
+                    src={post.image_url}
+                    alt={post.caption || 'Publicación Ethiqia'}
                     className="w-full max-h-[480px] object-cover"
                   />
                   {/* Badge IA en la imagen */}
@@ -285,7 +312,7 @@ export default function FeedPage() {
                     <div className="flex items-center gap-3">
                       <button
                         type="button"
-                        onClick={() => toggleLike(post.id)}
+                        onClick={() => toggleLike(postId)}
                         className="flex items-center gap-1 text-neutral-200 hover:text-emerald-300"
                       >
                         <span>{inter.liked ? '❤️' : '🤍'}</span>
@@ -297,7 +324,7 @@ export default function FeedPage() {
                         className="flex items-center gap-1 text-neutral-200"
                         onClick={() => {
                           const el = document.getElementById(
-                            `comment-input-${post.id}`
+                            `comment-input-${postId}`
                           );
                           if (el) {
                             el.scrollIntoView({
@@ -314,7 +341,7 @@ export default function FeedPage() {
 
                       <button
                         type="button"
-                        onClick={() => toggleSave(post.id)}
+                        onClick={() => toggleSave(postId)}
                         className="flex items-center gap-1 text-neutral-200 hover:text-emerald-300"
                       >
                         <span>{inter.saved ? '🔖' : '📎'}</span>
@@ -335,34 +362,38 @@ export default function FeedPage() {
                     <p>
                       Ethiqia Score:{' '}
                       <span className="font-semibold text-emerald-300">
-                        {post.score}/100
+                        {score}/100
                       </span>
                     </p>
                     <p className="text-[11px]">
-                      {new Date(post.createdAt).toLocaleString('es-ES')}
+                      {new Date(post.created_at).toLocaleString('es-ES')}
                     </p>
                   </div>
+
+                  {post.caption && (
+                    <p className="text-xs text-neutral-300">{post.caption}</p>
+                  )}
 
                   <div className="border-t border-neutral-800 pt-3 space-y-2">
                     <div className="space-y-1">
                       <label
-                        htmlFor={`comment-input-${post.id}`}
+                        htmlFor={`comment-input-${postId}`}
                         className="text-[11px] text-neutral-400"
                       >
                         Comentar (moderado por IA)
                       </label>
                       <div className="flex items-center gap-2">
                         <input
-                          id={`comment-input-${post.id}`}
+                          id={`comment-input-${postId}`}
                           type="text"
                           value={draft}
                           onChange={(e) =>
-                            handleChangeDraft(post.id, e.target.value)
+                            handleChangeDraft(postId, e.target.value)
                           }
                           onKeyDown={(e) => {
                             if (e.key === 'Enter') {
                               e.preventDefault();
-                              handleSubmitComment(post.id);
+                              handleSubmitComment(postId);
                             }
                           }}
                           className="flex-1 rounded-lg border border-neutral-700 bg-neutral-950 px-3 py-1.5 text-xs text-neutral-100 outline-none focus:border-emerald-400"
@@ -370,7 +401,7 @@ export default function FeedPage() {
                         />
                         <button
                           type="button"
-                          onClick={() => handleSubmitComment(post.id)}
+                          onClick={() => handleSubmitComment(postId)}
                           className="rounded-lg bg-emerald-500 px-3 py-1 text-[11px] font-semibold text-black hover:bg-emerald-400"
                         >
                           Publicar
