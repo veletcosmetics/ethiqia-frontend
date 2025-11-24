@@ -19,24 +19,133 @@ type LocalComment = {
   createdAt: number;
 };
 
-const BANNED_WORDS = [
-  'puta',
-  'puto',
-  'gilipollas',
-  'subnormal',
-  'idiota',
-  'imbécil',
-  'mierda',
-  'cabrón',
-  'maricón',
-  'negro de mierda',
-  'sudaca',
-  'abortista',
-  'nazista',
-  'hitler',
-  'te voy a matar',
-  'ojalá te mueras',
+type ToxicCategory =
+  | 'hate'
+  | 'violence'
+  | 'bullying'
+  | 'sexual'
+  | 'self-harm'
+  | 'other';
+
+// Lista ampliada de insultos / odio / acoso
+const TOXIC_KEYWORDS: { pattern: string; category: ToxicCategory }[] = [
+  // Insultos generales / desprecio
+  { pattern: 'gilipollas', category: 'bullying' },
+  { pattern: 'subnormal', category: 'bullying' },
+  { pattern: 'idiota', category: 'bullying' },
+  { pattern: 'imbécil', category: 'bullying' },
+  { pattern: 'cretino', category: 'bullying' },
+  { pattern: 'payaso', category: 'bullying' },
+  { pattern: 'mierda', category: 'bullying' },
+  { pattern: 'asqueros', category: 'bullying' }, // asqueroso / asquerosa
+
+  // Insultos fuertes / degradantes
+  { pattern: 'puta', category: 'bullying' },
+  { pattern: 'puto', category: 'bullying' },
+  { pattern: 'zorra', category: 'bullying' },
+  { pattern: 'perra', category: 'bullying' },
+  { pattern: 'maricón', category: 'hate' },
+  { pattern: 'maricona', category: 'hate' },
+
+  // Racismo / xenofobia
+  { pattern: 'sudaca', category: 'hate' },
+  { pattern: 'negro de mierda', category: 'hate' },
+  { pattern: 'panchito', category: 'hate' },
+  { pattern: 'gitano de mierda', category: 'hate' },
+
+  // Nazismo / odio político extremo
+  { pattern: 'nazi', category: 'hate' },
+  { pattern: 'hitler', category: 'hate' },
+  { pattern: 'campos de concentración', category: 'hate' },
+
+  // Amenazas directas
+  { pattern: 'te voy a matar', category: 'violence' },
+  { pattern: 'ojalá te mueras', category: 'self-harm' },
+  { pattern: 'te voy a partir la cara', category: 'violence' },
+  { pattern: 'te voy a encontrar', category: 'violence' },
+
+  // Acoso directo
+  { pattern: 'no vales nada', category: 'bullying' },
+  { pattern: 'nadie te quiere', category: 'bullying' },
+  { pattern: 'deberías desaparecer', category: 'self-harm' },
 ];
+
+// Analizador “tipo IA” local (reglas + categorías)
+function analyzeComment(text: string): {
+  blocked: boolean;
+  category?: ToxicCategory;
+  reason?: string;
+} {
+  const lower = text.toLowerCase();
+
+  // 1) Palabras/frases tóxicas conocidas
+  for (const entry of TOXIC_KEYWORDS) {
+    if (lower.includes(entry.pattern)) {
+      switch (entry.category) {
+        case 'hate':
+          return {
+            blocked: true,
+            category: 'hate',
+            reason:
+              'Se ha detectado lenguaje de odio o discriminación (raza, género, orientación, etc.).',
+          };
+        case 'violence':
+          return {
+            blocked: true,
+            category: 'violence',
+            reason:
+              'Se ha detectado una amenaza o incitación a la violencia hacia otra persona.',
+          };
+        case 'bullying':
+          return {
+            blocked: true,
+            category: 'bullying',
+            reason:
+              'Se ha detectado lenguaje de acoso, insultos directos o degradación personal.',
+          };
+        case 'self-harm':
+          return {
+            blocked: true,
+            category: 'self-harm',
+            reason:
+              'Se ha detectado un contenido que puede incitar o desear daño hacia otra persona.',
+          };
+        case 'sexual':
+          return {
+            blocked: true,
+            category: 'sexual',
+            reason:
+              'Se ha detectado lenguaje sexual explícito inapropiado para Ethiqia.',
+          };
+        default:
+          return {
+            blocked: true,
+            category: 'other',
+            reason:
+              'El comentario infringe las normas de Ethiqia (odio, acoso o violencia).',
+          };
+      }
+    }
+  }
+
+  // 2) Heurísticas simples (no es IA real, pero imita una revisión)
+  const exclamations = (text.match(/!/g) || []).length;
+  const uppercaseWords = text
+    .split(' ')
+    .filter((w) => w.length > 3 && w === w.toUpperCase()).length;
+
+  if (exclamations >= 4 && uppercaseWords >= 2) {
+    return {
+      blocked: true,
+      category: 'bullying',
+      reason:
+        'El comentario parece muy agresivo (muchos gritos y énfasis). Reescríbelo en un tono más constructivo.',
+    };
+  }
+
+  // 3) Si pasa todo, se considera apto
+  return { blocked: false };
+}
 
 function computeScoreFromId(id: string): number {
   let acc = 0;
@@ -50,7 +159,6 @@ export default function FeedPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // estado UI local
   const [liked, setLiked] = useState<Record<string, boolean>>({});
   const [saved, setSaved] = useState<Record<string, boolean>>({});
   const [commentsByPost, setCommentsByPost] = useState<
@@ -135,7 +243,6 @@ export default function FeedPage() {
 
   const handleCommentChange = (postId: string, value: string) => {
     setPendingComment((prev) => ({ ...prev, [postId]: value }));
-    // al escribir limpiamos mensaje de moderación
     setModerationMsg((prev) => ({ ...prev, [postId]: null }));
   };
 
@@ -143,15 +250,17 @@ export default function FeedPage() {
     const raw = (pendingComment[postId] || '').trim();
     if (!raw) return;
 
-    const textLower = raw.toLowerCase();
+    // “IA” local: analiza el texto y decide si se bloquea
+    const analysis = analyzeComment(raw);
 
-    // moderación básica por IA (simulada)
-    const isBlocked = BANNED_WORDS.some((w) => textLower.includes(w));
-    if (isBlocked) {
+    if (analysis.blocked) {
+      const reason =
+        analysis.reason ||
+        'Tu comentario ha sido bloqueado por infringir las normas de Ethiqia.';
+
       setModerationMsg((prev) => ({
         ...prev,
-        [postId]:
-          'Tu comentario ha sido bloqueado por infringir las normas de Ethiqia (insultos, odio o acoso).',
+        [postId]: reason,
       }));
 
       try {
@@ -160,13 +269,13 @@ export default function FeedPage() {
           'Tu comentario fue bloqueado por infringir las normas de Ethiqia.'
         );
       } catch {
-        // no romper si falla notificación
+        // no rompemos la app si falla
       }
 
       return;
     }
 
-    // si pasa filtrado, lo añadimos a comentarios locales (no backend)
+    // Si pasa el filtro, se añade al listado local (no backend)
     const newComment: LocalComment = {
       id: `c-${Date.now()}-${Math.random().toString(16).slice(2)}`,
       postId,
@@ -188,7 +297,7 @@ export default function FeedPage() {
         'Tu comentario se ha publicado correctamente.'
       );
     } catch {
-      // ignoramos errores de notificación
+      // ignoramos errores
     }
   };
 
