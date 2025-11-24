@@ -1,4 +1,3 @@
-// app/profile/page.tsx
 'use client';
 
 import { useEffect, useState } from 'react';
@@ -13,23 +12,29 @@ type ProfilePost = {
   created_at: string | null;
 };
 
+type SessionData = {
+  user?: {
+    email?: string;
+    name?: string;
+  };
+};
+
 export default function ProfilePage() {
-  const [sessionData, setSessionData] = useState<any>(null);
+  const [session, setSession] = useState<SessionData | null>(null);
   const [posts, setPosts] = useState<ProfilePost[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
-  // Cargar sesión demo (localStorage)
   useEffect(() => {
     if (typeof window === 'undefined') return;
+
     try {
       const s = getSession();
-      if (s) setSessionData(s);
+      setSession(s as SessionData | null);
     } catch {
       // ignorar
     }
   }, []);
 
-  // Cargar posts reales desde Supabase
   useEffect(() => {
     const loadPosts = async () => {
       setIsLoading(true);
@@ -54,17 +59,30 @@ export default function ProfilePage() {
     loadPosts();
   }, []);
 
-  const publicationsCount = posts.length;
+  const handleDeletePost = async (postId: string) => {
+    const ok = window.confirm(
+      '¿Seguro que quieres eliminar esta publicación de la demo?'
+    );
+    if (!ok) return;
 
-  const userEmail: string =
-    sessionData?.user?.email ?? 'demo@ethiqia.app';
-  const userName: string =
-    sessionData?.user?.name ?? 'Demo User';
+    const { error } = await supabase.from('posts').delete().eq('id', postId);
+    if (error) {
+      console.error('Error al borrar post:', error);
+      alert('Error al borrar la publicación en Supabase.');
+      return;
+    }
+
+    setPosts((prev) => prev.filter((p) => p.id !== postId));
+  };
+
+  const userEmail: string = session?.user?.email ?? 'demo@ethiqia.app';
+  const userName: string = session?.user?.name ?? 'Demo User';
+  const publicationsCount = posts.length;
 
   return (
     <main className="min-h-[calc(100vh-64px)] bg-neutral-950 text-neutral-50">
       <section className="max-w-5xl mx-auto px-4 py-8 space-y-8">
-        {/* Cabecera de perfil */}
+        {/* Cabecera */}
         <header className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
           <div className="flex items-center gap-4">
             <div className="flex h-14 w-14 items-center justify-center rounded-full bg-neutral-800 text-lg font-semibold">
@@ -79,8 +97,7 @@ export default function ProfilePage() {
             </div>
           </div>
 
-          {/* 🔘 Botón para ir a la demo en vivo */}
-          <div className="flex justify-end">
+          <div className="flex flex-col items-end gap-2 text-right text-[11px] text-neutral-400">
             <Link
               href="/demo/live"
               className="rounded-full bg-emerald-500 px-4 py-2 text-sm font-medium text-neutral-950 hover:bg-emerald-400 transition-colors"
@@ -90,7 +107,7 @@ export default function ProfilePage() {
           </div>
         </header>
 
-        {/* Tarjetas de resumen */}
+        {/* Resumen */}
         <section className="grid gap-4 md:grid-cols-3">
           <div className="rounded-2xl border border-neutral-800 bg-neutral-900 p-4">
             <p className="text-[11px] uppercase tracking-[0.18em] text-neutral-500">
@@ -101,7 +118,11 @@ export default function ProfilePage() {
             </p>
             <p className="mt-2 text-xs text-neutral-400">
               Imágenes subidas desde la demo y guardadas en la base de datos real
-              (tabla <code className="bg-neutral-800 px-1 py-[1px] rounded">posts</code>).
+              (tabla{' '}
+              <code className="bg-neutral-800 px-1 py-[1px] rounded">
+                posts
+              </code>
+              ).
             </p>
           </div>
 
@@ -113,7 +134,8 @@ export default function ProfilePage() {
               Demo lista para enseñar a inversores.
             </p>
             <p className="mt-2 text-xs text-neutral-400">
-              Login, bio, feed y subida de imágenes reales funcionando sobre Supabase.
+              Login, bio, feed y subida de imágenes reales funcionando sobre
+              Supabase.
             </p>
           </div>
 
@@ -125,13 +147,12 @@ export default function ProfilePage() {
               Más bloques de score y APIs externas.
             </p>
             <p className="mt-2 text-xs text-neutral-400">
-              Conectar panel empresa, puntuaciones avanzadas y moderación externa
-              cuando tengamos feedback del Parque Científico.
+              Conectar panel empresa, puntuaciones avanzadas y casos de uso B2B.
             </p>
           </div>
         </section>
 
-        {/* Tu bio */}
+        {/* Bio */}
         <section className="rounded-2xl border border-neutral-800 bg-neutral-900 p-5 space-y-2">
           <h2 className="text-sm font-semibold text-neutral-100">Tu bio</h2>
           <p className="text-xs text-neutral-300">
@@ -139,13 +160,16 @@ export default function ProfilePage() {
             publicadas y la reputación asociada a tu actividad.
           </p>
           <p className="text-xs text-neutral-500">
-            En esta versión alfa, tus imágenes se guardan ya en Supabase como si
-            fueran publicaciones reales. El feed y este perfil leen directamente
-            de la tabla <code className="bg-neutral-800 px-1 py-[1px] rounded">posts</code>.
+            En esta versión alfa, tus imágenes se guardan ya en Supabase. El feed
+            y este perfil leen directamente de la tabla{' '}
+            <code className="bg-neutral-800 px-1 py-[1px] rounded">
+              posts
+            </code>
+            .
           </p>
         </section>
 
-        {/* Tus publicaciones */}
+        {/* Tus publicaciones + resumen lateral */}
         <section className="grid gap-6 md:grid-cols-[minmax(0,2fr)_minmax(0,1fr)] items-start">
           <div className="rounded-2xl border border-neutral-800 bg-neutral-900 p-4">
             <div className="flex items-center justify-between mb-3">
@@ -168,21 +192,32 @@ export default function ProfilePage() {
 
             {!isLoading && posts.length === 0 && (
               <p className="text-xs text-neutral-500">
-                Todavía no has subido ninguna foto desde la demo en vivo.
-                Pulsa en <span className="font-medium">“Subir foto en demo live”</span> para
-                añadir tu primera imagen.
+                Todavía no has subido ninguna foto desde la demo en vivo. Pulsa
+                en{' '}
+                <span className="font-medium">
+                  “Subir foto en demo live”
+                </span>{' '}
+                para añadir tu primera imagen.
               </p>
             )}
 
             {!isLoading && posts.length > 0 && (
               <div className="space-y-4">
-                {posts.slice(0, 4).map((post) => (
+                {posts.map((post) => (
                   <article
                     key={post.id}
-                    className="overflow-hidden rounded-2xl border border-neutral-800 bg-neutral-950"
+                    className="relative overflow-hidden rounded-2xl border border-neutral-800 bg-neutral-950"
                   >
+                    {/* Botón borrar */}
+                    <button
+                      type="button"
+                      onClick={() => handleDeletePost(post.id)}
+                      className="absolute right-2 top-2 z-10 rounded-full bg-black/70 px-2 py-1 text-[11px] text-red-300 hover:bg-black hover:text-red-200"
+                    >
+                      🗑 Borrar
+                    </button>
+
                     <div className="bg-neutral-950">
-                      {/* Las imágenes son dataURL, así que las mostramos tal cual */}
                       {/* eslint-disable-next-line @next/next/no-img-element */}
                       <img
                         src={post.image_url}
@@ -190,28 +225,27 @@ export default function ProfilePage() {
                         className="w-full max-h-[320px] object-cover"
                       />
                     </div>
-                    <div className="p-3 space-y-1">
-                      <p className="text-xs text-neutral-200">
-                        {post.caption ?? 'Publicación subida desde la demo en vivo.'}
-                      </p>
+                    <div className="p-3 space-y-1 text-xs">
+                      {post.caption && (
+                        <p className="text-neutral-200">
+                          {post.caption}
+                        </p>
+                      )}
                       {post.created_at && (
                         <p className="text-[11px] text-neutral-500">
-                          {new Date(post.created_at).toLocaleString()}
+                          {new Date(post.created_at).toLocaleString('es-ES', {
+                            dateStyle: 'short',
+                            timeStyle: 'short',
+                          })}
                         </p>
                       )}
                     </div>
                   </article>
                 ))}
-                {posts.length > 4 && (
-                  <p className="text-[11px] text-neutral-500">
-                    Tienes más publicaciones en el feed general.
-                  </p>
-                )}
               </div>
             )}
           </div>
 
-          {/* Resumen de actividad */}
           <aside className="rounded-2xl border border-neutral-800 bg-neutral-900 p-4 space-y-3 text-xs text-neutral-300">
             <h2 className="text-sm font-semibold text-neutral-100">
               Resumen de actividad
@@ -227,13 +261,17 @@ export default function ProfilePage() {
                   Última publicación guardada en Supabase:{' '}
                   <span className="font-medium">
                     {posts[0].created_at
-                      ? new Date(posts[0].created_at).toLocaleString()
+                      ? new Date(posts[0].created_at).toLocaleString('es-ES', {
+                          dateStyle: 'short',
+                          timeStyle: 'short',
+                        })
                       : 'fecha desconocida'}
                   </span>
                   .
                 </p>
                 <p className="text-neutral-400">
-                  Esta imagen se muestra tanto aquí como en el feed general de la demo.
+                  Esta imagen se muestra tanto aquí como en el feed general de la
+                  demo.
                 </p>
               </>
             )}
@@ -244,8 +282,10 @@ export default function ProfilePage() {
               </p>
               <p>
                 Las publicaciones del feed y tu perfil están leyendo de la tabla{' '}
-                <code className="bg-neutral-800 px-1 py-[1px] rounded">posts</code>. Es el
-                mismo backend que se puede escalar a empresas reales.
+                <code className="bg-neutral-800 px-1 py-[1px] rounded">
+                  posts
+                </code>
+                . Es el mismo backend que se puede escalar a empresas reales.
               </p>
             </div>
           </aside>
