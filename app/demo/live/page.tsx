@@ -1,6 +1,8 @@
 'use client';
 
 import { useState } from 'react';
+import { supabase } from '@/lib/supabaseClient';
+import { getSession } from '@/lib/session';
 
 type AnalysisResult = {
   authenticity: number;
@@ -8,16 +10,6 @@ type AnalysisResult = {
   coherence: number;
   ethScore: number;
 };
-
-type FeedPost = {
-  id: string;
-  imageUrl: string;
-  score: number;
-  aiProbability: number;
-  createdAt: number;
-};
-
-const FEED_KEY = 'ethiqia_feed_posts_v3';
 
 function generateAnalysis(): AnalysisResult {
   const aiProbability = Math.round(Math.random() * 70) + 10; // 10–80 %
@@ -41,29 +33,12 @@ function generateAnalysis(): AnalysisResult {
   };
 }
 
-function loadFeed(): FeedPost[] {
-  if (typeof window === 'undefined') return [];
-  try {
-    const raw = window.localStorage.getItem(FEED_KEY);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw) as FeedPost[];
-    if (!Array.isArray(parsed)) return [];
-    return parsed;
-  } catch {
-    return [];
-  }
-}
-
-function saveFeed(posts: FeedPost[]) {
-  if (typeof window === 'undefined') return;
-  window.localStorage.setItem(FEED_KEY, JSON.stringify(posts));
-}
-
 export default function LiveDemoPage() {
   const [imageSrc, setImageSrc] = useState<string | null>(null);
   const [fileName, setFileName] = useState<string | null>(null);
   const [analysis, setAnalysis] = useState<AnalysisResult | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -77,35 +52,47 @@ export default function LiveDemoPage() {
     setIsAnalyzing(true);
     setFileName(file.name || 'Imagen subida');
     setAnalysis(null);
+    setErrorMsg(null);
 
     const reader = new FileReader();
-    reader.onload = () => {
+    reader.onload = async () => {
       const result = reader.result as string;
       setImageSrc(result);
 
+      // 1) Análisis simulado IA
       const generated = generateAnalysis();
       setAnalysis(generated);
-      setIsAnalyzing(false);
 
-      // 🔹 Guardar en el "feed" de la demo (localStorage)
-      const createdAt = Date.now();
-      const newPost: FeedPost = {
-        id: `p-${createdAt}`,
-        imageUrl: result,
-        score: generated.ethScore,
-        aiProbability: generated.aiProbability,
-        createdAt,
-      };
-
+      // 2) Intentar guardar en Supabase (backend real)
       try {
-        const current = loadFeed();
-        const updated = [newPost, ...current];
-        saveFeed(updated);
-      } catch {
-        // ignoramos errores
-      }
+        const s = getSession();
+        const userId = s?.user?.id ?? null;
 
-      alert('✅ Imagen analizada y guardada en el feed y tu bio (en este navegador).');
+        const { error } = await supabase.from('posts').insert({
+          user_id: userId,
+          image_url: result, // guardamos el dataURL, para demo es suficiente
+          caption: file.name || 'Imagen subida en la demo',
+        });
+
+        if (error) {
+          console.error('Error al guardar en Supabase:', error);
+          setErrorMsg(
+            '⚠️ La imagen se ha analizado, pero hubo un error al guardar en el backend real.'
+          );
+        } else {
+          setErrorMsg(null);
+          alert(
+            '✅ Imagen analizada y guardada en el backend. Debería aparecer en el feed y en tu perfil.'
+          );
+        }
+      } catch (e) {
+        console.error(e);
+        setErrorMsg(
+          '⚠️ La imagen se ha analizado, pero hubo un error al guardar en el backend real.'
+        );
+      } finally {
+        setIsAnalyzing(false);
+      }
     };
 
     reader.readAsDataURL(file);
@@ -122,9 +109,9 @@ export default function LiveDemoPage() {
             Sube una foto y deja que Ethiqia la analice
           </h1>
           <p className="text-sm text-neutral-400 max-w-2xl">
-            En esta demo todo ocurre en tu navegador: subes una imagen, se
-            simula un análisis IA con Ethiqia Score y la publicación se guarda
-            en tu feed y en tu perfil de este navegador.
+            En esta demo subes una imagen, se simula el análisis IA con Ethiqia
+            Score y la publicación se guarda en la base de datos real (Supabase)
+            para verse en el feed y tu perfil.
           </p>
         </header>
 
@@ -138,7 +125,7 @@ export default function LiveDemoPage() {
             <span>
               Haz clic para elegir una imagen
               <span className="block text-[11px] text-neutral-500 mt-1">
-                (solo se procesa en tu navegador; no se sube a servidores)
+                Formatos recomendados: jpg, png, webp (evita HEIC).
               </span>
             </span>
             <input
@@ -154,6 +141,10 @@ export default function LiveDemoPage() {
               Imagen seleccionada:{' '}
               <span className="text-neutral-300">{fileName}</span>
             </p>
+          )}
+
+          {errorMsg && (
+            <p className="text-[11px] text-amber-400 mt-1">{errorMsg}</p>
           )}
         </section>
 
