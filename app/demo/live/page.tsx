@@ -1,7 +1,8 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabaseClient';
+import { addNotification } from '@/lib/notifications';
 import { getSession } from '@/lib/session';
 
 type AnalysisResult = {
@@ -10,6 +11,15 @@ type AnalysisResult = {
   coherence: number;
   ethScore: number;
 };
+
+type DemoPost = {
+  imageUrl: string;
+  score: number;
+  name?: string;
+  createdAt?: number;
+};
+
+const STORAGE_KEY = 'ethiqia_demo_post';
 
 function generateAnalysis(): AnalysisResult {
   const aiProbability = Math.round(Math.random() * 70) + 10; // 10–80 %
@@ -38,60 +48,124 @@ export default function LiveDemoPage() {
   const [fileName, setFileName] = useState<string | null>(null);
   const [analysis, setAnalysis] = useState<AnalysisResult | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
-  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [lastSaved, setLastSaved] = useState<DemoPost | null>(null);
+  const [backendError, setBackendError] = useState<string | null>(null);
+
+  // Cargar sesión demo (por si quieres mostrar algo en el futuro)
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    try {
+      const s = getSession();
+      // ahora mismo no la usamos para guardar user_id
+      console.log('Sesión demo cargada:', s);
+    } catch {
+      // ignorar
+    }
+
+    const raw = window.localStorage.getItem(STORAGE_KEY);
+    if (raw) {
+      try {
+        const data = JSON.parse(raw) as DemoPost;
+        if (data.imageUrl) {
+          setLastSaved(data);
+        }
+      } catch {
+        // ignorar
+      }
+    }
+  }, []);
 
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
 
+    // Evitamos HEIC y formatos raros
     if (!file.type.startsWith('image/')) {
-      alert('Sube solo archivos de imagen (jpg, png, webp...).');
+      alert('Sube solo archivos de imagen (jpg, png, webp...)');
       return;
     }
 
     setIsAnalyzing(true);
     setFileName(file.name || 'Imagen subida');
     setAnalysis(null);
-    setErrorMsg(null);
+    setBackendError(null);
 
     const reader = new FileReader();
     reader.onload = async () => {
       const result = reader.result as string;
       setImageSrc(result);
 
-      // 1) Análisis simulado IA
+      // 1) Simular análisis IA
       const generated = generateAnalysis();
       setAnalysis(generated);
+      setIsAnalyzing(false);
 
-      // 2) Intentar guardar en Supabase (backend real)
+      // 2) Guardar en localStorage (demo)
       try {
-        const s = getSession();
-        const userId = s?.user?.id ?? null;
+        const demoPost: DemoPost = {
+          imageUrl: result,
+          score: generated.ethScore,
+          name: file.name || 'Demo Ethiqia',
+          createdAt: Date.now(),
+        };
+        window.localStorage.setItem(STORAGE_KEY, JSON.stringify(demoPost));
+        setLastSaved(demoPost);
+      } catch {
+        // ignoramos errores de almacenamiento
+      }
 
+      // 3) Guardar también un "feed" local de demo (por si lo quieres usar)
+      try {
+        const rawFeed = window.localStorage.getItem('ethiqia_feed_posts');
+        const parsed = rawFeed ? JSON.parse(rawFeed) : [];
+
+        const newPost = {
+          id: `p-${Date.now()}`,
+          imageUrl: result,
+          score: generated.ethScore,
+          createdAt: Date.now(),
+        };
+
+        const updated = [newPost, ...parsed];
+        window.localStorage.setItem(
+          'ethiqia_feed_posts',
+          JSON.stringify(updated)
+        );
+      } catch {
+        // ignoramos errores
+      }
+
+      // 4) GUARDAR EN SUPABASE (SIN user_id para evitar problemas de foreign key)
+      try {
         const { error } = await supabase.from('posts').insert({
-          user_id: userId,
-          image_url: result, // guardamos el dataURL, para demo es suficiente
-          caption: file.name || 'Imagen subida en la demo',
+          image_url: result, // dataURL directamente
+          caption: file.name || 'Imagen subida en la demo en vivo',
         });
 
         if (error) {
           console.error('Error al guardar en Supabase:', error);
-          setErrorMsg(
+          setBackendError(
             '⚠️ La imagen se ha analizado, pero hubo un error al guardar en el backend real.'
           );
         } else {
-          setErrorMsg(null);
-          alert(
-            '✅ Imagen analizada y guardada en el backend. Debería aparecer en el feed y en tu perfil.'
-          );
+          setBackendError(null);
         }
       } catch (e) {
-        console.error(e);
-        setErrorMsg(
+        console.error('Error inesperado al guardar en Supabase:', e);
+        setBackendError(
           '⚠️ La imagen se ha analizado, pero hubo un error al guardar en el backend real.'
         );
-      } finally {
-        setIsAnalyzing(false);
+      }
+
+      // 5) Notificación de score (demo)
+      try {
+        addNotification(
+          'post-scored',
+          `Tu publicación generó ${generated.ethScore} puntos de Ethiqia Score.`
+        );
+      } catch {
+        // ignoramos errores de notificaciones
       }
     };
 
@@ -109,23 +183,33 @@ export default function LiveDemoPage() {
             Sube una foto y deja que Ethiqia la analice
           </h1>
           <p className="text-sm text-neutral-400 max-w-2xl">
-            En esta demo subes una imagen, se simula el análisis IA con Ethiqia
-            Score y la publicación se guarda en la base de datos real (Supabase)
-            para verse en el feed y tu perfil.
+            Esta demo muestra el flujo completo: subes una imagen, la IA simula
+            el análisis, genera un Ethiqia Score y la publicación se guarda en
+            tu perfil y en el feed real (Supabase) además de la demo local.
           </p>
         </header>
 
         {/* Subida de imagen */}
         <section className="space-y-3 rounded-2xl border border-neutral-800 bg-neutral-900/60 p-4">
-          <h2 className="text-sm font-semibold text-neutral-100">
-            1. Sube una imagen de demo
-          </h2>
+          <div className="flex items-center justify-between gap-3 flex-wrap">
+            <div>
+              <h2 className="text-sm font-semibold text-neutral-100">
+                1. Sube una imagen de demo
+              </h2>
+              <p className="text-xs text-neutral-400">
+                Usa una foto real (jpg, png, webp…). En esta versión demo el
+                archivo se procesa en tu navegador y también se guarda en
+                Supabase como si fuera una publicación real.
+              </p>
+            </div>
+          </div>
+
           <label className="mt-2 flex flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-neutral-700 bg-neutral-950/60 px-4 py-6 text-center text-xs text-neutral-400 cursor-pointer hover:border-emerald-400 hover:text-emerald-300">
             <span className="text-3xl">📷</span>
             <span>
               Haz clic para elegir una imagen
               <span className="block text-[11px] text-neutral-500 mt-1">
-                Formatos recomendados: jpg, png, webp (evita HEIC).
+                (no usamos HEIC; mejor jpg/png/webp)
               </span>
             </span>
             <input
@@ -143,8 +227,8 @@ export default function LiveDemoPage() {
             </p>
           )}
 
-          {errorMsg && (
-            <p className="text-[11px] text-amber-400 mt-1">{errorMsg}</p>
+          {backendError && (
+            <p className="text-[11px] text-amber-400 mt-1">{backendError}</p>
           )}
         </section>
 
@@ -158,6 +242,7 @@ export default function LiveDemoPage() {
               </h2>
               <div className="overflow-hidden rounded-2xl border border-neutral-800 bg-neutral-900">
                 {imageSrc ? (
+                  // eslint-disable-next-line @next/next/no-img-element
                   <img
                     src={imageSrc}
                     alt="Vista previa"
@@ -174,7 +259,7 @@ export default function LiveDemoPage() {
             {/* Resultados IA */}
             <div className="space-y-2">
               <h2 className="text-sm font-semibold text-neutral-100">
-                3. Análisis IA (simulado)
+                3. Análisis IA (simulado para demo)
               </h2>
               <div className="rounded-2xl border border-neutral-800 bg-neutral-900 p-4 text-sm space-y-3">
                 {isAnalyzing && (
@@ -238,6 +323,10 @@ export default function LiveDemoPage() {
                         {analysis.ethScore}/100
                       </span>
                     </div>
+                    <p className="text-[11px] text-neutral-500">
+                      En producción este score vendría de modelos entrenados.
+                      Aquí es una simulación para enseñar el flujo completo.
+                    </p>
                   </>
                 )}
 
@@ -250,6 +339,40 @@ export default function LiveDemoPage() {
             </div>
           </section>
         )}
+
+        {/* Estado de integración */}
+        <section className="rounded-2xl border border-neutral-800 bg-neutral-900/60 p-4 text-xs text-neutral-300 space-y-2">
+          <h2 className="text-sm font-semibold text-neutral-100">
+            Qué está pasando por detrás en esta demo
+          </h2>
+          <ul className="list-disc pl-4 space-y-1">
+            <li>
+              La imagen se analiza en tu navegador y se guarda como publicación
+              demo en <code>localStorage</code>.
+            </li>
+            <li>
+              También se guarda una entrada real en Supabase en la tabla{' '}
+              <code>posts</code> (imagen + texto, sin user_id de momento).
+            </li>
+            <li>
+              Esa publicación aparecerá en tu bio y en el feed real si todo está
+              conectado correctamente.
+            </li>
+          </ul>
+
+          {lastSaved && (
+            <p className="text-[11px] text-neutral-500 mt-2">
+              Última demo local guardada:{' '}
+              <span className="text-neutral-300">
+                {lastSaved.name || 'Sin nombre'}
+              </span>
+              , Ethiqia Score:{' '}
+              <span className="text-emerald-300">
+                {lastSaved.score}/100
+              </span>
+            </p>
+          )}
+        </section>
       </section>
     </main>
   );
