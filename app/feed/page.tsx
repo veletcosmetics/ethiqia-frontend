@@ -1,13 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-
-type FeedPost = {
-  id: string;
-  imageUrl: string;
-  score: number;
-  createdAt: number;
-};
+import { getDemoFeedPosts, type DemoFeedPost } from '@/lib/feed';
 
 type FeedComment = {
   id: string;
@@ -23,10 +17,8 @@ type Interactions = {
 
 type InteractionsState = Record<string, Interactions>;
 
-const FEED_STORAGE_KEY = 'ethiqia_feed_posts';
-const INTERACTIONS_KEY = 'ethiqia_feed_interactions';
+const INTERACTIONS_KEY = 'ethiqia_feed_interactions_v2';
 
-// Lista simple de insultos para moderar comentarios (demo)
 const BAD_WORDS = [
   'puta',
   'gilipollas',
@@ -44,30 +36,20 @@ function isToxic(text: string) {
 }
 
 export default function FeedPage() {
-  const [posts, setPosts] = useState<FeedPost[]>([]);
+  const [posts, setPosts] = useState<DemoFeedPost[]>([]);
   const [interactions, setInteractions] = useState<InteractionsState>({});
   const [commentDrafts, setCommentDrafts] = useState<Record<string, string>>({});
   const [commentErrors, setCommentErrors] = useState<Record<string, string>>({});
 
-  // Cargar posts desde localStorage (los que crea /demo/live)
   useEffect(() => {
     if (typeof window === 'undefined') return;
 
-    try {
-      const raw = window.localStorage.getItem(FEED_STORAGE_KEY);
-      if (raw) {
-        const parsed = JSON.parse(raw) as FeedPost[];
-        setPosts(parsed);
-      }
-    } catch {
-      setPosts([]);
-    }
+    setPosts(getDemoFeedPosts());
 
-    // Cargar interacciones
     try {
-      const rawInter = window.localStorage.getItem(INTERACTIONS_KEY);
-      if (rawInter) {
-        const parsed = JSON.parse(rawInter) as InteractionsState;
+      const raw = window.localStorage.getItem(INTERACTIONS_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw) as InteractionsState;
         setInteractions(parsed);
       }
     } catch {
@@ -108,9 +90,10 @@ export default function FeedPage() {
     persistInteractions(next);
   };
 
-  const handleShare = (postId: string) => {
-    // Demo: solo enseñamos un alert
-    alert('En la versión real podrías compartir este post con un enlace público o en otras redes.');
+  const handleShare = () => {
+    alert(
+      'En la versión real podrías compartir este post con un enlace público o en otras redes.'
+    );
   };
 
   const handleChangeDraft = (postId: string, text: string) => {
@@ -125,7 +108,8 @@ export default function FeedPage() {
     if (isToxic(text)) {
       setCommentErrors((prev) => ({
         ...prev,
-        [postId]: 'Tu comentario no se ha publicado porque infringe las normas de respeto.',
+        [postId]:
+          'Tu comentario no se ha publicado porque infringe las normas de respeto.',
       }));
       return;
     }
@@ -166,19 +150,19 @@ export default function FeedPage() {
             Publicaciones analizadas por Ethiqia
           </h1>
           <p className="text-sm text-neutral-400">
-            Aquí se muestran las imágenes que hayas subido desde la demo en vivo.
-            Los likes, comentarios, guardados y compartidos son de esta demo local
-            (no se guardan aún en el backend).
+            Aquí se muestran las imágenes que subes desde la demo en vivo. Los
+            likes, comentarios, guardados y compartidos son parte de esta demo
+            local.
           </p>
         </header>
 
-        {posts.length === 0 ? (
+        {posts.length === 0 && (
           <p className="text-xs text-neutral-400">
             Todavía no hay publicaciones. Ve a{' '}
             <span className="font-medium text-emerald-400">Demo &gt; Live</span>{' '}
             y sube tu primera imagen.
           </p>
-        ) : null}
+        )}
 
         <div className="space-y-6">
           {posts.map((post) => {
@@ -195,18 +179,15 @@ export default function FeedPage() {
                 key={post.id}
                 className="overflow-hidden rounded-2xl border border-neutral-800 bg-neutral-900/70"
               >
-                {/* Imagen */}
                 <div className="w-full bg-black">
                   <img
                     src={post.imageUrl}
-                    alt={post.score ? `Ethiqia Score: ${post.score}` : 'Publicación Ethiqia'}
+                    alt={`Publicación Ethiqia (${post.score}/100)`}
                     className="w-full max-h-[480px] object-cover"
                   />
                 </div>
 
-                {/* Contenido */}
                 <div className="px-4 py-3 space-y-3 text-sm">
-                  {/* Barra de acciones */}
                   <div className="flex items-center justify-between text-xs">
                     <div className="flex items-center gap-3">
                       <button
@@ -222,8 +203,16 @@ export default function FeedPage() {
                         type="button"
                         className="flex items-center gap-1 text-neutral-200"
                         onClick={() => {
-                          const el = document.getElementById(`comment-input-${post.id}`);
-                          if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                          const el = document.getElementById(
+                            `comment-input-${post.id}`
+                          );
+                          if (el) {
+                            el.scrollIntoView({
+                              behavior: 'smooth',
+                              block: 'center',
+                            });
+                            (el as HTMLInputElement).focus();
+                          }
                         }}
                       >
                         <span>💬</span>
@@ -242,14 +231,13 @@ export default function FeedPage() {
 
                     <button
                       type="button"
-                      onClick={() => handleShare(post.id)}
+                      onClick={handleShare}
                       className="text-neutral-200 hover:text-emerald-300"
                     >
                       ↗️ Compartir
                     </button>
                   </div>
 
-                  {/* Info del post */}
                   <div className="flex items-center justify-between text-xs text-neutral-400">
                     <p>
                       Ethiqia Score:{' '}
@@ -262,7 +250,6 @@ export default function FeedPage() {
                     </p>
                   </div>
 
-                  {/* Comentarios */}
                   <div className="border-t border-neutral-800 pt-3 space-y-2">
                     <div className="space-y-1">
                       <label
