@@ -1,72 +1,88 @@
 // lib/notifications.ts
 
+const STORAGE_KEY = 'ethiqia_notifications_v1';
+
 export type EthiqiaNotificationType =
   | 'post-scored'
   | 'comment-approved'
-  | 'comment-blocked'
-  | 'demo-info';
+  | 'comment-blocked';
 
-export interface EthiqiaNotification {
+export type EthiqiaNotification = {
   id: string;
   type: EthiqiaNotificationType;
   message: string;
   createdAt: number;
-}
-
-// 🔔 Etiquetas por tipo de notificación
-export const NOTIFICATION_LABELS: Record<EthiqiaNotificationType, string> = {
-  'post-scored': 'Tu publicación ha recibido un Ethiqia Score.',
-  'comment-approved': 'Tu comentario fue publicado.',
-  'comment-blocked': 'Tu comentario fue bloqueado por la IA.',
-  'demo-info': 'Información de la demo.'
+  read: boolean;
 };
 
-// 🔔 Guarda una notificación en localStorage (versión demo)
-export function addNotification(type: EthiqiaNotificationType, message: string) {
-  if (typeof window === 'undefined') return;
-
-  try {
-    const raw = localStorage.getItem('ethiqia_notifications');
-    const list: EthiqiaNotification[] = raw ? JSON.parse(raw) : [];
-
-    const newNotif: EthiqiaNotification = {
-      id: `n-${Date.now()}-${Math.floor(Math.random() * 9999)}`,
-      type,
-      message,
-      createdAt: Date.now()
-    };
-
-    const updated = [newNotif, ...list];
-    localStorage.setItem('ethiqia_notifications', JSON.stringify(updated));
-  } catch (e) {
-    console.error('Error guardando notificación:', e);
-  }
-}
-
-// 🔔 Cargar todas las notificaciones
-export function getNotifications(): EthiqiaNotification[] {
+// ---- utilidades internas ----
+function loadFromStorage(): EthiqiaNotification[] {
   if (typeof window === 'undefined') return [];
   try {
-    const raw = localStorage.getItem('ethiqia_notifications');
-    return raw ? JSON.parse(raw) : [];
+    const raw = window.localStorage.getItem(STORAGE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as EthiqiaNotification[];
+    if (!Array.isArray(parsed)) return [];
+    // ordenar de más reciente a más antiguo
+    return parsed
+      .filter((n) => !!n && typeof n.id === 'string')
+      .sort((a, b) => b.createdAt - a.createdAt);
   } catch {
     return [];
   }
 }
 
-// 🔔 Borrar una notificación concreta
-export function deleteNotification(id: string) {
+function saveToStorage(notifs: EthiqiaNotification[]) {
   if (typeof window === 'undefined') return;
   try {
-    const raw = localStorage.getItem('ethiqia_notifications');
-    const list: EthiqiaNotification[] = raw ? JSON.parse(raw) : [];
-    const updated = list.filter(n => n.id !== id);
-    localStorage.setItem('ethiqia_notifications', JSON.stringify(updated));
-  } catch {}
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(notifs));
+  } catch {
+    // si falla, no rompemos la app
+    console.warn('No se pudieron guardar las notificaciones en localStorage');
+  }
 }
 
-// 🔔 Limpiar todo (por si lo necesitas)
-export function clearNotifications() {
+// ---- API pública ----
+
+/**
+ * Devuelve todas las notificaciones guardadas en localStorage,
+ * ordenadas de más recientes a más antiguas.
+ */
+export function getNotifications(): EthiqiaNotification[] {
+  return loadFromStorage();
+}
+
+/**
+ * Añade una nueva notificación al listado local.
+ */
+export function addNotification(
+  type: EthiqiaNotificationType,
+  message: string
+) {
+  const base: EthiqiaNotification = {
+    id: `ntf-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+    type,
+    message,
+    createdAt: Date.now(),
+    read: false,
+  };
+
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  const current = loadFromStorage();
+  const updated = [base, ...current];
+  saveToStorage(updated);
+}
+
+/**
+ * Marca todas las notificaciones como leídas.
+ * (Lo usa la página /notifications)
+ */
+export function markAllAsRead() {
   if (typeof window === 'undefined') return;
-  localStorage.removeItem('ethiqia_notifications');
+  const current = loadFromStorage();
+  const updated = current.map((n) => ({ ...n, read: true }));
+  saveToStorage(updated);
 }
