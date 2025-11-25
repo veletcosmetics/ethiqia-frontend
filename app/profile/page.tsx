@@ -2,15 +2,12 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import Image from 'next/image';
 import { supabase } from '@/lib/supabaseClient';
 import { getSession, type Session } from '@/lib/session';
 import {
   type EthiqiaNotification,
   getNotifications,
 } from '@/lib/notifications';
-
-// ---- Tipos auxiliares ----
 
 type ProfilePost = {
   id: string;
@@ -27,8 +24,6 @@ type ProfileState = {
   notifications: EthiqiaNotification[];
   lastDemoScore: number | null;
 };
-
-// ---- Helpers para notificaciones ----
 
 function getTitle(type: string) {
   switch (type) {
@@ -58,7 +53,6 @@ export default function ProfilePage() {
     lastDemoScore: null,
   });
 
-  // Cargar sesión, posts del usuario, notificaciones y último score de demo
   useEffect(() => {
     async function load() {
       try {
@@ -67,20 +61,18 @@ export default function ProfilePage() {
         let notifications: EthiqiaNotification[] = [];
         let lastDemoScore: number | null = null;
 
-        // Último Ethiqia Score de la demo (guardado en localStorage por /demo/live)
+        // Último score de demo
         if (typeof window !== 'undefined') {
           try {
             const raw = window.localStorage.getItem('ethiqia_demo_post');
             if (raw) {
-              const parsed = JSON.parse(raw) as {
-                score?: number;
-              };
+              const parsed = JSON.parse(raw) as { score?: number };
               if (typeof parsed.score === 'number') {
                 lastDemoScore = parsed.score;
               }
             }
           } catch {
-            // ignoramos errores
+            // ignore
           }
         }
 
@@ -91,7 +83,7 @@ export default function ProfilePage() {
           notifications = [];
         }
 
-        // Si tenemos sesión, leer sus posts en Supabase
+        // Posts reales del usuario
         if (s?.user?.id) {
           const { data, error } = await supabase
             .from('posts')
@@ -121,13 +113,22 @@ export default function ProfilePage() {
   }, []);
 
   const { session, loading, posts, notifications, lastDemoScore } = state;
-  const userName = session?.user?.name || 'David Guirao';
-  const userEmail =
-    session?.user?.email || 'davidguiraaruiz@hotmail.com';
+  const userName = session?.user?.name || 'Tu perfil Ethiqia';
+  const userEmail = session?.user?.email || 'ejemplo@correo.com';
 
   const publicacionesReales = posts.length;
   const ethScoreTexto =
-    lastDemoScore != null ? `${lastDemoScore}/100` : '87/100';
+    lastDemoScore != null ? `${lastDemoScore}/100` : '—';
+
+  const lastThreeNotifications = notifications.slice(0, 3);
+  const notificationsCount = notifications.length;
+
+  const initials = (userName || 'T')
+    .split(' ')
+    .map((p) => p[0])
+    .join('')
+    .slice(0, 2)
+    .toUpperCase();
 
   return (
     <main className="min-h-[calc(100vh-64px)] bg-neutral-950 text-neutral-50">
@@ -136,15 +137,25 @@ export default function ProfilePage() {
         <header className="flex flex-col gap-4 border-b border-neutral-900 pb-5 md:flex-row md:items-center md:justify-between">
           <div className="flex items-center gap-4">
             <div className="flex h-14 w-14 items-center justify-center rounded-full bg-neutral-800 text-lg font-semibold">
-              {userName.charAt(0).toUpperCase()}
+              {initials}
             </div>
             <div>
               <h1 className="text-xl font-semibold">{userName}</h1>
               <p className="text-sm text-neutral-400">{userEmail}</p>
-              <div className="mt-2 flex flex-wrap gap-2 text-xs">
+              <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
                 <span className="rounded-full bg-emerald-500/10 px-2 py-1 text-emerald-300">
                   Perfil demo conectado a backend (Supabase)
                 </span>
+                {/* Indicador de notificaciones arriba */}
+                <Link
+                  href="/notifications"
+                  className="flex items-center gap-1 rounded-full border border-neutral-700 bg-neutral-900 px-2 py-1 text-[11px] text-neutral-200 hover:border-emerald-400 hover:text-emerald-300"
+                >
+                  🔔 Notificaciones recibidas
+                  <span className="rounded-full bg-neutral-800 px-1.5 text-[10px] text-emerald-300">
+                    {notificationsCount}
+                  </span>
+                </Link>
               </div>
             </div>
           </div>
@@ -180,14 +191,13 @@ export default function ProfilePage() {
 
           <div className="rounded-2xl border border-neutral-900 bg-neutral-900/60 p-4">
             <p className="text-xs font-medium text-neutral-400">
-              ESTADO
+              ETHIQIA SCORE (demo)
             </p>
-            <p className="mt-2 text-sm font-semibold text-neutral-100">
-              Demo lista para enseñar a inversores.
+            <p className="mt-2 text-2xl font-semibold text-emerald-400">
+              {ethScoreTexto}
             </p>
             <p className="mt-1 text-xs text-neutral-500">
-              Login, bio, feed y subida de imágenes reales conectadas a
-              Supabase.
+              Último score generado al subir una foto en la demo en vivo.
             </p>
           </div>
 
@@ -220,14 +230,11 @@ export default function ProfilePage() {
             conectar empresas, APIs externas y más bloques de Ethiqia
             Score.
           </p>
-          <p className="text-xs text-emerald-400 mt-1">
-            Ethiqia Score (última demo):{' '}
-            <span className="font-semibold">{ethScoreTexto}</span>
-          </p>
         </section>
 
-        {/* PUBLICACIONES DEL USUARIO */}
+        {/* PUBLICACIONES + NOTIFICACIONES (solo 3 últimas) */}
         <section className="grid gap-4 md:grid-cols-[2fr,1fr] items-start">
+          {/* Tus publicaciones */}
           <div className="rounded-2xl border border-neutral-900 bg-neutral-900/60 p-4">
             <div className="flex items-center justify-between gap-2">
               <h2 className="text-sm font-semibold text-neutral-100">
@@ -268,17 +275,13 @@ export default function ProfilePage() {
                     key={post.id}
                     className="overflow-hidden rounded-xl border border-neutral-800 bg-neutral-950/80"
                   >
-                    {/* Imagen */}
                     <div className="relative aspect-[4/5] w-full overflow-hidden bg-neutral-900">
-                      {/* usamos img normal porque image_url es un dataURL grande */}
                       <img
                         src={post.image_url}
                         alt={post.caption ?? 'Publicación Ethiqia'}
                         className="h-full w-full object-cover"
                       />
                     </div>
-
-                    {/* Pie */}
                     <div className="px-3 py-2 space-y-1">
                       <p className="text-[11px] uppercase tracking-[0.16em] text-neutral-500">
                         Publicación real
@@ -298,54 +301,25 @@ export default function ProfilePage() {
             )}
           </div>
 
-          {/* RESUMEN DE ACTIVIDAD + NOTIFICACIONES BÁSICAS */}
+          {/* Notificaciones recientes (solo 3) */}
           <aside className="space-y-4">
-            {/* Resumen actividad */}
             <div className="rounded-2xl border border-neutral-900 bg-neutral-900/60 p-4">
               <h2 className="text-sm font-semibold text-neutral-100">
-                Resumen de actividad
-              </h2>
-
-              {posts.length === 0 ? (
-                <p className="mt-2 text-sm text-neutral-500">
-                  Aún no hay actividad real. Sube una foto desde la demo
-                  para ver aquí tu historial.
-                </p>
-              ) : (
-                <>
-                  <p className="mt-2 text-xs text-neutral-400">
-                    Última publicación guardada en Supabase el:
-                  </p>
-                  <p className="text-sm font-medium text-neutral-100">
-                    {formatDate(posts[0].created_at)}
-                  </p>
-                  <p className="mt-2 text-xs text-neutral-400">
-                    Esta imagen se ha subido desde la demo en vivo y se
-                    muestra tanto aquí como en el feed general de Ethiqia.
-                  </p>
-                </>
-              )}
-            </div>
-
-            {/* Notificaciones recientes del usuario */}
-            <div className="rounded-2xl border border-neutral-900 bg-neutral-900/60 p-4">
-              <h2 className="text-sm font-semibold text-neutral-100">
-                Notificaciones recientes
+                Últimas notificaciones
               </h2>
               <p className="mt-1 text-xs text-neutral-500">
-                Aquí verás avisos como puntuaciones de Ethiqia Score,
-                comentarios bloqueados por IA o actividad relevante en tu
-                perfil.
+                Solo se muestran las 3 más recientes. Para ver el historial
+                completo, entra en la sección de notificaciones.
               </p>
 
-              <ul className="space-y-3 mt-4">
-                {notifications.length === 0 && (
+              <ul className="mt-4 space-y-3">
+                {lastThreeNotifications.length === 0 && (
                   <p className="text-neutral-500 text-sm">
                     Aún no tienes notificaciones.
                   </p>
                 )}
 
-                {notifications.map((n) => (
+                {lastThreeNotifications.map((n) => (
                   <li
                     key={n.id}
                     className="rounded-xl border border-neutral-800 bg-neutral-950 px-4 py-3 text-sm"
@@ -358,9 +332,7 @@ export default function ProfilePage() {
                         {formatDate(n.created_at)}
                       </span>
                     </div>
-                    <p className="text-neutral-400 mt-1">
-                      {n.message}
-                    </p>
+                    <p className="mt-1 text-neutral-400">{n.message}</p>
                   </li>
                 ))}
               </ul>
