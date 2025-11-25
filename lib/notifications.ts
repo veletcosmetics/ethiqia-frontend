@@ -1,68 +1,97 @@
-// NOTIFICACIONES ETHIQIA – COMPLETO Y ARREGLADO
-// =============================================
+// lib/notifications.ts
 
-// Tipos de notificación permitidos
+const STORAGE_KEY = 'ethiqia_notifications';
+
 export type EthiqiaNotificationType =
   | 'post-scored'
   | 'comment-approved'
   | 'comment-blocked';
 
-// Objeto de notificación
-export interface EthiqiaNotification {
+export type EthiqiaNotification = {
   id: string;
   type: EthiqiaNotificationType;
   message: string;
-  created_at: number; // timestamp
+  created_at: string; // ISO date
   read: boolean;
-}
+};
 
-// Obtener notificaciones almacenadas en localStorage
-export function getNotifications(): EthiqiaNotification[] {
+function loadRaw(): EthiqiaNotification[] {
   if (typeof window === 'undefined') return [];
   try {
-    const stored = localStorage.getItem('ethiqia_notifications');
-    return stored ? JSON.parse(stored) : [];
+    const raw = window.localStorage.getItem(STORAGE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as EthiqiaNotification[];
+    if (!Array.isArray(parsed)) return [];
+    return parsed;
   } catch {
     return [];
   }
 }
 
-// Guardar notificaciones en localStorage
-export function saveNotifications(list: EthiqiaNotification[]) {
+function saveRaw(list: EthiqiaNotification[]) {
   if (typeof window === 'undefined') return;
-  localStorage.setItem('ethiqia_notifications', JSON.stringify(list));
+  try {
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(list));
+  } catch {
+    // ignoramos errores de almacenamiento
+  }
 }
 
-// Añadir una notificación nueva
-export function addNotification(type: EthiqiaNotificationType, message: string) {
-  const current = getNotifications();
+/**
+ * Devuelve todas las notificaciones, ordenadas de la más reciente a la más antigua.
+ */
+export function getNotifications(): EthiqiaNotification[] {
+  const list = loadRaw();
+  return [...list].sort(
+    (a, b) =>
+      new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+  );
+}
 
-  const newNote: EthiqiaNotification = {
-    id: crypto.randomUUID(),
+/**
+ * Añade una nueva notificación local.
+ *
+ * Ejemplos:
+ *  - addNotification('post-scored', 'Tu publicación generó 87 puntos de Ethiqia Score.')
+ *  - addNotification('comment-approved', 'Tu comentario fue publicado correctamente.')
+ *  - addNotification('comment-blocked', 'Tu comentario fue bloqueado y pierdes 0,8 puntos de Ethiqia Score.')
+ */
+export function addNotification(
+  type: EthiqiaNotificationType,
+  message: string
+) {
+  const now = new Date().toISOString();
+  const list = loadRaw();
+
+  const notif: EthiqiaNotification = {
+    id: `n-${Date.now()}-${Math.random().toString(16).slice(2)}`,
     type,
     message,
-    created_at: Date.now(),
+    created_at: now,
     read: false,
   };
 
-  current.unshift(newNote);
-  saveNotifications(current);
-
-  return newNote;
+  const updated = [notif, ...list].slice(0, 100); // máx. 100
+  saveRaw(updated);
 }
 
-// Marcar una como leída
-export function markAsRead(id: string) {
-  const list = getNotifications();
-  const updated = list.map(n =>
-    n.id === id ? { ...n, read: true } : n
-  );
-  saveNotifications(updated);
-}
-
-// Marcar todas como leídas
+/**
+ * Marca todas las notificaciones como leídas.
+ */
 export function markAllAsRead() {
-  const list = getNotifications();
-  const updated = list.map(n => ({ ...n, read: true }));
-  saveNotifications(updated);
+  const list = loadRaw();
+  const updated = list.map((n) => ({ ...n, read: true }));
+  saveRaw(updated);
+}
+
+/**
+ * Borra todas las notificaciones (por si algún día lo quieres usar).
+ */
+export function clearNotifications() {
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage.removeItem(STORAGE_KEY);
+  } catch {
+    // ignoramos
+  }
 }
