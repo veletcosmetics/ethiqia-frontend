@@ -2,19 +2,31 @@
 
 import { useEffect, useState } from 'react';
 
-type StoredPost = {
-  id: string;
-  imageUrl: string;
-  score?: number;
-  createdAt?: number;
-};
-
-type ProfilePost = {
+type DemoPost = {
   id: string;
   imageUrl: string;
   score: number;
   createdAt: number;
+  caption?: string;
+  authenticity?: number;
+  aiProbability?: number;
+  coherence?: number;
 };
+
+const STORAGE_KEY_FEED = 'ethiqia_feed_posts';
+
+function loadLocalPosts(): DemoPost[] {
+  if (typeof window === 'undefined') return [];
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY_FEED);
+    if (!raw) return [];
+    const data = JSON.parse(raw);
+    if (!Array.isArray(data)) return [];
+    return data;
+  } catch {
+    return [];
+  }
+}
 
 function formatDate(ts: number) {
   try {
@@ -31,92 +43,71 @@ function formatDate(ts: number) {
 }
 
 export default function ProfilePage() {
-  const [posts, setPosts] = useState<ProfilePost[]>([]);
+  const [posts, setPosts] = useState<DemoPost[]>([]);
 
   useEffect(() => {
-    if (typeof window === 'undefined') return;
-
-    try {
-      const raw = localStorage.getItem('ethiqia_feed_posts');
-      if (!raw) return;
-
-      const parsed: StoredPost[] = JSON.parse(raw);
-      const cleaned = parsed
-        .filter((p) => p && p.imageUrl)
-        .sort(
-          (a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0)
-        )
-        .map<ProfilePost>((p, index) => ({
-          id: p.id ?? `local-${index}`,
-          imageUrl: p.imageUrl,
-          score: p.score ?? 75,
-          createdAt: p.createdAt ?? Date.now(),
-        }));
-
-      setPosts(cleaned);
-    } catch (err) {
-      console.error('Error leyendo publicaciones de perfil:', err);
-    }
+    const list = loadLocalPosts().sort(
+      (a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0)
+    );
+    setPosts(list);
   }, []);
 
-  const lastScore = posts[0]?.score ?? null;
+  const total = posts.length;
+  const last = posts[0];
 
   return (
     <main className="min-h-[calc(100vh-64px)] bg-neutral-950 text-neutral-50">
       <section className="max-w-4xl mx-auto px-4 py-6 space-y-6">
         {/* Cabecera perfil */}
-        <header className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 border-b border-neutral-800 pb-4">
+        <header className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
           <div className="flex items-center gap-4">
-            <div className="h-12 w-12 flex items-center justify-center rounded-full bg-neutral-800 text-lg font-semibold">
+            <div className="h-14 w-14 rounded-full bg-neutral-800 flex items-center justify-center text-lg font-semibold">
               D
             </div>
-            <div className="space-y-1">
-              <h1 className="text-xl font-semibold">David Guirao</h1>
+            <div>
+              <h1 className="text-xl font-semibold">David Guirao (demo)</h1>
               <p className="text-xs text-neutral-400">
-                davidguiraruiz@hotmail.com
-              </p>
-              <p className="text-xs text-emerald-400">
-                Demo de reputación · IA · Perfil personal
+                Demo local de Ethiqia · sin backend · solo en este navegador.
               </p>
             </div>
           </div>
+          <button className="self-start rounded-full border border-neutral-700 bg-neutral-900 px-4 py-1.5 text-xs text-neutral-200 hover:border-emerald-400 hover:text-emerald-300">
+            Editar perfil (demo visual)
+          </button>
+        </header>
 
-          <div className="flex flex-col md:items-end gap-2">
-            <a
-              href="/demo/live"
-              className="rounded-full bg-emerald-500 px-4 py-2 text-xs font-semibold text-black hover:bg-emerald-400 text-center"
-            >
-              + Subir foto en demo live
-            </a>
-            <button
-              type="button"
-              className="rounded-full border border-neutral-700 px-4 py-2 text-xs text-neutral-200 hover:border-emerald-500 hover:text-emerald-400"
-            >
-              Editar perfil (demo)
-            </button>
-            {lastScore !== null && (
+        {/* Bio + métricas rápidas */}
+        <section className="grid gap-4 md:grid-cols-3">
+          <div className="md:col-span-2 rounded-2xl border border-neutral-800 bg-neutral-900/70 p-4 space-y-2">
+            <h2 className="text-sm font-semibold text-neutral-100">Tu bio</h2>
+            <p className="text-sm text-neutral-300">
+              Este es tu espacio personal en Ethiqia. En esta versión demo, las
+              fotos que subes desde <code>/demo/live</code> se guardan en{' '}
+              <code>localStorage</code> y se muestran aquí como si fueran
+              publicaciones reales.
+            </p>
+          </div>
+
+          <div className="rounded-2xl border border-neutral-800 bg-neutral-900/70 p-4 text-xs space-y-2">
+            <h3 className="text-sm font-semibold text-neutral-100">
+              Resumen rápido
+            </h3>
+            <p className="flex justify-between text-neutral-300">
+              <span>Publicaciones locales</span>
+              <span className="font-semibold text-emerald-400">{total}</span>
+            </p>
+            <p className="flex justify-between text-neutral-300">
+              <span>Último Ethiqia Score</span>
+              <span className="font-semibold text-emerald-400">
+                {last ? `${last.score}/100` : '–'}
+              </span>
+            </p>
+            {last && (
               <p className="text-[11px] text-neutral-500">
-                Último Ethiqia Score de tus publicaciones demo:{' '}
-                <span className="text-emerald-400 font-semibold">
-                  {lastScore}/100
-                </span>
+                Última publicación: {formatDate(last.createdAt)}
               </p>
             )}
           </div>
-        </header>
-
-        {/* Bio */}
-        <section className="space-y-2">
-          <h2 className="text-sm font-semibold text-neutral-100">Tu bio</h2>
-          <p className="text-sm text-neutral-300">
-            Este es tu espacio personal en Ethiqia. Aquí verás tu bio, tus fotos
-            publicadas y la reputación asociada a tu actividad. En esta versión
-            demo las imágenes se suben desde{' '}
-            <span className="font-semibold text-emerald-400">/demo/live</span> y
-            se guardan en este navegador como si fueran publicaciones reales. Es
-            suficiente para enseñar el flujo completo a inversores y al Parque
-            Científico.
-          </p>
         </section>
 
         {/* Tus publicaciones */}
@@ -125,56 +116,51 @@ export default function ProfilePage() {
             <h2 className="text-sm font-semibold text-neutral-100">
               Tus publicaciones
             </h2>
-            <a
-              href="/feed"
-              className="text-xs text-emerald-400 hover:underline underline-offset-2"
-            >
-              Ver en el feed →
-            </a>
+            <span className="text-[11px] text-neutral-500">
+              Sube nuevas fotos desde{' '}
+              <code className="text-emerald-400">/demo/live</code>
+            </span>
           </div>
 
           {posts.length === 0 && (
-            <div className="rounded-2xl border border-neutral-800 bg-neutral-900 px-4 py-6 text-sm text-neutral-400">
-              Todavía no has subido ninguna foto desde la demo en vivo. Ve a{' '}
-              <a
-                href="/demo/live"
-                className="text-emerald-400 underline underline-offset-2"
-              >
-                Demo &gt; Live
-              </a>{' '}
-              y sube tu primera imagen para ver aquí tu bio en marcha.
-            </div>
+            <p className="text-sm text-neutral-500">
+              Aún no has subido ninguna imagen en esta demo local.
+            </p>
           )}
 
-          {posts.length > 0 && (
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              {posts.map((post) => (
-                <div
-                  key={post.id}
-                  className="rounded-2xl border border-neutral-800 bg-neutral-900 overflow-hidden"
-                >
-                  <div className="bg-black">
-                    <img
-                      src={post.imageUrl}
-                      alt="Tu publicación"
-                      className="w-full h-56 object-cover"
+          <div className="grid gap-4 md:grid-cols-2">
+            {posts.map((post) => (
+              <article
+                key={post.id}
+                className="overflow-hidden rounded-2xl border border-neutral-900 bg-neutral-900/80 flex flex-col"
+              >
+                <div className="bg-black">
+                  <img
+                    src={post.imageUrl}
+                    alt={post.caption || 'Publicación Ethiqia'}
+                    className="w-full max-h-[320px] object-contain bg-black"
+                  />
+                </div>
+                <div className="px-4 py-3 space-y-2 text-xs">
+                  <p className="text-[11px] text-neutral-500">
+                    {formatDate(post.createdAt)}
+                  </p>
+                  <div className="flex items-center justify-between">
+                    <span className="text-neutral-300">Ethiqia Score</span>
+                    <span className="font-semibold text-emerald-400">
+                      {post.score}/100
+                    </span>
+                  </div>
+                  <div className="h-1.5 w-full rounded-full bg-neutral-800 overflow-hidden">
+                    <div
+                      className="h-full rounded-full bg-emerald-500"
+                      style={{ width: `${Math.min(post.score ?? 0, 100)}%` }}
                     />
                   </div>
-                  <div className="px-3 py-2 space-y-1">
-                    <p className="text-xs text-neutral-300">
-                      Ethiqia Score demo:{' '}
-                      <span className="font-semibold text-emerald-400">
-                        {post.score}/100
-                      </span>
-                    </p>
-                    <p className="text-[11px] text-neutral-500">
-                      Subida el {formatDate(post.createdAt)}
-                    </p>
-                  </div>
                 </div>
-              ))}
-            </div>
-          )}
+              </article>
+            ))}
+          </div>
         </section>
       </section>
     </main>
