@@ -3,10 +3,7 @@
 import { useEffect, useState } from 'react';
 import Image from 'next/image';
 import NotificationsBar from '../../components/demo/NotificationsBar';
-import {
-  DemoPost,
-  loadDemoPosts,
-} from '../../lib/demoStorage';
+import { DemoPost, loadDemoPosts } from '../../lib/demoStorage';
 
 export default function FeedPage() {
   const [posts, setPosts] = useState<DemoPost[]>([]);
@@ -34,7 +31,8 @@ export default function FeedPage() {
 
         {posts.length === 0 ? (
           <p className="text-sm text-slate-400">
-            Todavía no hay publicaciones. Ve a <span className="text-emerald-300">/demo/live</span> para subir tu primera imagen.
+            Todavía no hay publicaciones. Ve a{' '}
+            <span className="text-emerald-300">/demo/live</span> para subir tu primera imagen.
           </p>
         ) : (
           <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-4">
