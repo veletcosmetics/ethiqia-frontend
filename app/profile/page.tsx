@@ -1,168 +1,151 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-
-type DemoPost = {
-  id: string;
-  imageUrl: string;
-  score: number;
-  createdAt: number;
-  caption?: string;
-  authenticity?: number;
-  aiProbability?: number;
-  coherence?: number;
-};
-
-const STORAGE_KEY_FEED = 'ethiqia_feed_posts';
-
-function loadLocalPosts(): DemoPost[] {
-  if (typeof window === 'undefined') return [];
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY_FEED);
-    if (!raw) return [];
-    const data = JSON.parse(raw);
-    if (!Array.isArray(data)) return [];
-    return data;
-  } catch {
-    return [];
-  }
-}
-
-function formatDate(ts: number) {
-  try {
-    return new Date(ts).toLocaleString('es-ES', {
-      day: '2-digit',
-      month: '2-digit',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-    });
-  } catch {
-    return '';
-  }
-}
+import Image from 'next/image';
+import NotificationsBar from '../../components/demo/NotificationsBar';
+import {
+  DemoPost,
+  loadDemoPosts,
+  loadLastPost,
+} from '../../lib/demoStorage';
 
 export default function ProfilePage() {
   const [posts, setPosts] = useState<DemoPost[]>([]);
+  const [lastPost, setLastPost] = useState<DemoPost | null>(null);
 
   useEffect(() => {
-    const list = loadLocalPosts().sort(
-      (a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0)
-    );
-    setPosts(list);
+    setPosts(loadDemoPosts());
+    setLastPost(loadLastPost());
   }, []);
 
   const total = posts.length;
-  const last = posts[0];
+  const lastScore = lastPost ? lastPost.score : null;
+  const lastDate = lastPost
+    ? new Date(lastPost.createdAt).toLocaleString('es-ES', {
+        day: '2-digit',
+        month: '2-digit',
+        year: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+      })
+    : null;
 
   return (
-    <main className="min-h-[calc(100vh-64px)] bg-neutral-950 text-neutral-50">
-      <section className="max-w-4xl mx-auto px-4 py-6 space-y-6">
+    <div className="min-h-screen bg-black text-slate-50">
+      <NotificationsBar />
+
+      <main className="mx-auto max-w-6xl px-4 pb-16 pt-8">
         {/* Cabecera perfil */}
-        <header className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+        <section className="mb-8 flex flex-col gap-6 md:flex-row md:items-start md:justify-between">
           <div className="flex items-center gap-4">
-            <div className="h-14 w-14 rounded-full bg-neutral-800 flex items-center justify-center text-lg font-semibold">
+            <div className="flex h-14 w-14 items-center justify-center rounded-full bg-slate-800 text-lg font-semibold">
               D
             </div>
             <div>
               <h1 className="text-xl font-semibold">David Guirao (demo)</h1>
-              <p className="text-xs text-neutral-400">
+              <p className="text-xs text-slate-400">
                 Demo local de Ethiqia · sin backend · solo en este navegador.
               </p>
             </div>
           </div>
-          <button className="self-start rounded-full border border-neutral-700 bg-neutral-900 px-4 py-1.5 text-xs text-neutral-200 hover:border-emerald-400 hover:text-emerald-300">
+
+          <button className="rounded-full border border-slate-600 px-4 py-1.5 text-xs text-slate-200 hover:border-emerald-400 hover:text-emerald-300">
             Editar perfil (demo visual)
           </button>
-        </header>
+        </section>
 
-        {/* Bio + métricas rápidas */}
-        <section className="grid gap-4 md:grid-cols-3">
-          <div className="md:col-span-2 rounded-2xl border border-neutral-800 bg-neutral-900/70 p-4 space-y-2">
-            <h2 className="text-sm font-semibold text-neutral-100">Tu bio</h2>
-            <p className="text-sm text-neutral-300">
+        {/* Bloques bio + resumen */}
+        <section className="mb-8 grid gap-4 md:grid-cols-[minmax(0,2fr)_minmax(0,1.2fr)]">
+          <div className="rounded-2xl border border-slate-800 bg-slate-900/60 px-4 py-4">
+            <h2 className="mb-2 text-sm font-semibold text-slate-200">
+              Tu bio
+            </h2>
+            <p className="text-xs leading-relaxed text-slate-400">
               Este es tu espacio personal en Ethiqia. En esta versión demo, las
-              fotos que subes desde <code>/demo/live</code> se guardan en{' '}
-              <code>localStorage</code> y se muestran aquí como si fueran
-              publicaciones reales.
+              fotos que subes desde <span className="text-emerald-300">/demo/live</span>{' '}
+              se guardan en{' '}
+              <code className="rounded bg-black/50 px-1">localStorage</code> y se muestran aquí
+              como si fueran publicaciones reales.
             </p>
           </div>
 
-          <div className="rounded-2xl border border-neutral-800 bg-neutral-900/70 p-4 text-xs space-y-2">
-            <h3 className="text-sm font-semibold text-neutral-100">
+          <div className="rounded-2xl border border-slate-800 bg-slate-900/60 px-4 py-4 text-xs">
+            <h2 className="mb-3 text-sm font-semibold text-slate-200">
               Resumen rápido
-            </h3>
-            <p className="flex justify-between text-neutral-300">
-              <span>Publicaciones locales</span>
-              <span className="font-semibold text-emerald-400">{total}</span>
-            </p>
-            <p className="flex justify-between text-neutral-300">
-              <span>Último Ethiqia Score</span>
-              <span className="font-semibold text-emerald-400">
-                {last ? `${last.score}/100` : '–'}
-              </span>
-            </p>
-            {last && (
-              <p className="text-[11px] text-neutral-500">
-                Última publicación: {formatDate(last.createdAt)}
-              </p>
-            )}
+            </h2>
+            <div className="space-y-1">
+              <div className="flex items-center justify-between">
+                <span className="text-slate-400">Publicaciones locales</span>
+                <span className="font-semibold text-slate-100">{total}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-slate-400">Último Ethiqia Score</span>
+                <span className="font-semibold text-emerald-300">
+                  {lastScore !== null ? `${lastScore}/100` : '—'}
+                </span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-slate-400">Última publicación</span>
+                <span className="text-[11px] text-slate-300">
+                  {lastDate ?? '—'}
+                </span>
+              </div>
+            </div>
           </div>
         </section>
 
-        {/* Tus publicaciones */}
-        <section className="space-y-3">
-          <div className="flex items-center justify-between">
-            <h2 className="text-sm font-semibold text-neutral-100">
-              Tus publicaciones
-            </h2>
-            <span className="text-[11px] text-neutral-500">
-              Sube nuevas fotos desde{' '}
-              <code className="text-emerald-400">/demo/live</code>
-            </span>
-          </div>
+        {/* Título + recordatorio subida */}
+        <section className="mb-3 flex items-baseline justify-between gap-4">
+          <h2 className="text-sm font-semibold text-slate-200">
+            Tus publicaciones
+          </h2>
+          <p className="text-[11px] text-slate-500">
+            Sube nuevas fotos desde{' '}
+            <span className="text-emerald-300">/demo/live</span>
+          </p>
+        </section>
 
-          {posts.length === 0 && (
-            <p className="text-sm text-neutral-500">
-              Aún no has subido ninguna imagen en esta demo local.
-            </p>
-          )}
-
-          <div className="grid gap-4 md:grid-cols-2">
+        {/* Listado de publicaciones */}
+        {posts.length === 0 ? (
+          <p className="text-sm text-slate-400">
+            Aún no has publicado nada en esta demo. Ve a{' '}
+            <span className="text-emerald-300">/demo/live</span> y sube tu primera imagen.
+          </p>
+        ) : (
+          <div className="space-y-4">
             {posts.map((post) => (
               <article
                 key={post.id}
-                className="overflow-hidden rounded-2xl border border-neutral-900 bg-neutral-900/80 flex flex-col"
+                className="overflow-hidden rounded-2xl border border-slate-800 bg-slate-900/60"
               >
-                <div className="bg-black">
-                  <img
+                <div className="relative h-64 w-full">
+                  <Image
                     src={post.imageUrl}
-                    alt={post.caption || 'Publicación Ethiqia'}
-                    className="w-full max-h-[320px] object-contain bg-black"
+                    alt="Publicación de tu bio"
+                    fill
+                    className="object-cover"
                   />
+                  <div className="absolute left-3 top-3 rounded-full bg-black/70 px-2 py-0.5 text-[11px] font-medium text-emerald-300">
+                    {post.score}/100 · Ethiqia Score
+                  </div>
                 </div>
-                <div className="px-4 py-3 space-y-2 text-xs">
-                  <p className="text-[11px] text-neutral-500">
-                    {formatDate(post.createdAt)}
-                  </p>
-                  <div className="flex items-center justify-between">
-                    <span className="text-neutral-300">Ethiqia Score</span>
-                    <span className="font-semibold text-emerald-400">
-                      {post.score}/100
-                    </span>
-                  </div>
-                  <div className="h-1.5 w-full rounded-full bg-neutral-800 overflow-hidden">
-                    <div
-                      className="h-full rounded-full bg-emerald-500"
-                      style={{ width: `${Math.min(post.score ?? 0, 100)}%` }}
-                    />
-                  </div>
+                <div className="flex items-center justify-between px-4 py-3 text-[11px] text-slate-400">
+                  <span>Demo reputación · IA</span>
+                  <span>
+                    {new Date(post.createdAt).toLocaleString('es-ES', {
+                      day: '2-digit',
+                      month: '2-digit',
+                      year: '2-digit',
+                      hour: '2-digit',
+                      minute: '2-digit',
+                    })}
+                  </span>
                 </div>
               </article>
             ))}
           </div>
-        </section>
-      </section>
-    </main>
+        )}
+      </main>
+    </div>
   );
 }
