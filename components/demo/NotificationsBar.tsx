@@ -13,7 +13,7 @@ export default function NotificationsBar() {
   useEffect(() => {
     const list = loadNotifications().filter((n) => !n.read);
     if (list.length > 0) {
-      setNotif(list[0]);
+      setNotif(list[0]); // mostramos la primera no leída
     }
   }, []);
 
