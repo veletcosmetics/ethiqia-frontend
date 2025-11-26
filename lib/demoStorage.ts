@@ -1,4 +1,5 @@
 // lib/demoStorage.ts
+
 export type AnalysisResult = {
   authenticity: number;
   aiProbability: number;
@@ -44,7 +45,9 @@ function writeJSON<T>(key: string, value: T) {
   if (!isBrowser()) return;
   try {
     window.localStorage.setItem(key, JSON.stringify(value));
-  } catch {}
+  } catch {
+    // ignoramos errores de quota, etc.
+  }
 }
 
 /* POSTS */
@@ -62,6 +65,7 @@ export function addDemoPost(
   analysis: AnalysisResult
 ): DemoPost {
   const now = Date.now();
+
   const post: DemoPost = {
     id: `post_${now}_${Math.random().toString(16).slice(2)}`,
     imageUrl,
@@ -74,6 +78,7 @@ export function addDemoPost(
   saveDemoPosts(updated);
 
   writeJSON(LAST_POST_KEY, post);
+
   return post;
 }
 
@@ -81,7 +86,7 @@ export function loadLastPost(): DemoPost | null {
   return readJSON<DemoPost | null>(LAST_POST_KEY, null);
 }
 
-/* NOTIFICATIONS */
+/* NOTIFICACIONES */
 
 export function loadNotifications(): DemoNotification[] {
   return readJSON<DemoNotification[]>(NOTIFS_KEY, []);
