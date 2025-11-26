@@ -62,10 +62,10 @@ export default function ProfilePage() {
             </h2>
             <p className="text-xs leading-relaxed text-slate-400">
               Este es tu espacio personal en Ethiqia. En esta versión demo, las
-              fotos que subes desde <span className="text-emerald-300">/demo/live</span>{' '}
-              se guardan en{' '}
-              <code className="rounded bg-black/50 px-1">localStorage</code> y se muestran aquí
-              como si fueran publicaciones reales.
+              fotos que subes desde{' '}
+              <span className="text-emerald-300">/demo/live</span> se guardan en{' '}
+              <code className="rounded bg-black/50 px-1">localStorage</code> y se
+              muestran aquí como si fueran publicaciones reales.
             </p>
           </div>
 
@@ -94,22 +94,27 @@ export default function ProfilePage() {
           </div>
         </section>
 
-        {/* Título + recordatorio subida */}
+        {/* Título + botón a demo/live */}
         <section className="mb-3 flex items-baseline justify-between gap-4">
           <h2 className="text-sm font-semibold text-slate-200">
             Tus publicaciones
           </h2>
-          <p className="text-[11px] text-slate-500">
-            Sube nuevas fotos desde{' '}
-            <span className="text-emerald-300">/demo/live</span>
-          </p>
+          <button
+            onClick={() => {
+              window.location.href = '/demo/live';
+            }}
+            className="rounded-full bg-emerald-500 px-3 py-1 text-[11px] font-semibold text-black hover:bg-emerald-400"
+          >
+            Subir nueva imagen (demo Live)
+          </button>
         </section>
 
         {/* Listado de publicaciones */}
         {posts.length === 0 ? (
           <p className="text-sm text-slate-400">
             Aún no has publicado nada en esta demo. Ve a{' '}
-            <span className="text-emerald-300">/demo/live</span> y sube tu primera imagen.
+            <span className="text-emerald-300">/demo/live</span> y sube tu
+            primera imagen.
           </p>
         ) : (
           <div className="space-y-4">
