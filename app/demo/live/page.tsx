@@ -73,9 +73,9 @@ export default function LiveDemoPage() {
         <header className="flex flex-col gap-2">
           <h1 className="text-2xl font-semibold">Ethiqia · Demo Live</h1>
           <p className="text-sm text-slate-400">
-            Sube una imagen, la IA calcula un Ethiqia Score simulado y se
-            guarda como publicación local en tu Bio y en el Feed demo (solo en
-            este navegador).
+            Sube una imagen, la IA calcula un Ethiqia Score simulado y se guarda
+            como publicación local en tu Bio y en el Feed (solo en este
+            navegador).
           </p>
         </header>
 
