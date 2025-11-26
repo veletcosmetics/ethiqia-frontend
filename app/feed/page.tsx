@@ -8,6 +8,7 @@ import {
   loadDemoPosts,
   toggleLike,
   incrementComments,
+  pushNotification,
 } from '../../lib/demoStorage';
 
 type CommentInputs = {
@@ -47,11 +48,26 @@ function probabilityLabel(p: number): { texto: string; clase: string } {
   };
 }
 
-// Palabras prohibidas (puedes ampliar esta lista)
+// Lista simple de palabras ofensivas (demo)
 const BAD_WORDS = [
-  'puta', 'puto', 'imbecil', 'idiota', 'mierda', 'asqueroso',
-  'asquerosa', 'gilipollas', 'subnormal', 'racista', 'cerdo',
-  'perra', 'zorra', 'cabrón', 'cabrón', 'estúpido'
+  'puta',
+  'puto',
+  'imbecil',
+  'imbécil',
+  'idiota',
+  'mierda',
+  'asqueroso',
+  'asquerosa',
+  'gilipollas',
+  'subnormal',
+  'cerdo',
+  'perra',
+  'zorra',
+  'cabrón',
+  'cabron',
+  'estúpido',
+  'estupido',
+  'racista',
 ];
 
 function containsBadWords(text: string): boolean {
@@ -81,14 +97,21 @@ export default function FeedPage() {
     const text = (commentInputs[postId] ?? '').trim();
     if (!text) return;
 
-    // Estado → Revisando
+    // Pasa a estado "revisando"
     setModeration((prev) => ({ ...prev, [postId]: 'reviewing' }));
 
-    // Simulación de revisión IA
+    // Simulación de revisión por IA
     setTimeout(() => {
       if (containsBadWords(text)) {
         // Comentario NO aprobado
         setModeration((prev) => ({ ...prev, [postId]: 'rejected' }));
+
+        // Banner de penalización de score (demo)
+        pushNotification(
+          'Tu comentario ha sido bloqueado por lenguaje inapropiado. -0,18 puntos en tu Ethiqia Score por lenguaje abusivo.',
+          'error',
+        );
+
         return;
       }
 
@@ -101,7 +124,7 @@ export default function FeedPage() {
       // Limpiar input
       setCommentInputs((prev) => ({ ...prev, [postId]: '' }));
 
-      // Ocultar la notificación visual de aprobado a los 2 segundos
+      // Ocultamos el mensaje "aprobado" a los 2 segundos
       setTimeout(() => {
         setModeration((prev) => ({ ...prev, [postId]: 'idle' }));
       }, 2000);
@@ -117,7 +140,8 @@ export default function FeedPage() {
           <div>
             <h1 className="text-2xl font-semibold">Feed (demo local)</h1>
             <p className="text-sm text-slate-400">
-              Publicaciones generadas desde este navegador. Moderación automática activada.
+              Publicaciones generadas desde este navegador. La IA modera los
+              comentarios y ajusta tu reputación según el lenguaje que utilizas.
             </p>
           </div>
           <div className="flex flex-col items-end gap-2 text-right">
@@ -135,10 +159,11 @@ export default function FeedPage() {
           </div>
         </header>
 
-        {/* FEED */}
         {posts.length === 0 ? (
           <p className="text-sm text-slate-400">
-            No hay publicaciones. Ve a <span className="text-emerald-300">/demo/live</span>.
+            No hay publicaciones. Ve a{' '}
+            <span className="text-emerald-300">/demo/live</span> para subir tu
+            primera imagen.
           </p>
         ) : (
           <div className="space-y-6">
@@ -185,15 +210,16 @@ export default function FeedPage() {
                     />
                   </div>
 
-                  {/* Texto demo */}
+                  {/* Texto descriptivo demo */}
                   <div className="px-4 pt-3 text-sm text-slate-200">
                     <p>
-                      Ana, abogada. Le interesa Ethiqia para evitar suplantaciones
-                      de identidad con fotos falsas en perfiles profesionales.
+                      Ana, abogada. Le interesa Ethiqia para evitar
+                      suplantaciones de identidad con fotos falsas en perfiles
+                      profesionales.
                     </p>
                   </div>
 
-                  {/* Score */}
+                  {/* Score global */}
                   <div className="px-4 pt-3 text-xs text-slate-300">
                     <div className="mb-1 flex items-center justify-between">
                       <span className="font-semibold">Ethiqia Score global</span>
@@ -210,7 +236,7 @@ export default function FeedPage() {
                   </div>
 
                   {/* Interacciones */}
-                  <div className="px-4 py-2 text-[11px] text-slate-300 border-t border-slate-800">
+                  <div className="border-t border-slate-800 px-4 py-2 text-[11px] text-slate-300">
                     <div className="mb-1 flex items-center gap-4">
                       <button
                         onClick={() => handleLike(post.id)}
@@ -230,17 +256,17 @@ export default function FeedPage() {
                     </div>
 
                     <div className="text-[11px] text-slate-500">
-                      {post.likes} me gusta (demo) · {post.comments} comentarios
+                      {post.likes} me gusta (demo) · {post.comments}{' '}
+                      comentarios
                     </div>
                   </div>
 
-                  {/* Caja de comentarios */}
+                  {/* Comentarios + moderación */}
                   <div className="border-t border-slate-800 px-4 py-3 text-[11px]">
                     <div className="mb-1 text-slate-400">
                       Comentar (moderado por IA)
                     </div>
 
-                    {/* Estado de moderación */}
                     {state === 'reviewing' && (
                       <div className="mb-2 text-amber-300">
                         Revisando comentario…
@@ -255,7 +281,8 @@ export default function FeedPage() {
 
                     {state === 'rejected' && (
                       <div className="mb-2 text-rose-300">
-                        Tu comentario ha sido bloqueado por lenguaje inapropiado.
+                        Tu comentario ha sido bloqueado por lenguaje
+                        inapropiado.
                       </div>
                     )}
 
