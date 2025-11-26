@@ -1,9 +1,6 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { supabase } from '@/lib/supabaseClient';
-import { addNotification } from '@/lib/notifications';
-import { getSession } from '@/lib/session';
 
 type AnalysisResult = {
   authenticity: number;
@@ -13,13 +10,14 @@ type AnalysisResult = {
 };
 
 type DemoPost = {
+  id: string;
   imageUrl: string;
   score: number;
-  name?: string;
-  createdAt?: number;
+  createdAt: number;
 };
 
-const STORAGE_KEY = 'ethiqia_demo_post';
+const STORAGE_KEY_LAST = 'ethiqia_demo_post';
+const STORAGE_KEY_FEED = 'ethiqia_feed_posts';
 
 function generateAnalysis(): AnalysisResult {
   const aiProbability = Math.round(Math.random() * 70) + 10; // 10–80 %
@@ -49,26 +47,21 @@ export default function LiveDemoPage() {
   const [analysis, setAnalysis] = useState<AnalysisResult | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [lastSaved, setLastSaved] = useState<DemoPost | null>(null);
-  const [backendError, setBackendError] = useState<string | null>(null);
-  const [session, setSessionState] = useState<any>(null);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
-  // Cargar sesión guardada (demo) y última publicación de localStorage
+  // Cargar última demo guardada
   useEffect(() => {
     if (typeof window === 'undefined') return;
 
-    const s = getSession();
-    if (s) setSessionState(s);
-
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) {
-      try {
-        const data = JSON.parse(raw) as DemoPost;
-        if (data.imageUrl) {
-          setLastSaved(data);
-        }
-      } catch {
-        // ignorar
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY_LAST);
+      if (!raw) return;
+      const data = JSON.parse(raw) as DemoPost;
+      if (data.imageUrl) {
+        setLastSaved(data);
       }
+    } catch {
+      // ignoramos errores
     }
   }, []);
 
@@ -76,19 +69,24 @@ export default function LiveDemoPage() {
     const file = event.target.files?.[0];
     if (!file) return;
 
-    // Evitamos HEIC y formatos raros
-    if (!file.type.startsWith('image/')) {
-      alert('Sube solo archivos de imagen (jpg, png, webp...)');
+    // Evitar HEIC y formatos raros
+    const lowerName = file.name.toLowerCase();
+    if (
+      !file.type.startsWith('image/') ||
+      lowerName.endsWith('.heic') ||
+      file.type === 'image/heic'
+    ) {
+      alert('Usa una imagen JPG/PNG/WebP (no HEIC).');
       return;
     }
 
     setIsAnalyzing(true);
-    setFileName(file.name || 'Imagen subida');
+    setErrorMsg(null);
     setAnalysis(null);
-    setBackendError(null);
+    setFileName(file.name || 'Imagen subida');
 
     const reader = new FileReader();
-    reader.onload = async () => {
+    reader.onload = () => {
       const result = reader.result as string;
       setImageSrc(result);
 
@@ -97,83 +95,33 @@ export default function LiveDemoPage() {
       setAnalysis(generated);
       setIsAnalyzing(false);
 
-      // 2) Guardar en localStorage (demo)
+      // 2) Construir objeto de publicación
+      const post: DemoPost = {
+        id: `p-${Date.now()}`,
+        imageUrl: result,
+        score: generated.ethScore,
+        createdAt: Date.now(),
+      };
+
       try {
-        const demoPost: DemoPost = {
-          imageUrl: result,
-          score: generated.ethScore,
-          name: file.name || 'Demo Ethiqia',
-          createdAt: Date.now(),
-        };
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(demoPost));
-        setLastSaved(demoPost);
-      } catch {
-        // ignoramos errores de almacenamiento
-      }
-
-      // 3) Guardar la publicación también en un "feed" local de la demo
-      try {
-        const rawFeed = localStorage.getItem('ethiqia_feed_posts');
-        const parsed = rawFeed ? JSON.parse(rawFeed) : [];
-
-        const newPost = {
-          id: `p-${Date.now()}`,
-          imageUrl: result,
-          score: generated.ethScore,
-          createdAt: Date.now(),
-        };
-
-        const updated = [newPost, ...parsed];
-        localStorage.setItem('ethiqia_feed_posts', JSON.stringify(updated));
-      } catch {
-        // ignoramos errores
-      }
-
-      // 4) GUARDAR EN SUPABASE con user_id REAL
-      try {
-        // 4.1. Intentar obtener el usuario real desde Supabase Auth
-        const {
-          data: { user },
-        } = await supabase.auth.getUser();
-
-        // 4.2. user.id (real) > sesión demo > null
-        const realUserId = user?.id ?? session?.user?.id ?? null;
-
-        if (!realUserId) {
-          console.warn(
-            'No hay user_id disponible para guardar post (se guardará sin usuario)'
-          );
-        }
-
-        const { error } = await supabase.from('posts').insert({
-          user_id: realUserId,
-          image_url: result, // en esta demo guardamos el dataURL directamente
-          caption: file.name || 'Imagen subida en la demo en vivo',
-        });
-
-        if (error) {
-          console.error('Error al guardar en Supabase:', error);
-          setBackendError(
-            '⚠️ La imagen se ha analizado, pero hubo un error al guardar en el backend real.'
-          );
-        } else {
-          setBackendError(null);
-        }
+        // 3) Guardar última demo
+        localStorage.setItem(STORAGE_KEY_LAST, JSON.stringify(post));
+        setLastSaved(post);
       } catch (e) {
-        console.error(e);
-        setBackendError(
-          '⚠️ La imagen se ha analizado, pero hubo un error al guardar en el backend real.'
-        );
+        console.error('Error guardando última demo:', e);
       }
 
-      // 5) Notificación de score (demo)
       try {
-        addNotification(
-          'post-scored',
-          `Tu publicación generó ${generated.ethScore} puntos de Ethiqia Score.`
+        // 4) Guardar en el feed local que leen /feed y /profile
+        const rawFeed = localStorage.getItem(STORAGE_KEY_FEED);
+        const parsed: DemoPost[] = rawFeed ? JSON.parse(rawFeed) : [];
+        const updated = [post, ...parsed];
+        localStorage.setItem(STORAGE_KEY_FEED, JSON.stringify(updated));
+      } catch (e) {
+        console.error('Error guardando en feed local:', e);
+        setErrorMsg(
+          'La imagen se ha analizado, pero hubo un error al guardar el histórico local.'
         );
-      } catch {
-        // ignoramos errores de notificaciones
       }
     };
 
@@ -191,9 +139,10 @@ export default function LiveDemoPage() {
             Sube una foto y deja que Ethiqia la analice
           </h1>
           <p className="text-sm text-neutral-400 max-w-2xl">
-            Esta demo muestra el flujo completo: subes una imagen, la IA simula
-            el análisis, genera un Ethiqia Score y la publicación se guarda en
-            tu perfil y en el feed real (Supabase) además de la demo local.
+            Esta demo funciona 100% en tu navegador: subes una imagen, la IA
+            simula el análisis, genera un Ethiqia Score y la publicación se
+            guarda en tu perfil y en el feed local. No depende del backend, así
+            que es estable para enseñar a inversores y al Parque Científico.
           </p>
         </header>
 
@@ -205,9 +154,9 @@ export default function LiveDemoPage() {
                 1. Sube una imagen de demo
               </h2>
               <p className="text-xs text-neutral-400">
-                Usa una foto real (jpg, png, webp…). En esta versión demo el
-                archivo se procesa en tu navegador y también se guarda en
-                Supabase como si fuera una publicación real.
+                Usa una foto real (jpg, png, webp…). La imagen no sale del
+                navegador: se guarda como demo local y se muestra en tu bio y en
+                el feed.
               </p>
             </div>
           </div>
@@ -217,7 +166,7 @@ export default function LiveDemoPage() {
             <span>
               Haz clic para elegir una imagen
               <span className="block text-[11px] text-neutral-500 mt-1">
-                (no usamos HEIC; mejor jpg/png/webp)
+                (evita HEIC; mejor jpg / png / webp)
               </span>
             </span>
             <input
@@ -235,8 +184,8 @@ export default function LiveDemoPage() {
             </p>
           )}
 
-          {backendError && (
-            <p className="text-[11px] text-amber-400 mt-1">{backendError}</p>
+          {errorMsg && (
+            <p className="text-[11px] text-amber-400 mt-1">{errorMsg}</p>
           )}
         </section>
 
@@ -332,7 +281,8 @@ export default function LiveDemoPage() {
                     </div>
                     <p className="text-[11px] text-neutral-500">
                       En producción este score vendría de modelos entrenados.
-                      Aquí es una simulación para enseñar el flujo completo.
+                      Aquí es una simulación para enseñar el flujo completo y
+                      rellenar tu feed local.
                     </p>
                   </>
                 )}
@@ -347,7 +297,7 @@ export default function LiveDemoPage() {
           </section>
         )}
 
-        {/* Estado de integración */}
+        {/* Explicación técnica */}
         <section className="rounded-2xl border border-neutral-800 bg-neutral-900/60 p-4 text-xs text-neutral-300 space-y-2">
           <h2 className="text-sm font-semibold text-neutral-100">
             Qué está pasando por detrás en esta demo
@@ -358,23 +308,23 @@ export default function LiveDemoPage() {
               demo en <code>localStorage</code>.
             </li>
             <li>
-              También se guarda una entrada real en Supabase en la tabla{' '}
-              <code>posts</code> (usuario + imagen + texto).
+              También se añade a un feed local en la clave{' '}
+              <code>ethiqia_feed_posts</code>, que leen las páginas{' '}
+              <code>/feed</code> y <code>/profile</code>.
             </li>
             <li>
-              Esa publicación aparecerá en tu bio y en el feed real si todo está
-              conectado correctamente.
+              No dependemos del backend ni de Supabase para esta demo, así que
+              siempre funcionará aunque el servidor esté caído.
             </li>
           </ul>
 
           {lastSaved && (
             <p className="text-[11px] text-neutral-500 mt-2">
               Última demo local guardada:{' '}
-              <span className="text-neutral-300">
-                {lastSaved.name || 'Sin nombre'}
+              <span className="text-neutral-300">{lastSaved.id}</span>, Score:{' '}
+              <span className="text-emerald-300">
+                {lastSaved.score}/100
               </span>
-              , Ethiqia Score:{' '}
-              <span className="text-emerald-300">{lastSaved.score}/100</span>
             </p>
           )}
         </section>
