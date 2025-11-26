@@ -13,7 +13,21 @@ type DemoPost = {
   coherence?: number;
 };
 
+type Comment = {
+  id: string;
+  text: string;
+  createdAt: number;
+};
+
+type CommentsByPost = Record<string, Comment[]>;
+type DraftsByPost = Record<string, string>;
+type FlagsByPost = Record<string, boolean>;
+type StatusByPost = Record<string, string | null>;
+
 const STORAGE_KEY_FEED = 'ethiqia_feed_posts';
+const STORAGE_KEY_COMMENTS = 'ethiqia_comments_v1';
+
+// --- Helpers para posts ---
 
 function loadLocalPosts(): DemoPost[] {
   if (typeof window === 'undefined') return [];
@@ -42,15 +56,130 @@ function formatDate(ts: number) {
   }
 }
 
+// --- Helpers para comentarios ---
+
+function loadComments(): CommentsByPost {
+  if (typeof window === 'undefined') return {};
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY_COMMENTS);
+    if (!raw) return {};
+    const data = JSON.parse(raw);
+    if (!data || typeof data !== 'object') return {};
+    return data as CommentsByPost;
+  } catch {
+    return {};
+  }
+}
+
+function saveComments(comments: CommentsByPost) {
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.setItem(STORAGE_KEY_COMMENTS, JSON.stringify(comments));
+  } catch (e) {
+    console.error('Error guardando comentarios en localStorage:', e);
+  }
+}
+
+// Lista básica de insultos / palabras tóxicas (demo)
+const TOXIC_PATTERNS = [
+  'tonto',
+  'idiota',
+  'imbécil',
+  'subnormal',
+  'puta',
+  'gilipollas',
+  'mierda',
+  'asco de',
+  'vete a la mierda',
+  'maricón',
+  'negro de mierda',
+  'puta mierda',
+  'ojalá te mueras',
+  'violarte',
+  'violencia',
+];
+
+// Devuelve true si el comentario se considera tóxico
+function isToxicComment(text: string): boolean {
+  const normalized = text.toLowerCase();
+  return TOXIC_PATTERNS.some((pattern) => normalized.includes(pattern));
+}
+
 export default function FeedPage() {
   const [posts, setPosts] = useState<DemoPost[]>([]);
+  const [comments, setComments] = useState<CommentsByPost>({});
+  const [drafts, setDrafts] = useState<DraftsByPost>({});
+  const [isModerating, setIsModerating] = useState<FlagsByPost>({});
+  const [statusMsg, setStatusMsg] = useState<StatusByPost>({});
 
+  // Cargar posts + comentarios al montar
   useEffect(() => {
     const list = loadLocalPosts().sort(
       (a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0)
     );
     setPosts(list);
+    setComments(loadComments());
   }, []);
+
+  // Handlers de comentario
+
+  const handleDraftChange = (postId: string, value: string) => {
+    setDrafts((prev) => ({
+      ...prev,
+      [postId]: value,
+    }));
+  };
+
+  const handlePublishComment = (postId: string) => {
+    const text = (drafts[postId] || '').trim();
+    if (!text) return;
+
+    // Limpiar mensajes previos
+    setStatusMsg((prev) => ({ ...prev, [postId]: null }));
+    setIsModerating((prev) => ({ ...prev, [postId]: true }));
+
+    // Simular tiempo de análisis IA
+    setTimeout(() => {
+      const toxic = isToxicComment(text);
+
+      if (toxic) {
+        // Comentario bloqueado: no se guarda
+        setIsModerating((prev) => ({ ...prev, [postId]: false }));
+        setStatusMsg((prev) => ({
+          ...prev,
+          [postId]:
+            'Comentario bloqueado por la IA de Ethiqia. No se ha publicado y penaliza tu Ethiqia Score (demo).',
+        }));
+        return;
+      }
+
+      // Comentario aprobado: lo guardamos
+      const newComment: Comment = {
+        id: `c-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+        text,
+        createdAt: Date.now(),
+      };
+
+      setComments((prev) => {
+        const prevForPost = prev[postId] || [];
+        const updated: CommentsByPost = {
+          ...prev,
+          [postId]: [...prevForPost, newComment],
+        };
+        // Persistir en localStorage
+        saveComments(updated);
+        return updated;
+      });
+
+      // Limpiar estado del post
+      setDrafts((prev) => ({ ...prev, [postId]: '' }));
+      setIsModerating((prev) => ({ ...prev, [postId]: false }));
+      setStatusMsg((prev) => ({
+        ...prev,
+        [postId]: 'Comentario aprobado y publicado (demo).',
+      }));
+    }, 800);
+  };
 
   return (
     <main className="min-h-[calc(100vh-64px)] bg-neutral-950 text-neutral-50">
@@ -76,6 +205,10 @@ export default function FeedPage() {
             const auth = post.authenticity ?? 75;
             const aiProb = post.aiProbability ?? 30;
             const coh = post.coherence ?? 80;
+            const postComments = comments[post.id] || [];
+            const draft = drafts[post.id] || '';
+            const moderating = isModerating[post.id] || false;
+            const status = statusMsg[post.id] || null;
 
             return (
               <article
@@ -188,7 +321,7 @@ export default function FeedPage() {
                     </div>
                   </div>
 
-                  {/* Acciones (solo visuales) */}
+                  {/* Acciones simples */}
                   <div className="mt-4 flex flex-wrap items-center gap-4 text-xs text-neutral-300">
                     <button className="flex items-center gap-1 hover:text-emerald-400">
                       <span>❤️</span>
@@ -206,6 +339,57 @@ export default function FeedPage() {
                       <span>📤</span>
                       <span>Compartir</span>
                     </button>
+                  </div>
+
+                  {/* Comentarios */}
+                  <div className="mt-4 space-y-2 border-t border-neutral-800 pt-3">
+                    <p className="text-xs text-neutral-400">
+                      Comentar <span className="text-[11px]">(moderado por IA)</span>
+                    </p>
+
+                    {/* Lista de comentarios */}
+                    {postComments.length > 0 && (
+                      <div className="space-y-1 max-h-40 overflow-y-auto pr-1">
+                        {postComments.map((c) => (
+                          <div
+                            key={c.id}
+                            className="rounded-lg bg-neutral-900/80 px-3 py-2 text-xs"
+                          >
+                            <p className="text-neutral-100">{c.text}</p>
+                            <p className="mt-1 text-[10px] text-neutral-500">
+                              {formatDate(c.createdAt)}
+                            </p>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Caja de comentario */}
+                    <div className="flex flex-col gap-2">
+                      <textarea
+                        rows={2}
+                        className="w-full rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2 text-xs text-neutral-100 outline-none focus:border-emerald-500"
+                        placeholder="Escribe un comentario respetuoso..."
+                        value={draft}
+                        onChange={(e) =>
+                          handleDraftChange(post.id, e.target.value)
+                        }
+                      />
+                      <div className="flex items-center justify-between gap-3">
+                        <p className="text-[11px] text-neutral-500">
+                          {moderating
+                            ? 'Analizando comentario con la IA de Ethiqia…'
+                            : status || 'La IA bloqueará insultos y odio en esta demo.'}
+                        </p>
+                        <button
+                          className="shrink-0 rounded-full bg-emerald-500 px-4 py-1.5 text-[11px] font-medium text-neutral-950 hover:bg-emerald-400 disabled:opacity-60"
+                          onClick={() => handlePublishComment(post.id)}
+                          disabled={moderating || !draft.trim()}
+                        >
+                          Publicar
+                        </button>
+                      </div>
+                    </div>
                   </div>
                 </div>
               </article>
