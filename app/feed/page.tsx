@@ -17,22 +17,34 @@ export default function FeedPage() {
       <NotificationsBar />
 
       <main className="mx-auto max-w-6xl px-4 pb-16 pt-8">
-        <header className="mb-6 flex items-baseline justify-between gap-4">
+        <header className="mb-6 flex items-center justify-between gap-4">
           <div>
             <h1 className="text-2xl font-semibold">Feed (demo local)</h1>
             <p className="text-sm text-slate-400">
-              Publicaciones generadas desde la demo de Ethiqia en este navegador.
+              Publicaciones generadas desde la demo de Ethiqia en este
+              navegador.
             </p>
           </div>
-          <div className="text-xs text-slate-500">
-            {posts.length} publicaciones locales
+          <div className="flex flex-col items-end gap-2 text-right">
+            <button
+              onClick={() => {
+                window.location.href = '/demo/live';
+              }}
+              className="rounded-full bg-emerald-500 px-4 py-1.5 text-xs font-semibold text-black hover:bg-emerald-400"
+            >
+              Subir imagen (demo Live)
+            </button>
+            <span className="text-[11px] text-slate-500">
+              {posts.length} publicaciones locales
+            </span>
           </div>
         </header>
 
         {posts.length === 0 ? (
           <p className="text-sm text-slate-400">
             Todavía no hay publicaciones. Ve a{' '}
-            <span className="text-emerald-300">/demo/live</span> para subir tu primera imagen.
+            <span className="text-emerald-300">/demo/live</span> para subir tu
+            primera imagen.
           </p>
         ) : (
           <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-4">
