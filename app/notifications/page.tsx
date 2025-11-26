@@ -2,123 +2,104 @@
 
 import { useEffect, useState } from 'react';
 import {
-  EthiqiaNotification,
-  getNotifications,
-  markAllAsRead,
-} from '../../lib/notifications';
-
-function formatDate(iso: string) {
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return '';
-  return d.toLocaleString();
-}
-
-function getTitle(type: EthiqiaNotification['type']): string {
-  switch (type) {
-    case 'post-scored':
-      return 'ETHIQIA SCORE';
-    case 'comment-approved':
-      return 'COMENTARIO APROBADO';
-    case 'comment-blocked':
-      return 'COMENTARIO BLOQUEADO';
-    default:
-      return 'ACTIVIDAD';
-  }
-}
-
-function getTag(type: EthiqiaNotification['type']): string {
-  switch (type) {
-    case 'post-scored':
-      return 'Reputación';
-    case 'comment-approved':
-      return 'Actividad positiva';
-    case 'comment-blocked':
-      return '-0,8 puntos Ethiqia';
-    default:
-      return '';
-  }
-}
+  DemoNotification,
+  loadNotifications,
+  clearAllNotifications,
+  markNotificationAsRead,
+} from '../../lib/demoStorage';
 
 export default function NotificationsPage() {
-  const [items, setItems] = useState<EthiqiaNotification[]>([]);
+  const [notifications, setNotifications] = useState<DemoNotification[]>([]);
 
   useEffect(() => {
-    // Carga inicial
-    setItems(getNotifications());
+    const list = loadNotifications();
+    setNotifications(list);
   }, []);
 
-  const handleMarkAll = () => {
-    markAllAsRead();
-    setItems(getNotifications());
+  const handleMarkAsRead = (id: string) => {
+    markNotificationAsRead(id);
+    setNotifications(loadNotifications());
+  };
+
+  const handleClearAll = () => {
+    clearAllNotifications();
+    setNotifications([]);
   };
 
   return (
-    <main className="min-h-[calc(100vh-64px)] bg-neutral-950 text-neutral-50">
-      <section className="max-w-3xl mx-auto px-4 py-6 space-y-4">
-        <header className="flex items-center justify-between gap-4 flex-wrap">
+    <div className="min-h-screen bg-black text-slate-50">
+      <main className="mx-auto max-w-3xl px-4 pb-16 pt-8">
+        <header className="mb-6 flex items-center justify-between gap-4">
           <div>
-            <p className="text-xs uppercase tracking-[0.2em] text-emerald-400">
-              Centro de notificaciones
-            </p>
-            <h1 className="text-2xl font-semibold">Tu actividad en Ethiqia</h1>
-            <p className="text-sm text-neutral-400 max-w-xl">
-              Aquí ves cómo tus acciones afectan a tu Ethiqia Score: análisis de
-              publicaciones, comentarios aprobados y comentarios bloqueados por
-              IA (cada comentario bloqueado te resta 0,8 puntos en el modelo
-              conceptual de reputación).
+            <h1 className="text-2xl font-semibold">Notificaciones</h1>
+            <p className="text-sm text-slate-400">
+              Actividad generada en esta demo local de Ethiqia desde este
+              navegador.
             </p>
           </div>
 
-          <button
-            type="button"
-            onClick={handleMarkAll}
-            className="rounded-full border border-neutral-700 px-3 py-1 text-xs text-neutral-200 hover:border-emerald-400 hover:text-emerald-300 transition-colors"
-          >
-            Marcar todo como leído
-          </button>
+          {notifications.length > 0 && (
+            <button
+              onClick={handleClearAll}
+              className="rounded-full border border-slate-600 px-3 py-1 text-xs text-slate-300 hover:border-red-500 hover:text-red-300"
+            >
+              Borrar todas
+            </button>
+          )}
         </header>
 
-        {items.length === 0 && (
-          <p className="text-sm text-neutral-500 border border-dashed border-neutral-800 rounded-2xl px-4 py-8 text-center">
-            Aún no tienes notificaciones. Sube una foto en la demo en vivo o
-            deja algún comentario para ver cómo se generan aquí.
+        {notifications.length === 0 ? (
+          <p className="text-sm text-slate-400">
+            Todavía no hay notificaciones. Sube una imagen desde la demo Live o
+            genera actividad para verlas aquí.
           </p>
+        ) : (
+          <ul className="space-y-3">
+            {notifications.map((n) => (
+              <li
+                key={n.id}
+                className={`flex items-start justify-between gap-4 rounded-2xl border px-4 py-3 text-sm ${
+                  n.type === 'error'
+                    ? 'border-red-700/80 bg-red-950/60'
+                    : n.type === 'score'
+                    ? 'border-emerald-600/80 bg-emerald-950/50'
+                    : 'border-slate-700 bg-slate-900/60'
+                }`}
+              >
+                <div>
+                  <div className="mb-1 text-xs uppercase tracking-wide text-slate-300">
+                    {n.type === 'error'
+                      ? 'Error'
+                      : n.type === 'score'
+                      ? 'Ethiqia Score'
+                      : 'Sistema'}
+                  </div>
+                  <div className="text-slate-50">{n.message}</div>
+                  <div className="mt-1 text-[11px] text-slate-400">
+                    {new Date(n.createdAt).toLocaleString('es-ES', {
+                      day: '2-digit',
+                      month: '2-digit',
+                      year: '2-digit',
+                      hour: '2-digit',
+                      minute: '2-digit',
+                    })}
+                    {n.read ? ' · leída' : ' · no leída'}
+                  </div>
+                </div>
+
+                {!n.read && (
+                  <button
+                    onClick={() => handleMarkAsRead(n.id)}
+                    className="mt-1 rounded-full border border-slate-500 px-3 py-1 text-[11px] text-slate-200 hover:border-emerald-400 hover:text-emerald-300"
+                  >
+                    Marcar como leída
+                  </button>
+                )}
+              </li>
+            ))}
+          </ul>
         )}
-
-        <ul className="space-y-3">
-          {items.map((n) => (
-            <li
-              key={n.id}
-              className={`rounded-2xl border px-4 py-3 text-sm ${
-                n.read
-                  ? 'border-neutral-800 bg-neutral-900/60'
-                  : 'border-emerald-500/60 bg-neutral-900'
-              }`}
-            >
-              <div className="flex items-center justify-between gap-3 flex-wrap">
-                <div className="flex items-center gap-2">
-                  {!n.read && (
-                    <span className="h-2 w-2 rounded-full bg-emerald-400 inline-block" />
-                  )}
-                  <span className="text-xs font-semibold text-neutral-200 uppercase tracking-[0.16em]">
-                    {getTitle(n.type)}
-                  </span>
-                </div>
-                <div className="flex items-center gap-2 text-[11px] text-neutral-500">
-                  {getTag(n.type) && (
-                    <span className="rounded-full border border-neutral-700 px-2 py-[2px] text-[10px] uppercase tracking-[0.16em] text-neutral-300">
-                      {getTag(n.type)}
-                    </span>
-                  )}
-                  <span>{formatDate(n.created_at)}</span>
-                </div>
-              </div>
-
-              <p className="mt-1 text-neutral-100">{n.message}</p>
-            </li>
-          ))}
-        </ul>
-      </section>
-    </main>
+      </main>
+    </div>
   );
 }
