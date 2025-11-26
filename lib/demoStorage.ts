@@ -12,6 +12,11 @@ export type DemoPost = {
   imageUrl: string;
   score: number;
   createdAt: number;
+  authenticity: number;
+  aiProbability: number;
+  coherence: number;
+  likes: number;
+  comments: number;
 };
 
 export type DemoNotification = {
@@ -30,14 +35,14 @@ function isBrowser() {
   return typeof window !== 'undefined';
 }
 
-function readJSON<T>(key: string, fallback: T): T {
-  if (!isBrowser()) return fallback;
+function readRaw(key: string): any {
+  if (!isBrowser()) return null;
   try {
     const raw = window.localStorage.getItem(key);
-    if (!raw) return fallback;
-    return JSON.parse(raw) as T;
+    if (!raw) return null;
+    return JSON.parse(raw);
   } catch {
-    return fallback;
+    return null;
   }
 }
 
@@ -50,10 +55,27 @@ function writeJSON<T>(key: string, value: T) {
   }
 }
 
+function normalizePost(p: any): DemoPost {
+  const now = Date.now();
+  return {
+    id: typeof p?.id === 'string' ? p.id : `post_${now}_${Math.random().toString(16).slice(2)}`,
+    imageUrl: typeof p?.imageUrl === 'string' ? p.imageUrl : '',
+    score: typeof p?.score === 'number' ? p.score : 0,
+    createdAt: typeof p?.createdAt === 'number' ? p.createdAt : now,
+    authenticity: typeof p?.authenticity === 'number' ? p.authenticity : 70,
+    aiProbability: typeof p?.aiProbability === 'number' ? p.aiProbability : 30,
+    coherence: typeof p?.coherence === 'number' ? p.coherence : 75,
+    likes: typeof p?.likes === 'number' ? p.likes : 0,
+    comments: typeof p?.comments === 'number' ? p.comments : 0,
+  };
+}
+
 /* POSTS */
 
 export function loadDemoPosts(): DemoPost[] {
-  return readJSON<DemoPost[]>(POSTS_KEY, []);
+  const raw = readRaw(POSTS_KEY);
+  if (!Array.isArray(raw)) return [];
+  return raw.map((p) => normalizePost(p));
 }
 
 export function saveDemoPosts(posts: DemoPost[]) {
@@ -71,6 +93,11 @@ export function addDemoPost(
     imageUrl,
     score: analysis.ethScore,
     createdAt: now,
+    authenticity: analysis.authenticity,
+    aiProbability: analysis.aiProbability,
+    coherence: analysis.coherence,
+    likes: 0,
+    comments: 0,
   };
 
   const posts = loadDemoPosts();
@@ -83,13 +110,35 @@ export function addDemoPost(
 }
 
 export function loadLastPost(): DemoPost | null {
-  return readJSON<DemoPost | null>(LAST_POST_KEY, null);
+  const raw = readRaw(LAST_POST_KEY);
+  if (!raw) return null;
+  return normalizePost(raw);
+}
+
+export function toggleLike(postId: string): DemoPost[] {
+  const posts = loadDemoPosts();
+  const updated = posts.map((p) =>
+    p.id === postId ? { ...p, likes: p.likes + 1 } : p
+  );
+  saveDemoPosts(updated);
+  return updated;
+}
+
+export function incrementComments(postId: string): DemoPost[] {
+  const posts = loadDemoPosts();
+  const updated = posts.map((p) =>
+    p.id === postId ? { ...p, comments: p.comments + 1 } : p
+  );
+  saveDemoPosts(updated);
+  return updated;
 }
 
 /* NOTIFICACIONES */
 
 export function loadNotifications(): DemoNotification[] {
-  return readJSON<DemoNotification[]>(NOTIFS_KEY, []);
+  const raw = readRaw(NOTIFS_KEY);
+  if (!Array.isArray(raw)) return [];
+  return raw as DemoNotification[];
 }
 
 export function saveNotifications(list: DemoNotification[]) {
