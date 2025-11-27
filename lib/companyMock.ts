@@ -45,6 +45,11 @@ export interface ClinicFlow {
   description: string;
 }
 
+export interface CompanyApi {
+  title: string;
+  description: string;
+}
+
 export interface CompanyData {
   name: string;
   logo?: string;
@@ -52,7 +57,7 @@ export interface CompanyData {
   verified: boolean;
   sector: string;
   country: string;
-  apis: string[];
+  apis: CompanyApi[];
   clinicFlows: ClinicFlow[];
   scoreBreakdown: ScoreBreakdownItem[];
   kpiMetrics: KpiMetric[];
@@ -70,30 +75,56 @@ export const companyData: CompanyData = {
   sector: "Cosmética Profesional – Biotecnología – Vegana",
   country: "España",
 
+  // APIs con nombre + explicación corta
   apis: [
-    "API de Ventas B2B (pedidos profesionales en Velet)",
-    "API de Clientes Activos y Recurrencia",
-    "API de Impacto (visitas validadas con QR seguro)",
-    "API de Formación Profesional para Centros",
-    "API de Soporte y Resolución de Incidencias",
-    "API de Documentación Regulatoria (AEMPS / CPNP / FDA / PETA) basada en evidencias"
+    {
+      title: "API de Ventas B2B (pedidos profesionales en Velet)",
+      description:
+        "Envía a Ethiqia los pedidos profesionales confirmados (clínicas, centros estéticos, distribuidores) para demostrar actividad real y trayectoria comercial."
+    },
+    {
+      title: "API de Clientes Activos y Recurrencia",
+      description:
+        "Permite calcular cuántos centros siguen activos y cuántos repiten pedidos, sin exponer datos sensibles. Refuerza la estabilidad y fidelidad B2B."
+    },
+    {
+      title: "API de Impacto (visitas validadas con QR seguro)",
+      description:
+        "Registra visitas reales de clientes a centros verificados mediante QR antifraude. Sirve para mostrar actividad real sin necesidad de datos médicos."
+    },
+    {
+      title: "API de Formación Profesional para Centros",
+      description:
+        "Registra formaciones impartidas por Velet en clínicas y centros estéticos, dando puntos por capacitación y actualización continua."
+    },
+    {
+      title: "API de Soporte y Resolución de Incidencias",
+      description:
+        "Mide tiempos de respuesta y resolución de tickets B2B para premiar a Velet y a los centros que gestionan bien la postventa."
+    },
+    {
+      title:
+        "API de Documentación Regulatoria (AEMPS / CPNP / FDA / PETA) basada en evidencias",
+      description:
+        "No conecta con los reguladores directamente, pero registra y valida documentos oficiales subidos (autorizaciones, registros, certificados veganos, etc.)."
+    }
   ],
 
   clinicFlows: [
     {
       title: "Compras profesionales a Velet",
       description:
-        "Cada vez que la clínica compra productos profesionales, Ethiqia registra actividad real verificada. Sin datos sensibles, solo compras confirmadas."
+        "Cada vez que una clínica compra productos profesionales de Velet, Ethiqia registra actividad real verificada. No se guardan datos médicos, solo pedidos confirmados."
     },
     {
       title: "Visitas de clientes Ethiqia",
       description:
-        "Cuando un cliente valida su visita con un QR seguro, la clínica gana actividad real y el cliente suma puntos por acudir a un centro verificado."
+        "Cuando un cliente valida su visita al centro mediante un QR seguro, la clínica gana actividad y el cliente suma puntos por acudir a un centro verificado."
     },
     {
       title: "Reputación estable, sin trucos",
       description:
-        "Las compras y visitas mejoran estadísticas del centro, pero el Ethiqia Score se basa en verificación, formación, documentación y trayectoria."
+        "Las compras y visitas mejoran estadísticas de actividad, pero el Ethiqia Score base se construye con verificación, formación, documentación y trayectoria, no inflando visitas."
     }
   ],
 
@@ -119,12 +150,12 @@ export const companyData: CompanyData = {
     {
       label: "Productos registrados en CPNP",
       value: "18",
-      helper: "Catálogo profesional para EU"
+      helper: "Catálogo profesional para la UE"
     },
     {
       label: "Productos registrados en FDA",
       value: "6",
-      helper: "Catálogo regulado en USA"
+      helper: "Catálogo regulado en EE. UU."
     }
   ],
 
@@ -223,8 +254,7 @@ export const companyData: CompanyData = {
       rating: 5,
       text: "Productos espectaculares. Recomendadísimo.",
       ticketVerified: true,
-      response:
-        "¡Gracias por tu comentario, María!",
+      response: "¡Gracias por tu comentario, María!",
       date: "2025-01-03"
     }
   ]
