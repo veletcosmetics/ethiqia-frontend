@@ -14,7 +14,6 @@ export default function CompanyPage() {
     null
   );
 
-  // Estado local para respuestas editables de las reseñas
   const [reviewResponses, setReviewResponses] = useState<
     Record<number, string>
   >(
@@ -55,8 +54,8 @@ export default function CompanyPage() {
 
               <p className="text-xs text-neutral-500 max-w-xl">
                 Perfil profesional demo que muestra cómo Ethiqia valida la
-                reputación de una empresa a través de evidencias reales,
-                actividad y datos verificables.
+                reputación de una empresa a través de evidencias, actividad y
+                datos verificables, usando Velet como caso realista.
               </p>
             </div>
           </div>
@@ -66,8 +65,8 @@ export default function CompanyPage() {
               Perfil empresarial
             </p>
             <p className="text-sm text-neutral-400 max-w-xs md:text-right">
-              Este perfil sirve para mostrar a administraciones públicas,
-              inversores y empresas cómo funcionaría Ethiqia en la práctica.
+              Pensado para explicar a administraciones, inversores y partners
+              cómo funcionaría Ethiqia con datos reales de una empresa.
             </p>
           </div>
         </header>
@@ -78,19 +77,61 @@ export default function CompanyPage() {
         {/* DESGLOSE ETHIQIA SCORE */}
         <ScoreBreakdown items={data.scoreBreakdown} />
 
-        {/* APIS ACTIVAS */}
+        {/* APIS ACTIVAS CON DESCRIPCIÓN */}
         <section className="mt-10">
           <h2 className="text-sm font-semibold text-neutral-100 mb-3">
-            APIs activas (demo)
+            APIs activas (demo) – Qué hace cada una
           </h2>
-          <div className="flex flex-wrap gap-2">
+
+          <p className="text-xs text-neutral-500 mb-4 max-w-2xl">
+            Ethiqia no se conecta “a todo Internet”. Se conecta a muy pocos
+            puntos clave: ventas reales, actividad profesional, soporte y
+            documentación. Estas APIs están pensadas para ser simples y
+            controlables por Velet.
+          </p>
+
+          <div className="grid gap-4 md:grid-cols-2">
             {data.apis.map((api, i) => (
-              <span
+              <div
                 key={i}
-                className="bg-neutral-900 border border-neutral-800 px-3 py-1 rounded-full text-xs text-neutral-300"
+                className="rounded-2xl border border-neutral-800 bg-neutral-900/70 p-4 space-y-2"
               >
-                {api}
-              </span>
+                <p className="text-sm font-semibold text-neutral-100">
+                  {api.title}
+                </p>
+                <p className="text-xs text-neutral-400 leading-relaxed">
+                  {api.description}
+                </p>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        {/* CÓMO FUNCIONA PARA CLÍNICAS (VERSIÓN SIMPLE) */}
+        <section className="mt-10">
+          <h2 className="text-sm font-semibold text-neutral-100 mb-3">
+            Cómo funciona para clínicas (versión simple)
+          </h2>
+
+          <p className="text-xs text-neutral-500 mb-4 max-w-2xl">
+            Para una clínica, Ethiqia se resume en dos pasos: compras reales a
+            Velet y visitas validadas de clientes. Nada de datos médicos,
+            solo actividad profesional real.
+          </p>
+
+          <div className="grid gap-4 md:grid-cols-3">
+            {data.clinicFlows.map((flow, i) => (
+              <div
+                key={i}
+                className="rounded-2xl border border-neutral-800 bg-neutral-900/70 p-4 space-y-2"
+              >
+                <p className="text-sm font-semibold text-neutral-100">
+                  {flow.title}
+                </p>
+                <p className="text-xs text-neutral-400 leading-relaxed">
+                  {flow.description}
+                </p>
+              </div>
             ))}
           </div>
         </section>
@@ -173,8 +214,8 @@ export default function CompanyPage() {
             Reseñas verificadas (demo)
           </h2>
           <p className="text-xs text-neutral-500 mb-4">
-            Todas las reseñas están asociadas a tickets reales. La empresa
-            puede responder desde su panel.
+            Todas las reseñas están asociadas a compras reales. La empresa
+            puede responder desde su panel profesional.
           </p>
 
           {data.reviews.map((review, i) => (
@@ -183,7 +224,7 @@ export default function CompanyPage() {
               review={review}
               allowEditResponse
               responseOverride={reviewResponses[i]}
-              onChangeResponse={(val) => handleChangeResponse(i, val)}
+              onChangeResponse={(val: string) => handleChangeResponse(i, val)}
             />
           ))}
         </section>
