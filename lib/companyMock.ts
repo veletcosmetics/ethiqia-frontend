@@ -64,21 +64,22 @@ export const companyData: CompanyData = {
   sector: "Cosmética Profesional – Biotecnología – Vegana",
   country: "España",
 
+  // 🔹 APIs alineadas con Velet (sin confundir evidencias con API externa)
   apis: [
-    "Ventas Reales (B2B: clínicas y centros estéticos)",
-    "Certificaciones ECO & VEGAN (PETA, Ecoembes)",
-    "Impacto Social – Línea Oncológica",
-    "I+D – Instituto de Bioingeniería (UMH)",
-    "Visitas Comerciales y Formaciones",
-    "Registros Internacionales – AEMPS / CPNP / FDA"
+    "API de Ventas B2B (pedidos profesionales y distribuidores)",
+    "API de Clientes Activos y Recurrencia",
+    "API de Impacto en Piel Sensible y Programas Oncológicos (sesiones registradas)",
+    "API de Formación Profesional en Centros y Clínicas",
+    "API de Soporte Técnico y Reclamaciones (tiempos de respuesta y resolución)",
+    "API de Documentación Regulatoria (AEMPS / CPNP / FDA / PETA) basada en evidencias subidas"
   ],
 
   scoreBreakdown: [
     { label: "Confianza en clientes B2B", value: 88 },
     { label: "Trayectoria y actividad comercial", value: 81 },
-    { label: "Impacto social (línea oncológica)", value: 90 },
+    { label: "Impacto social (línea oncológica / piel sensible)", value: 90 },
     { label: "Sostenibilidad y envases", value: 79 },
-    { label: "Cumplimiento regulatorio (AEMPS, CPNP, FDA)", value: 87 }
+    { label: "Cumplimiento regulatorio (AEMPS, CPNP, FDA, PETA)", value: 87 }
   ],
 
   kpiMetrics: [
@@ -88,9 +89,9 @@ export const companyData: CompanyData = {
       helper: "Clientes profesionales trabajando con Velet"
     },
     {
-      label: "Pacientes oncológicos beneficiados",
+      label: "Pacientes beneficiados (piel sensible / onco)",
       value: "120+",
-      helper: "Programas con clínicas y hospitales"
+      helper: "Programas con clínicas y centros especializados"
     },
     {
       label: "Productos registrados CPNP",
@@ -154,7 +155,7 @@ export const companyData: CompanyData = {
     },
     {
       type: "esg",
-      title: "Programa Oncológico – 120 pacientes beneficiados",
+      title: "Programa piel sensible / oncológica – 120 pacientes beneficiados",
       date: "2025-01-20",
       points: 1.8
     },
@@ -179,7 +180,7 @@ export const companyData: CompanyData = {
     {
       user: "Clínica DermaPlus",
       rating: 5,
-      text: "La línea oncológica de Velet es la mejor que hemos probado. Seguridad y resultados excepcionales.",
+      text: "La línea para piel sensible y oncológica de Velet es la mejor que hemos probado. Seguridad y resultados excepcionales.",
       ticketVerified: true,
       response:
         "Gracias por compartir vuestra experiencia. Seguimos mejorando día a día.",
@@ -197,7 +198,7 @@ export const companyData: CompanyData = {
     {
       user: "María S.",
       rating: 5,
-      text: "Atención impecable y productos increíbles. Recomiendo su sérum para piel sensible y pacientes oncológicos.",
+      text: "Atención impecable y productos increíbles. Recomiendo especialmente la línea para piel sensible.",
       ticketVerified: true,
       response:
         "Gracias María por tu confianza. ¡Nos alegra que tu experiencia fuera excelente!",
