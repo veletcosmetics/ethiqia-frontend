@@ -34,6 +34,7 @@ export default function FeedPage() {
     const { data, error } = await supabase
       .from('posts')
       .select('id, user_id, caption, image_url, created_at')
+      .eq('moderation_status', 'approved') // solo aprobados
       .order('created_at', { ascending: false })
       .limit(50);
 
@@ -63,7 +64,7 @@ export default function FeedPage() {
     }
   };
 
-  // Crear un nuevo post REAL
+  // Crear un nuevo post REAL con moderación IA
   const handleCreatePost = async (e: FormEvent) => {
     e.preventDefault();
     setCreateError(null);
@@ -76,6 +77,43 @@ export default function FeedPage() {
     setCreatingPost(true);
 
     try {
+      // 0) Moderación IA del caption antes de hacer nada más
+      if (caption.trim()) {
+        const modRes = await fetch('/api/moderate-post', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ caption }),
+        });
+
+        if (!modRes.ok) {
+          const errData = await modRes.json().catch(() => ({}));
+          console.error('Error en moderación:', errData);
+          setCreateError(
+            'No se ha podido validar el contenido. Inténtalo de nuevo dentro de unos minutos.'
+          );
+          setCreatingPost(false);
+          return;
+        }
+
+        const modData = (await modRes.json()) as {
+          allowed: boolean;
+          flagged: boolean;
+          reason?: string | null;
+          categories?: any;
+        };
+
+        if (!modData.allowed) {
+          setCreateError(
+            modData.reason ||
+              'Tu publicación no cumple las normas de contenido de Ethiqia.'
+          );
+          setCreatingPost(false);
+          return;
+        }
+      }
+
       // 1) Usuario actual
       const { data: userData, error: userError } = await supabase.auth.getUser();
       if (userError) throw userError;
@@ -91,17 +129,21 @@ export default function FeedPage() {
       if (imageFile) {
         finalImageUrl = await uploadPostImage(imageFile);
       } else {
-        // si no hay foto, ponemos un placeholder (así no revienta el NOT NULL)
         finalImageUrl = 'https://placehold.co/600x400?text=Ethiqia';
       }
 
-      // 3) Insertar post
+      // 3) Insertar post en Supabase con moderation_status = 'approved'
       const { data: newPostData, error: postError } = await supabase
         .from('posts')
         .insert({
           user_id: user.id,
           caption: caption.trim() || null,
           image_url: finalImageUrl,
+          moderation_status: 'approved',
+          moderation_reason: null,
+          moderation_labels: null,
+          moderation_decided_at: new Date().toISOString(),
+          moderation_decided_by: 'ai',
         })
         .select('id, user_id, caption, image_url, created_at')
         .single();
@@ -120,7 +162,6 @@ export default function FeedPage() {
 
       if (scoreError) {
         console.error('Error insertando score:', scoreError);
-        // No lanzamos para no romper la UX
       }
 
       // 5) Limpiar formulario y actualizar feed
@@ -214,7 +255,7 @@ export default function FeedPage() {
 
           {!loadingFeed && !feedError && posts.length === 0 && (
             <p className="text-sm text-gray-500">
-              Todavía no hay publicaciones. Crea la primera arriba.
+              Todavía no hay publicaciones aprobadas. Crea la primera arriba.
             </p>
           )}
 
