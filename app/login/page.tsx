@@ -1,68 +1,84 @@
-"use client";
+'use client';
 
-import { useState } from "react";
-import { supabase } from "@/lib/supabaseClient";
-import { useRouter } from "next/navigation";
+import { useState, FormEvent } from 'react';
+import { useRouter } from 'next/navigation';
+import { supabase } from '@/lib/supabaseClient';
 
 export default function LoginPage() {
   const router = useRouter();
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
-  const [message, setMessage] = useState("");
+  const [error, setError] = useState<string | null>(null);
 
-  const handleLogin = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
-    setMessage("");
+    setError(null);
     setLoading(true);
 
-    const { data, error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
+    try {
+      const { error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
 
-    if (error) {
-      setMessage("❌ " + error.message);
-    } else {
-      setMessage("✔ Sesión iniciada.");
-      router.push("/profile");
+      if (error) throw error;
+
+      // Login correcto → al feed
+      router.push('/feed');
+    } catch (err: any) {
+      setError(err.message || 'Error al iniciar sesión');
+    } finally {
+      setLoading(false);
     }
-
-    setLoading(false);
   };
 
   return (
-    <main className="p-6 max-w-md mx-auto">
-      <h1 className="text-xl font-bold mb-4">Iniciar sesión</h1>
+    <main className="min-h-screen flex items-center justify-center px-4">
+      <div className="w-full max-w-md border rounded-2xl p-6 flex flex-col gap-4">
+        <h1 className="text-2xl font-bold text-center">Entrar en Ethiqia</h1>
 
-      <form onSubmit={handleLogin} className="space-y-4">
-        <input
-          type="email"
-          placeholder="Email"
-          className="w-full p-2 rounded bg-neutral-900 border border-neutral-700"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-        />
+        <form onSubmit={handleSubmit} className="flex flex-col gap-3">
+          <div className="flex flex-col gap-1">
+            <label className="text-sm font-medium">Email</label>
+            <input
+              type="email"
+              className="border rounded-xl px-3 py-2 text-sm"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              required
+            />
+          </div>
 
-        <input
-          type="password"
-          placeholder="Contraseña"
-          className="w-full p-2 rounded bg-neutral-900 border border-neutral-700"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-        />
+          <div className="flex flex-col gap-1">
+            <label className="text-sm font-medium">Contraseña</label>
+            <input
+              type="password"
+              className="border rounded-xl px-3 py-2 text-sm"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
+            />
+          </div>
 
-        <button
-          disabled={loading}
-          className="w-full bg-emerald-600 py-2 rounded font-semibold"
-        >
-          {loading ? "Entrando..." : "Iniciar sesión"}
-        </button>
-      </form>
+          {error && <p className="text-xs text-red-600">{error}</p>}
 
-      {message && (
-        <p className="text-sm text-neutral-300 mt-4">{message}</p>
-      )}
+          <button
+            type="submit"
+            disabled={loading}
+            className="mt-2 bg-black text-white rounded-xl px-3 py-2 text-sm font-semibold disabled:opacity-60"
+          >
+            {loading ? 'Entrando...' : 'Entrar'}
+          </button>
+        </form>
+
+        <p className="text-xs text-center text-gray-500">
+          ¿No tienes cuenta?{' '}
+          <a href="/register" className="underline">
+            Crear cuenta
+          </a>
+        </p>
+      </div>
     </main>
   );
 }
