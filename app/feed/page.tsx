@@ -3,6 +3,7 @@
 import { useEffect, useState, FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabaseClient';
+import { uploadPostImage } from '@/lib/uploadImage';
 
 type Post = {
   id: string;
@@ -14,12 +15,14 @@ type Post = {
 
 export default function FeedPage() {
   const router = useRouter();
+
   const [posts, setPosts] = useState<Post[]>([]);
   const [loadingFeed, setLoadingFeed] = useState(true);
   const [feedError, setFeedError] = useState<string | null>(null);
 
   const [caption, setCaption] = useState('');
-  const [imageUrl, setImageUrl] = useState('');
+  const [imageFile, setImageFile] = useState<File | null>(null);
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [creatingPost, setCreatingPost] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
 
@@ -48,20 +51,32 @@ export default function FeedPage() {
     loadPosts();
   }, []);
 
-  // Crear un nuevo post
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0] ?? null;
+    setImageFile(file);
+
+    if (file) {
+      const url = URL.createObjectURL(file);
+      setImagePreview(url);
+    } else {
+      setImagePreview(null);
+    }
+  };
+
+  // Crear un nuevo post REAL
   const handleCreatePost = async (e: FormEvent) => {
     e.preventDefault();
     setCreateError(null);
 
-    if (!caption.trim() && !imageUrl.trim()) {
-      setCreateError('Escribe un texto o pon al menos una URL de imagen.');
+    if (!caption.trim() && !imageFile) {
+      setCreateError('Escribe un texto o selecciona una foto.');
       return;
     }
 
     setCreatingPost(true);
 
     try {
-      // 1) Obtener usuario actual
+      // 1) Usuario actual
       const { data: userData, error: userError } = await supabase.auth.getUser();
       if (userError) throw userError;
 
@@ -71,20 +86,22 @@ export default function FeedPage() {
         return;
       }
 
-      if (!imageUrl.trim()) {
-        // si no hay imagen, ponemos un placeholder
-        // luego lo cambiaremos cuando integremos subida real
-        // para que no falle el NOT NULL
-        setImageUrl('https://placehold.co/600x400');
+      // 2) Subir imagen si hay archivo
+      let finalImageUrl = '';
+      if (imageFile) {
+        finalImageUrl = await uploadPostImage(imageFile);
+      } else {
+        // si no hay foto, ponemos un placeholder (así no revienta el NOT NULL)
+        finalImageUrl = 'https://placehold.co/600x400?text=Ethiqia';
       }
 
-      // 2) Insertar post
+      // 3) Insertar post
       const { data: newPostData, error: postError } = await supabase
         .from('posts')
         .insert({
           user_id: user.id,
           caption: caption.trim() || null,
-          image_url: imageUrl.trim() || 'https://placehold.co/600x400',
+          image_url: finalImageUrl,
         })
         .select('id, user_id, caption, image_url, created_at')
         .single();
@@ -93,27 +110,27 @@ export default function FeedPage() {
 
       const newPost = newPostData as Post;
 
-      // 3) Insertar puntos (score) por crear post
+      // 4) Insertar puntos (score) por crear post
       const { error: scoreError } = await supabase.from('scores').insert({
         user_id: user.id,
         source: 'post',
-        value: 5, // por ejemplo, 5 puntos por publicar
+        value: 5,
         meta: { reason: 'publicacion' },
       });
 
       if (scoreError) {
         console.error('Error insertando score:', scoreError);
-        // No hacemos throw para no romper la creación del post;
-        // simplemente no se suman puntos si falla
+        // No lanzamos para no romper la UX
       }
 
-      // 4) Limpiar formulario y actualizar feed en pantalla
+      // 5) Limpiar formulario y actualizar feed
       setCaption('');
-      setImageUrl('');
+      setImageFile(null);
+      setImagePreview(null);
       setPosts((prev) => [newPost, ...prev]);
     } catch (err: any) {
       console.error(err);
-      setCreateError(err.message || 'Error al crear el post');
+      setCreateError(err.message || 'Error al crear la publicación');
     } finally {
       setCreatingPost(false);
     }
@@ -122,59 +139,78 @@ export default function FeedPage() {
   return (
     <main className="min-h-screen flex flex-col items-center py-6 px-4 gap-6">
       <div className="w-full max-w-2xl flex flex-col gap-4">
-        {/* Cabecera simple */}
+        {/* Cabecera */}
         <header className="flex items-center justify-between">
           <h1 className="text-2xl font-bold">Feed Ethiqia</h1>
-          <button
-            className="text-xs px-3 py-1 border rounded-xl hover:bg-gray-100"
-            onClick={() => router.push('/profile')}
-          >
-            Ir a mi perfil
-          </button>
+          <div className="flex gap-2">
+            <button
+              className="text-xs px-3 py-1 border rounded-xl hover:bg-gray-100"
+              onClick={() => router.push('/score')}
+            >
+              Ver mi Score
+            </button>
+            <button
+              className="text-xs px-3 py-1 border rounded-xl hover:bg-gray-100"
+              onClick={() => router.push('/profile')}
+            >
+              Mi perfil
+            </button>
+          </div>
         </header>
 
-        {/* Formulario para crear post */}
-        <section className="border rounded-2xl p-4 flex flex-col gap-3">
+        {/* Formulario nueva publicación */}
+        <section className="border rounded-2xl p-4 flex flex-col gap-3 bg-black text-white">
           <h2 className="text-sm font-semibold">Crear nueva publicación</h2>
 
           <form onSubmit={handleCreatePost} className="flex flex-col gap-3">
             <textarea
-              className="border rounded-xl px-3 py-2 text-sm min-h-[70px]"
+              className="border rounded-xl px-3 py-2 text-sm min-h-[70px] bg-black text-white"
               placeholder="Cuenta algo sobre tu foto o contenido auténtico..."
               value={caption}
               onChange={(e) => setCaption(e.target.value)}
             />
 
             <div className="flex flex-col gap-1">
-              <label className="text-xs text-gray-600">
-                URL de imagen (temporal, luego conectaremos subida real)
+              <label className="text-xs text-gray-300">
+                Selecciona una foto de tu galería
               </label>
               <input
-                className="border rounded-xl px-3 py-2 text-sm"
-                placeholder="https://..."
-                value={imageUrl}
-                onChange={(e) => setImageUrl(e.target.value)}
+                type="file"
+                accept="image/*"
+                className="text-xs"
+                onChange={handleFileChange}
               />
+              {imagePreview && (
+                <img
+                  src={imagePreview}
+                  alt="Previsualización"
+                  className="mt-2 max-h-48 rounded-xl object-cover"
+                />
+              )}
             </div>
 
             {createError && (
-              <p className="text-xs text-red-600">{createError}</p>
+              <p className="text-xs text-red-400">{createError}</p>
             )}
 
             <button
               type="submit"
               disabled={creatingPost}
-              className="self-end bg-black text-white rounded-xl px-4 py-2 text-sm font-semibold disabled:opacity-60"
+              className="self-end bg-white text-black rounded-xl px-4 py-2 text-sm font-semibold disabled:opacity-60"
             >
               {creatingPost ? 'Publicando...' : 'Publicar'}
             </button>
           </form>
         </section>
 
-        {/* Feed de posts */}
+        {/* Feed */}
         <section className="flex flex-col gap-3">
-          {loadingFeed && <p className="text-sm text-gray-500">Cargando feed...</p>}
-          {feedError && <p className="text-sm text-red-600">Error: {feedError}</p>}
+          {loadingFeed && (
+            <p className="text-sm text-gray-500">Cargando feed...</p>
+          )}
+          {feedError && (
+            <p className="text-sm text-red-600">Error: {feedError}</p>
+          )}
 
           {!loadingFeed && !feedError && posts.length === 0 && (
             <p className="text-sm text-gray-500">
@@ -193,12 +229,12 @@ export default function FeedPage() {
                     {new Date(post.created_at).toLocaleString()}
                   </span>
                   {post.caption && (
-                    <p className="text-sm whitespace-pre-line">{post.caption}</p>
+                    <p className="text-sm whitespace-pre-line">
+                      {post.caption}
+                    </p>
                   )}
                 </div>
                 <div className="w-full bg-black/5">
-                  {/* De momento solo mostramos la URL como imagen directa;
-                      luego se integrará con el sistema de subida */}
                   <img
                     src={post.image_url}
                     alt={post.caption ?? 'Post'}
