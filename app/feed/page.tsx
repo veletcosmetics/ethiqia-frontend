@@ -1,318 +1,215 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import Image from 'next/image';
-import NotificationsBar from '../../components/demo/NotificationsBar';
-import {
-  DemoPost,
-  loadDemoPosts,
-  toggleLike,
-  incrementComments,
-  pushNotification,
-} from '../../lib/demoStorage';
+import { useEffect, useState, FormEvent } from 'react';
+import { useRouter } from 'next/navigation';
+import { supabase } from '@/lib/supabaseClient';
 
-type CommentInputs = {
-  [postId: string]: string;
+type Post = {
+  id: string;
+  user_id: string;
+  caption: string | null;
+  image_url: string;
+  created_at: string;
 };
-
-type ModerationState = {
-  [postId: string]: 'idle' | 'reviewing' | 'approved' | 'rejected';
-};
-
-function formatDateTime(ts: number): string {
-  return new Date(ts).toLocaleString('es-ES', {
-    day: '2-digit',
-    month: '2-digit',
-    year: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
-}
-
-function probabilityLabel(p: number): { texto: string; clase: string } {
-  if (p >= 70) {
-    return {
-      texto: 'Alta probabilidad de IA',
-      clase: 'bg-rose-900/70 text-rose-200 border border-rose-500/70',
-    };
-  }
-  if (p >= 40) {
-    return {
-      texto: 'Probabilidad media de IA',
-      clase: 'bg-amber-900/70 text-amber-100 border border-amber-500/70',
-    };
-  }
-  return {
-    texto: 'Baja probabilidad de IA',
-    clase: 'bg-emerald-900/70 text-emerald-100 border border-emerald-500/70',
-  };
-}
-
-// Lista simple de palabras ofensivas (demo)
-const BAD_WORDS = [
-  'puta',
-  'puto',
-  'imbecil',
-  'imbécil',
-  'idiota',
-  'mierda',
-  'asqueroso',
-  'asquerosa',
-  'gilipollas',
-  'subnormal',
-  'cerdo',
-  'perra',
-  'zorra',
-  'cabrón',
-  'cabron',
-  'estúpido',
-  'estupido',
-  'racista',
-];
-
-function containsBadWords(text: string): boolean {
-  const t = text.toLowerCase();
-  return BAD_WORDS.some((w) => t.includes(w));
-}
 
 export default function FeedPage() {
-  const [posts, setPosts] = useState<DemoPost[]>([]);
-  const [commentInputs, setCommentInputs] = useState<CommentInputs>({});
-  const [moderation, setModeration] = useState<ModerationState>({});
+  const router = useRouter();
+  const [posts, setPosts] = useState<Post[]>([]);
+  const [loadingFeed, setLoadingFeed] = useState(true);
+  const [feedError, setFeedError] = useState<string | null>(null);
+
+  const [caption, setCaption] = useState('');
+  const [imageUrl, setImageUrl] = useState('');
+  const [creatingPost, setCreatingPost] = useState(false);
+  const [createError, setCreateError] = useState<string | null>(null);
+
+  // Cargar posts desde Supabase
+  const loadPosts = async () => {
+    setLoadingFeed(true);
+    setFeedError(null);
+
+    const { data, error } = await supabase
+      .from('posts')
+      .select('id, user_id, caption, image_url, created_at')
+      .order('created_at', { ascending: false })
+      .limit(50);
+
+    if (error) {
+      console.error(error);
+      setFeedError(error.message);
+    } else {
+      setPosts((data || []) as Post[]);
+    }
+
+    setLoadingFeed(false);
+  };
 
   useEffect(() => {
-    setPosts(loadDemoPosts());
+    loadPosts();
   }, []);
 
-  const handleLike = (postId: string) => {
-    const updated = toggleLike(postId);
-    setPosts(updated);
-  };
+  // Crear un nuevo post
+  const handleCreatePost = async (e: FormEvent) => {
+    e.preventDefault();
+    setCreateError(null);
 
-  const handleCommentChange = (postId: string, value: string) => {
-    setCommentInputs((prev) => ({ ...prev, [postId]: value }));
-  };
+    if (!caption.trim() && !imageUrl.trim()) {
+      setCreateError('Escribe un texto o pon al menos una URL de imagen.');
+      return;
+    }
 
-  const handleCommentSubmit = (postId: string) => {
-    const text = (commentInputs[postId] ?? '').trim();
-    if (!text) return;
+    setCreatingPost(true);
 
-    // Pasa a estado "revisando"
-    setModeration((prev) => ({ ...prev, [postId]: 'reviewing' }));
+    try {
+      // 1) Obtener usuario actual
+      const { data: userData, error: userError } = await supabase.auth.getUser();
+      if (userError) throw userError;
 
-    // Simulación de revisión por IA
-    setTimeout(() => {
-      if (containsBadWords(text)) {
-        // Comentario NO aprobado
-        setModeration((prev) => ({ ...prev, [postId]: 'rejected' }));
-
-        // Banner de penalización de score (demo)
-        pushNotification(
-          'Tu comentario ha sido bloqueado por lenguaje inapropiado. -0,18 puntos en tu Ethiqia Score por lenguaje abusivo.',
-          'error',
-        );
-
+      const user = userData.user;
+      if (!user) {
+        router.push('/login');
         return;
       }
 
-      // Comentario aprobado
-      incrementComments(postId);
-      setPosts(loadDemoPosts());
+      if (!imageUrl.trim()) {
+        // si no hay imagen, ponemos un placeholder
+        // luego lo cambiaremos cuando integremos subida real
+        // para que no falle el NOT NULL
+        setImageUrl('https://placehold.co/600x400');
+      }
 
-      setModeration((prev) => ({ ...prev, [postId]: 'approved' }));
+      // 2) Insertar post
+      const { data: newPostData, error: postError } = await supabase
+        .from('posts')
+        .insert({
+          user_id: user.id,
+          caption: caption.trim() || null,
+          image_url: imageUrl.trim() || 'https://placehold.co/600x400',
+        })
+        .select('id, user_id, caption, image_url, created_at')
+        .single();
 
-      // Limpiar input
-      setCommentInputs((prev) => ({ ...prev, [postId]: '' }));
+      if (postError) throw postError;
 
-      // Ocultamos el mensaje "aprobado" a los 2 segundos
-      setTimeout(() => {
-        setModeration((prev) => ({ ...prev, [postId]: 'idle' }));
-      }, 2000);
-    }, 1500);
+      const newPost = newPostData as Post;
+
+      // 3) Insertar puntos (score) por crear post
+      const { error: scoreError } = await supabase.from('scores').insert({
+        user_id: user.id,
+        source: 'post',
+        value: 5, // por ejemplo, 5 puntos por publicar
+        meta: { reason: 'publicacion' },
+      });
+
+      if (scoreError) {
+        console.error('Error insertando score:', scoreError);
+        // No hacemos throw para no romper la creación del post;
+        // simplemente no se suman puntos si falla
+      }
+
+      // 4) Limpiar formulario y actualizar feed en pantalla
+      setCaption('');
+      setImageUrl('');
+      setPosts((prev) => [newPost, ...prev]);
+    } catch (err: any) {
+      console.error(err);
+      setCreateError(err.message || 'Error al crear el post');
+    } finally {
+      setCreatingPost(false);
+    }
   };
 
   return (
-    <div className="min-h-screen bg-black text-slate-50">
-      <NotificationsBar />
-
-      <main className="mx-auto max-w-3xl px-4 pb-16 pt-8">
-        <header className="mb-6 flex items-center justify-between gap-4">
-          <div>
-            <h1 className="text-2xl font-semibold">Feed (demo local)</h1>
-            <p className="text-sm text-slate-400">
-              Publicaciones generadas desde este navegador. La IA modera los
-              comentarios y ajusta tu reputación según el lenguaje que utilizas.
-            </p>
-          </div>
-          <div className="flex flex-col items-end gap-2 text-right">
-            <button
-              onClick={() => {
-                window.location.href = '/demo/live';
-              }}
-              className="rounded-full bg-emerald-500 px-4 py-1.5 text-xs font-semibold text-black hover:bg-emerald-400"
-            >
-              Subir imagen (demo Live)
-            </button>
-            <span className="text-[11px] text-slate-500">
-              {posts.length} publicaciones locales
-            </span>
-          </div>
+    <main className="min-h-screen flex flex-col items-center py-6 px-4 gap-6">
+      <div className="w-full max-w-2xl flex flex-col gap-4">
+        {/* Cabecera simple */}
+        <header className="flex items-center justify-between">
+          <h1 className="text-2xl font-bold">Feed Ethiqia</h1>
+          <button
+            className="text-xs px-3 py-1 border rounded-xl hover:bg-gray-100"
+            onClick={() => router.push('/profile')}
+          >
+            Ir a mi perfil
+          </button>
         </header>
 
-        {posts.length === 0 ? (
-          <p className="text-sm text-slate-400">
-            No hay publicaciones. Ve a{' '}
-            <span className="text-emerald-300">/demo/live</span> para subir tu
-            primera imagen.
-          </p>
-        ) : (
-          <div className="space-y-6">
-            {posts.map((post) => {
-              const prob = probabilityLabel(post.aiProbability);
-              const commentValue = commentInputs[post.id] ?? '';
-              const state = moderation[post.id] ?? 'idle';
+        {/* Formulario para crear post */}
+        <section className="border rounded-2xl p-4 flex flex-col gap-3">
+          <h2 className="text-sm font-semibold">Crear nueva publicación</h2>
 
-              return (
-                <article
-                  key={post.id}
-                  className="overflow-hidden rounded-2xl border border-slate-800 bg-slate-900/70"
-                >
-                  {/* Cabecera */}
-                  <div className="flex items-start justify-between gap-3 px-4 py-3">
-                    <div className="flex items-center gap-3">
-                      <div className="flex h-10 w-10 items-center justify-center rounded-full bg-slate-800 text-sm font-semibold">
-                        D
-                      </div>
-                      <div className="text-xs">
-                        <div className="font-semibold text-slate-100">
-                          David (demo usuario)
-                        </div>
-                        <div className="text-slate-400">
-                          {formatDateTime(post.createdAt)}
-                        </div>
-                      </div>
-                    </div>
+          <form onSubmit={handleCreatePost} className="flex flex-col gap-3">
+            <textarea
+              className="border rounded-xl px-3 py-2 text-sm min-h-[70px]"
+              placeholder="Cuenta algo sobre tu foto o contenido auténtico..."
+              value={caption}
+              onChange={(e) => setCaption(e.target.value)}
+            />
 
-                    <div
-                      className={`rounded-full px-3 py-1 text-[11px] ${prob.clase}`}
-                    >
-                      {prob.texto}
-                    </div>
-                  </div>
+            <div className="flex flex-col gap-1">
+              <label className="text-xs text-gray-600">
+                URL de imagen (temporal, luego conectaremos subida real)
+              </label>
+              <input
+                className="border rounded-xl px-3 py-2 text-sm"
+                placeholder="https://..."
+                value={imageUrl}
+                onChange={(e) => setImageUrl(e.target.value)}
+              />
+            </div>
 
-                  {/* Imagen */}
-                  <div className="relative h-[420px] w-full bg-black">
-                    <Image
-                      src={post.imageUrl}
-                      alt="Publicación"
-                      fill
-                      className="object-cover"
-                    />
-                  </div>
+            {createError && (
+              <p className="text-xs text-red-600">{createError}</p>
+            )}
 
-                  {/* Texto descriptivo demo */}
-                  <div className="px-4 pt-3 text-sm text-slate-200">
-                    <p>
-                      Ana, abogada. Le interesa Ethiqia para evitar
-                      suplantaciones de identidad con fotos falsas en perfiles
-                      profesionales.
-                    </p>
-                  </div>
+            <button
+              type="submit"
+              disabled={creatingPost}
+              className="self-end bg-black text-white rounded-xl px-4 py-2 text-sm font-semibold disabled:opacity-60"
+            >
+              {creatingPost ? 'Publicando...' : 'Publicar'}
+            </button>
+          </form>
+        </section>
 
-                  {/* Score global */}
-                  <div className="px-4 pt-3 text-xs text-slate-300">
-                    <div className="mb-1 flex items-center justify-between">
-                      <span className="font-semibold">Ethiqia Score global</span>
-                      <span className="font-semibold text-emerald-300">
-                        {post.score}/100
-                      </span>
-                    </div>
-                    <div className="mb-3 h-1.5 w-full rounded-full bg-slate-800">
-                      <div
-                        className="h-1.5 rounded-full bg-emerald-500"
-                        style={{ width: `${post.score}%` }}
-                      />
-                    </div>
-                  </div>
+        {/* Feed de posts */}
+        <section className="flex flex-col gap-3">
+          {loadingFeed && <p className="text-sm text-gray-500">Cargando feed...</p>}
+          {feedError && <p className="text-sm text-red-600">Error: {feedError}</p>}
 
-                  {/* Interacciones */}
-                  <div className="border-t border-slate-800 px-4 py-2 text-[11px] text-slate-300">
-                    <div className="mb-1 flex items-center gap-4">
-                      <button
-                        onClick={() => handleLike(post.id)}
-                        className="flex items-center gap-1 hover:text-emerald-300"
-                      >
-                        🤍 Te gusta
-                      </button>
-                      <button className="flex items-center gap-1 hover:text-slate-100">
-                        💬 Comentar
-                      </button>
-                      <button className="flex items-center gap-1 hover:text-slate-100">
-                        🔖 Guardado
-                      </button>
-                      <button className="ml-auto flex items-center gap-1 hover:text-slate-100">
-                        📤 Compartir
-                      </button>
-                    </div>
+          {!loadingFeed && !feedError && posts.length === 0 && (
+            <p className="text-sm text-gray-500">
+              Todavía no hay publicaciones. Crea la primera arriba.
+            </p>
+          )}
 
-                    <div className="text-[11px] text-slate-500">
-                      {post.likes} me gusta (demo) · {post.comments}{' '}
-                      comentarios
-                    </div>
-                  </div>
-
-                  {/* Comentarios + moderación */}
-                  <div className="border-t border-slate-800 px-4 py-3 text-[11px]">
-                    <div className="mb-1 text-slate-400">
-                      Comentar (moderado por IA)
-                    </div>
-
-                    {state === 'reviewing' && (
-                      <div className="mb-2 text-amber-300">
-                        Revisando comentario…
-                      </div>
-                    )}
-
-                    {state === 'approved' && (
-                      <div className="mb-2 text-emerald-300">
-                        Comentario aprobado por IA.
-                      </div>
-                    )}
-
-                    {state === 'rejected' && (
-                      <div className="mb-2 text-rose-300">
-                        Tu comentario ha sido bloqueado por lenguaje
-                        inapropiado.
-                      </div>
-                    )}
-
-                    <div className="flex items-center gap-2">
-                      <input
-                        type="text"
-                        placeholder="Escribe un comentario respetuoso..."
-                        value={commentValue}
-                        onChange={(e) =>
-                          handleCommentChange(post.id, e.target.value)
-                        }
-                        disabled={state === 'reviewing'}
-                        className="h-8 flex-1 rounded-full border border-slate-700 bg-slate-950 px-3 text-[11px] text-slate-100 outline-none focus:border-emerald-400"
-                      />
-
-                      <button
-                        onClick={() => handleCommentSubmit(post.id)}
-                        disabled={state === 'reviewing'}
-                        className="rounded-full bg-emerald-500 px-3 py-1 text-[11px] font-semibold text-black hover:bg-emerald-400 disabled:opacity-40"
-                      >
-                        Publicar
-                      </button>
-                    </div>
-                  </div>
-                </article>
-              );
-            })}
-          </div>
-        )}
-      </main>
-    </div>
+          <ul className="flex flex-col gap-4">
+            {posts.map((post) => (
+              <li
+                key={post.id}
+                className="border rounded-2xl overflow-hidden bg-white"
+              >
+                <div className="px-4 py-3 flex flex-col gap-1">
+                  <span className="text-xs text-gray-500">
+                    {new Date(post.created_at).toLocaleString()}
+                  </span>
+                  {post.caption && (
+                    <p className="text-sm whitespace-pre-line">{post.caption}</p>
+                  )}
+                </div>
+                <div className="w-full bg-black/5">
+                  {/* De momento solo mostramos la URL como imagen directa;
+                      luego se integrará con el sistema de subida */}
+                  <img
+                    src={post.image_url}
+                    alt={post.caption ?? 'Post'}
+                    className="w-full max-h-[480px] object-cover"
+                  />
+                </div>
+              </li>
+            ))}
+          </ul>
+        </section>
+      </div>
+    </main>
   );
 }
