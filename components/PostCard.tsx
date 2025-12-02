@@ -13,7 +13,7 @@ export type Post = {
   id: string;
   authorName: string;
   authorUsername?: string;
-  createdAt: string;        // ISO string o texto ya formateado
+  createdAt: string;        // ya formateado o ISO
   imageUrl?: string | null;
   text?: string;
   stats?: PostStats;
@@ -115,16 +115,15 @@ export default function PostCard({ post }: PostCardProps) {
       {/* Imagen */}
       {imageUrl && (
         <div className="w-full bg-black">
-          {/* Estilo “Instagram/Twitter”: respeta proporción, ocupa ancho completo */}
           <img
             src={imageUrl}
             alt=""
             className="w-full h-auto object-contain bg-black"
           />
         </div>
-      )}
+      }
 
-      {/* Texto */}
+      {/* Texto + score */}
       {(text || stats) && (
         <div className="px-4 pt-3 pb-1">
           {text && (
