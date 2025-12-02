@@ -2,8 +2,6 @@
 import { NextResponse } from "next/server";
 import { supabaseServer } from "@/lib/supabaseServer";
 
-// Esta ruta recibe un `file` vía FormData y lo sube a Supabase Storage.
-// Devuelve la URL pública de la imagen.
 export async function POST(req: Request) {
   try {
     const formData = await req.formData();
@@ -22,8 +20,8 @@ export async function POST(req: Request) {
       .slice(2)}.${fileExt}`;
     const filePath = `uploads/${fileName}`;
 
-    // IMPORTANTE: cambia "images" por el nombre REAL de tu bucket de Supabase Storage
-    const bucketName = "images";
+    const bucketName =
+      process.env.SUPABASE_BUCKET_NAME || "post-images";
 
     const { data, error } = await supabaseServer.storage
       .from(bucketName)
@@ -45,11 +43,9 @@ export async function POST(req: Request) {
       .from(bucketName)
       .getPublicUrl(filePath);
 
-    const publicUrl = publicData.publicUrl;
-
     return NextResponse.json(
       {
-        url: publicUrl,
+        url: publicData.publicUrl,
         path: filePath,
       },
       { status: 200 }
