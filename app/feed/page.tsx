@@ -1,292 +1,238 @@
-'use client';
+"use client";
 
-import { useEffect, useState, FormEvent } from 'react';
-import { useRouter } from 'next/navigation';
-import { supabase } from '@/lib/supabaseClient';
-import { uploadPostImage } from '@/lib/uploadImage';
+import React, { useEffect, useState, FormEvent } from "react";
+import PostCard, { Post } from "@/components/PostCard";
 
-type Post = {
-  id: string;
-  user_id: string;
-  caption: string | null;
-  image_url: string;
-  created_at: string;
-};
+const DEMO_USER_ID = "00000000-0000-0000-0000-000000000001"; // usuario demo para la beta
 
 export default function FeedPage() {
-  const router = useRouter();
-
   const [posts, setPosts] = useState<Post[]>([]);
   const [loadingFeed, setLoadingFeed] = useState(true);
   const [feedError, setFeedError] = useState<string | null>(null);
 
-  const [caption, setCaption] = useState('');
-  const [imageFile, setImageFile] = useState<File | null>(null);
-  const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [text, setText] = useState("");
+  const [file, setFile] = useState<File | null>(null);
+  const [filePreview, setFilePreview] = useState<string | null>(null);
+
+  const [uploading, setUploading] = useState(false);
   const [creatingPost, setCreatingPost] = useState(false);
-  const [createError, setCreateError] = useState<string | null>(null);
+  const [postError, setPostError] = useState<string | null>(null);
+  const [moderationInfo, setModerationInfo] = useState<string | null>(null);
 
-  // Cargar posts desde Supabase
-  const loadPosts = async () => {
-    setLoadingFeed(true);
-    setFeedError(null);
+  // 1) Cargar posts existentes desde /api/posts
+  useEffect(() => {
+    async function loadPosts() {
+      try {
+        setLoadingFeed(true);
+        setFeedError(null);
 
-    const { data, error } = await supabase
-      .from('posts')
-      .select('id, user_id, caption, image_url, created_at')
-      .eq('moderation_status', 'approved') // solo aprobados
-      .order('created_at', { ascending: false })
-      .limit(50);
+        const res = await fetch("/api/posts");
+        if (!res.ok) throw new Error("Error al cargar el feed");
 
-    if (error) {
-      console.error(error);
-      setFeedError(error.message);
-    } else {
-      setPosts((data || []) as Post[]);
+        const data = await res.json();
+        setPosts(data);
+      } catch (err: any) {
+        console.error("Error cargando feed:", err);
+        setFeedError(err.message || "Error al cargar el feed");
+      } finally {
+        setLoadingFeed(false);
+      }
     }
 
-    setLoadingFeed(false);
-  };
-
-  useEffect(() => {
     loadPosts();
   }, []);
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0] ?? null;
-    setImageFile(file);
+  // 2) Manejar selección de archivo
+  function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const f = e.target.files?.[0] || null;
+    setFile(f);
+    setModerationInfo(null);
+    setPostError(null);
 
-    if (file) {
-      const url = URL.createObjectURL(file);
-      setImagePreview(url);
+    if (f) {
+      const url = URL.createObjectURL(f);
+      setFilePreview(url);
     } else {
-      setImagePreview(null);
+      setFilePreview(null);
     }
-  };
+  }
 
-  // Crear un nuevo post REAL con moderación IA
-  const handleCreatePost = async (e: FormEvent) => {
+  // 3) Crear nueva publicación: subir imagen + moderación IA + guardar post
+  async function handleCreatePost(e: FormEvent) {
     e.preventDefault();
-    setCreateError(null);
+    setPostError(null);
+    setModerationInfo(null);
 
-    if (!caption.trim() && !imageFile) {
-      setCreateError('Escribe un texto o selecciona una foto.');
+    if (!file) {
+      setPostError("Por ahora necesitas subir una imagen para publicar.");
       return;
     }
 
-    setCreatingPost(true);
-
     try {
-      // 0) Moderación IA del caption antes de hacer nada más
-      if (caption.trim()) {
-        const modRes = await fetch('/api/moderate-post', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({ caption }),
-        });
+      setUploading(true);
 
-        if (!modRes.ok) {
-          const errData = await modRes.json().catch(() => ({}));
-          console.error('Error en moderación:', errData);
-          setCreateError(
-            'No se ha podido validar el contenido. Inténtalo de nuevo dentro de unos minutos.'
-          );
-          setCreatingPost(false);
-          return;
-        }
+      // 3.1 Subir archivo a /api/upload
+      const formData = new FormData();
+      formData.append("file", file);
 
-        const modData = (await modRes.json()) as {
-          allowed: boolean;
-          flagged: boolean;
-          reason?: string | null;
-          categories?: any;
-        };
-
-        if (!modData.allowed) {
-          setCreateError(
-            modData.reason ||
-              'Tu publicación no cumple las normas de contenido de Ethiqia.'
-          );
-          setCreatingPost(false);
-          return;
-        }
-      }
-
-      // 1) Usuario actual
-      const { data: userData, error: userError } = await supabase.auth.getUser();
-      if (userError) throw userError;
-
-      const user = userData.user;
-      if (!user) {
-        router.push('/login');
-        return;
-      }
-
-      // 2) Subir imagen si hay archivo
-      let finalImageUrl = '';
-      if (imageFile) {
-        finalImageUrl = await uploadPostImage(imageFile);
-      } else {
-        finalImageUrl = 'https://placehold.co/600x400?text=Ethiqia';
-      }
-
-      // 3) Insertar post en Supabase con moderation_status = 'approved'
-      const { data: newPostData, error: postError } = await supabase
-        .from('posts')
-        .insert({
-          user_id: user.id,
-          caption: caption.trim() || null,
-          image_url: finalImageUrl,
-          moderation_status: 'approved',
-          moderation_reason: null,
-          moderation_labels: null,
-          moderation_decided_at: new Date().toISOString(),
-          moderation_decided_by: 'ai',
-        })
-        .select('id, user_id, caption, image_url, created_at')
-        .single();
-
-      if (postError) throw postError;
-
-      const newPost = newPostData as Post;
-
-      // 4) Insertar puntos (score) por crear post
-      const { error: scoreError } = await supabase.from('scores').insert({
-        user_id: user.id,
-        source: 'post',
-        value: 5,
-        meta: { reason: 'publicacion' },
+      const uploadRes = await fetch("/api/upload", {
+        method: "POST",
+        body: formData,
       });
 
-      if (scoreError) {
-        console.error('Error insertando score:', scoreError);
+      if (!uploadRes.ok) {
+        const err = await uploadRes.json().catch(() => ({}));
+        throw new Error(err.error || "Error al subir la imagen");
       }
 
-      // 5) Limpiar formulario y actualizar feed
-      setCaption('');
-      setImageFile(null);
-      setImagePreview(null);
-      setPosts((prev) => [newPost, ...prev]);
+      const uploadData = await uploadRes.json();
+      const imageUrl: string = uploadData.url;
+
+      setUploading(false);
+      setCreatingPost(true);
+
+      // 3.2 Crear post con moderación real en /api/posts
+      const postRes = await fetch("/api/posts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          text: text.trim() || null,
+          imageUrl,
+          userId: DEMO_USER_ID, // más adelante: ID real del usuario logueado
+        }),
+      });
+
+      const postData = await postRes.json();
+
+      if (!postRes.ok) {
+        // Si la IA bloquea el contenido
+        if (postData.aiProbability !== undefined) {
+          setModerationInfo(
+            `Publicación bloqueada por moderación (prob. IA: ${postData.aiProbability}%). Motivo: ${postData.reason || "no especificado"}.`
+          );
+        }
+        throw new Error(postData.error || "No se ha podido crear el post");
+      }
+
+      // 3.3 Añadir post al inicio del feed
+      setPosts((prev) => [postData, ...prev]);
+
+      // 3.4 Limpiar formulario
+      setText("");
+      setFile(null);
+      if (filePreview) {
+        URL.revokeObjectURL(filePreview);
+      }
+      setFilePreview(null);
+      setModerationInfo(
+        `Publicación creada correctamente. Probabilidad estimada de IA: ${
+          postData.aiProbability ?? 0
+        }%.`
+      );
     } catch (err: any) {
-      console.error(err);
-      setCreateError(err.message || 'Error al crear la publicación');
+      console.error("Error creando post:", err);
+      setPostError(err.message || "Error al crear la publicación");
     } finally {
+      setUploading(false);
       setCreatingPost(false);
     }
-  };
+  }
+
+  const isSubmitting = uploading || creatingPost;
 
   return (
-    <main className="min-h-screen flex flex-col items-center py-6 px-4 gap-6">
-      <div className="w-full max-w-2xl flex flex-col gap-4">
+    <div className="min-h-screen bg-black text-white px-4 py-6">
+      <div className="max-w-3xl mx-auto space-y-6">
         {/* Cabecera */}
-        <header className="flex items-center justify-between">
+        <header className="space-y-2">
           <h1 className="text-2xl font-bold">Feed Ethiqia</h1>
-          <div className="flex gap-2">
-            <button
-              className="text-xs px-3 py-1 border rounded-xl hover:bg-gray-100"
-              onClick={() => router.push('/score')}
-            >
-              Ver mi Score
-            </button>
-            <button
-              className="text-xs px-3 py-1 border rounded-xl hover:bg-gray-100"
-              onClick={() => router.push('/profile')}
-            >
-              Mi perfil
-            </button>
-          </div>
+          <p className="text-sm text-gray-400">
+            Sube contenido auténtico. Cada publicación se analiza con IA para
+            estimar la probabilidad de que la imagen sea generada por IA y
+            calcular tu Ethiqia Score.
+          </p>
         </header>
 
-        {/* Formulario nueva publicación */}
-        <section className="border rounded-2xl p-4 flex flex-col gap-3 bg-black text-white">
-          <h2 className="text-sm font-semibold">Crear nueva publicación</h2>
+        {/* Crear nueva publicación */}
+        <section className="rounded-2xl border border-zinc-800 bg-black/80 p-4 space-y-4">
+          <h2 className="text-sm font-semibold text-gray-200 mb-1">
+            Crear nueva publicación
+          </h2>
 
-          <form onSubmit={handleCreatePost} className="flex flex-col gap-3">
+          <form className="space-y-4" onSubmit={handleCreatePost}>
             <textarea
-              className="border rounded-xl px-3 py-2 text-sm min-h-[70px] bg-black text-white"
+              value={text}
+              onChange={(e) => {
+                setText(e.target.value);
+                setPostError(null);
+                setModerationInfo(null);
+              }}
               placeholder="Cuenta algo sobre tu foto o contenido auténtico..."
-              value={caption}
-              onChange={(e) => setCaption(e.target.value)}
+              className="w-full min-h-[80px] rounded-xl border border-zinc-700 bg-black px-3 py-2 text-sm text-white resize-none outline-none focus:border-emerald-500"
             />
 
-            <div className="flex flex-col gap-1">
-              <label className="text-xs text-gray-300">
+            <div className="space-y-2">
+              <label className="text-xs text-gray-400">
                 Selecciona una foto de tu galería
               </label>
               <input
                 type="file"
                 accept="image/*"
-                className="text-xs"
                 onChange={handleFileChange}
+                className="block w-full text-xs text-gray-300 file:mr-3 file:rounded-full file:border-0 file:bg-emerald-500 file:px-4 file:py-1.5 file:text-xs file:font-semibold file:text-black hover:file:bg-emerald-400"
               />
-              {imagePreview && (
-                <img
-                  src={imagePreview}
-                  alt="Previsualización"
-                  className="mt-2 max-h-48 rounded-xl object-cover"
-                />
+              {filePreview && (
+                <div className="mt-2 rounded-xl border border-zinc-800 bg-black/60 p-2">
+                  <img
+                    src={filePreview}
+                    alt="Previsualización"
+                    className="max-h-64 w-full object-contain mx-auto"
+                  />
+                </div>
               )}
             </div>
 
-            {createError && (
-              <p className="text-xs text-red-400">{createError}</p>
+            {postError && (
+              <p className="text-xs text-red-400">{postError}</p>
             )}
 
-            <button
-              type="submit"
-              disabled={creatingPost}
-              className="self-end bg-white text-black rounded-xl px-4 py-2 text-sm font-semibold disabled:opacity-60"
-            >
-              {creatingPost ? 'Publicando...' : 'Publicar'}
-            </button>
+            {moderationInfo && (
+              <p className="text-xs text-emerald-400">{moderationInfo}</p>
+            )}
+
+            <div className="flex justify-end">
+              <button
+                type="submit"
+                disabled={isSubmitting}
+                className="inline-flex items-center gap-2 rounded-full bg-emerald-500 px-5 py-1.5 text-sm font-semibold text-black hover:bg-emerald-400 disabled:opacity-60 disabled:cursor-not-allowed"
+              >
+                {isSubmitting ? "Analizando..." : "Publicar"}
+              </button>
+            </div>
           </form>
         </section>
 
         {/* Feed */}
-        <section className="flex flex-col gap-3">
+        <section className="space-y-4">
           {loadingFeed && (
-            <p className="text-sm text-gray-500">Cargando feed...</p>
+            <p className="text-sm text-gray-400">Cargando publicaciones...</p>
           )}
-          {feedError && (
-            <p className="text-sm text-red-600">Error: {feedError}</p>
+
+          {feedError && !loadingFeed && (
+            <p className="text-sm text-red-400">{feedError}</p>
           )}
 
           {!loadingFeed && !feedError && posts.length === 0 && (
-            <p className="text-sm text-gray-500">
-              Todavía no hay publicaciones aprobadas. Crea la primera arriba.
+            <p className="text-sm text-gray-400">
+              Todavía no hay publicaciones. Sube la primera foto auténtica.
             </p>
           )}
 
-          <ul className="flex flex-col gap-4">
-            {posts.map((post) => (
-              <li
-                key={post.id}
-                className="border rounded-2xl overflow-hidden bg-white"
-              >
-                <div className="px-4 py-3 flex flex-col gap-1">
-                  <span className="text-xs text-gray-500">
-                    {new Date(post.created_at).toLocaleString()}
-                  </span>
-                  {post.caption && (
-                    <p className="text-sm whitespace-pre-line">
-                      {post.caption}
-                    </p>
-                  )}
-                </div>
-                <div className="w-full bg-black/5">
-                  <img
-                    src={post.image_url}
-                    alt={post.caption ?? 'Post'}
-                    className="w-full max-h-[480px] object-cover"
-                  />
-                </div>
-              </li>
-            ))}
-          </ul>
+          {!loadingFeed &&
+            !feedError &&
+            posts.map((post) => <PostCard key={post.id} post={post} />)}
         </section>
       </div>
-    </main>
+    </div>
   );
 }
