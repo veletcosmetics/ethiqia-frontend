@@ -1,94 +1,63 @@
-import { NextResponse } from 'next/server';
-import { supabase } from '../../../lib/supabaseClient';
+// app/api/upload/route.ts
+import { NextResponse } from "next/server";
+import { supabaseServer } from "@/lib/supabaseServer";
 
-// Función simple para generar un score de IA en la demo
-function generateAIScore() {
-  const score = Math.floor(Math.random() * 40) + 60; // entre 60 y 100
-  const label =
-    score > 85 ? 'Real' :
-    score > 70 ? 'Mixta / dudosa' :
-    'Alta prob. IA';
-
-  return { score, label };
-}
-
+// Esta ruta recibe un `file` vía FormData y lo sube a Supabase Storage.
+// Devuelve la URL pública de la imagen.
 export async function POST(req: Request) {
   try {
-    const data = await req.formData();
-    const file = data.get('file') as File | null;
-    const caption = data.get('caption') as string | null;
+    const formData = await req.formData();
+    const file = formData.get("file") as File | null;
 
     if (!file) {
       return NextResponse.json(
-        { error: 'No file received' },
+        { error: "No se ha enviado ningún archivo" },
         { status: 400 }
       );
     }
 
-    // Convertir file a buffer
-    const bytes = await file.arrayBuffer();
-    const buffer = Buffer.from(bytes);
+    const fileExt = file.name.split(".").pop() || "bin";
+    const fileName = `${Date.now()}-${Math.random()
+      .toString(36)
+      .slice(2)}.${fileExt}`;
+    const filePath = `uploads/${fileName}`;
 
-    // Nombre único de archivo
-    const fileName = `${Date.now()}-${file.name}`;
+    // IMPORTANTE: cambia "images" por el nombre REAL de tu bucket de Supabase Storage
+    const bucketName = "images";
 
-    // Subir a Supabase Storage
-    const { data: uploadData, error: uploadError } =
-      await supabase.storage
-        .from('ethiqia-images')
-        .upload(fileName, buffer, {
-          contentType: file.type,
-        });
+    const { data, error } = await supabaseServer.storage
+      .from(bucketName)
+      .upload(filePath, file, {
+        contentType: file.type || "application/octet-stream",
+        cacheControl: "3600",
+        upsert: false,
+      });
 
-    if (uploadError) {
+    if (error) {
+      console.error("Error subiendo archivo a Supabase:", error);
       return NextResponse.json(
-        { error: uploadError.message },
+        { error: "No se ha podido subir el archivo" },
         { status: 500 }
       );
     }
 
-    // Obtener URL pública
-    const {
-      data: { publicUrl },
-    } = supabase
-      .storage
-      .from('ethiqia-images')
-      .getPublicUrl(fileName);
+    const { data: publicData } = supabaseServer.storage
+      .from(bucketName)
+      .getPublicUrl(filePath);
 
-    // Generar IA score simulado
-    const { score, label } = generateAIScore();
-
-    // Insertar en supabase.posts
-    const { data: insertedPost, error: insertError } =
-      await supabase
-        .from('posts')
-        .insert({
-          image_url: publicUrl,
-          caption: caption || '',
-          ai_score: score,
-          ai_label: label,
-        })
-        .select()
-        .single();
-
-    if (insertError) {
-      return NextResponse.json(
-        { error: insertError.message },
-        { status: 500 }
-      );
-    }
+    const publicUrl = publicData.publicUrl;
 
     return NextResponse.json(
       {
-        success: true,
-        post: insertedPost,
+        url: publicUrl,
+        path: filePath,
       },
       { status: 200 }
     );
-  } catch (error) {
-    console.error(error);
+  } catch (err) {
+    console.error("Error inesperado en /api/upload:", err);
     return NextResponse.json(
-      { error: 'Unexpected error' },
+      { error: "Error inesperado al subir el archivo" },
       { status: 500 }
     );
   }
