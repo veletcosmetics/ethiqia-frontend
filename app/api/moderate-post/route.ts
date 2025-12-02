@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 export async function POST(req: NextRequest) {
+  // Logs para comprobar que la ruta se ejecuta y que la API key está disponible
   console.log('[/api/moderate-post] llamada recibida');
   console.log(
     '[/api/moderate-post] OPENAI_API_KEY presente:',
@@ -11,30 +12,20 @@ export async function POST(req: NextRequest) {
     const apiKey = process.env.OPENAI_API_KEY;
     if (!apiKey) {
       console.error('OPENAI_API_KEY no configurada');
-      return NextResponse.json(
-        { error: 'OPENAI_API_KEY no configurada en el servidor' },
-        { status: 500 }
-      );
-    }
-
-    // … y a partir de aquí dejas el resto del código que ya tienes
-
-import { NextRequest, NextResponse } from 'next/server';
-
-export async function POST(req: NextRequest) {
-  try {
-    const apiKey = process.env.OPENAI_API_KEY;
-    if (!apiKey) {
-      return NextResponse.json(
-        { error: 'OPENAI_API_KEY no configurada en el servidor' },
-        { status: 500 }
-      );
+      // Modo degradado: permitir contenido si no hay clave (para no romper la UX)
+      return NextResponse.json({
+        allowed: true,
+        flagged: false,
+        reason: 'Moderación desactivada (sin clave en el servidor)',
+        categories: null,
+      });
     }
 
     const body = (await req.json().catch(() => null)) as { caption?: string } | null;
     const caption = body?.caption ?? '';
 
     if (!caption.trim()) {
+      // Si no hay texto, de momento dejamos pasar (más adelante añadimos moderación de imagen)
       return NextResponse.json({
         allowed: true,
         flagged: false,
@@ -55,9 +46,22 @@ export async function POST(req: NextRequest) {
       }),
     });
 
+    // Si OpenAI devuelve error (por ejemplo 429 Too Many Requests o sin crédito)
     if (!response.ok) {
-      const text = await response.text();
+      const text = await response.text().catch(() => '');
       console.error('Error desde OpenAI Moderation:', text);
+
+      // Si es límite de peticiones / sin crédito → modo degradado (dejamos pasar)
+      if (response.status === 429 || text.includes('Too Many Requests')) {
+        return NextResponse.json({
+          allowed: true,
+          flagged: false,
+          reason: 'Moderación no disponible por límite de uso o falta de crédito',
+          categories: null,
+        });
+      }
+
+      // Otros errores: seguimos informando como error real
       return NextResponse.json(
         { error: 'Error llamando a la IA de moderación' },
         { status: 500 }
@@ -68,6 +72,7 @@ export async function POST(req: NextRequest) {
     const result = data.results?.[0];
 
     if (!result) {
+      console.error('Respuesta de moderación sin resultados:', data);
       return NextResponse.json(
         { error: 'Respuesta de moderación inesperada' },
         { status: 500 }
@@ -85,6 +90,7 @@ export async function POST(req: NextRequest) {
       reason = 'El contenido ha sido marcado como potencialmente problemático por la IA.';
     }
 
+    // Reglas Ethiqia “duras”
     const highRisk =
       (categoryScores['hate'] ?? 0) > 0.5 ||
       (categoryScores['self-harm'] ?? 0) > 0.5 ||
@@ -104,9 +110,12 @@ export async function POST(req: NextRequest) {
     });
   } catch (err) {
     console.error('Error en /api/moderate-post:', err);
-    return NextResponse.json(
-      { error: 'Error interno en moderación' },
-      { status: 500 }
-    );
+    // Modo degradado ante cualquier excepción: no bloqueamos al usuario
+    return NextResponse.json({
+      allowed: true,
+      flagged: false,
+      reason: 'Moderación no disponible por error interno',
+      categories: null,
+    });
   }
 }
