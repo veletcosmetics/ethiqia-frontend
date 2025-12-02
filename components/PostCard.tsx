@@ -124,5 +124,29 @@ export default function PostCard({ post }: PostCardProps) {
             </button>
           </div>
 
-   
-::contentReference[oaicite:0]{index=0}
+          <button
+            type="button"
+            className="inline-flex items-center gap-1 hover:text-white transition"
+          >
+            <span>↗</span>
+            <span>Compartir</span>
+          </button>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <input
+            type="text"
+            placeholder="Escribe un comentario respetuoso..."
+            className="flex-1 rounded-full border border-zinc-700 bg-black px-3 py-1.5 text-xs outline-none focus:border-emerald-500"
+          />
+          <button
+            type="button"
+            className="px-3 py-1.5 rounded-full bg-emerald-500 text-[11px] font-semibold text-black hover:bg-emerald-400 transition"
+          >
+            Publicar
+          </button>
+        </div>
+      </div>
+    </article>
+  );
+}
