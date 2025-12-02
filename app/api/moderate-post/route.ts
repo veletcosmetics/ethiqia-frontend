@@ -46,6 +46,12 @@ export async function POST(req: NextRequest) {
       }),
     });
 
+    // 🔍 LOG CLAVE: qué devuelve OpenAI
+    console.log(
+      '[/api/moderate-post] respuesta OpenAI status:',
+      response.status
+    );
+
     // Si OpenAI devuelve error (por ejemplo 429 Too Many Requests o sin crédito)
     if (!response.ok) {
       const text = await response.text().catch(() => '');
