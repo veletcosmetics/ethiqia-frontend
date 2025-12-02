@@ -1,6 +1,27 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 export async function POST(req: NextRequest) {
+  console.log('[/api/moderate-post] llamada recibida');
+  console.log(
+    '[/api/moderate-post] OPENAI_API_KEY presente:',
+    !!process.env.OPENAI_API_KEY
+  );
+
+  try {
+    const apiKey = process.env.OPENAI_API_KEY;
+    if (!apiKey) {
+      console.error('OPENAI_API_KEY no configurada');
+      return NextResponse.json(
+        { error: 'OPENAI_API_KEY no configurada en el servidor' },
+        { status: 500 }
+      );
+    }
+
+    // … y a partir de aquí dejas el resto del código que ya tienes
+
+import { NextRequest, NextResponse } from 'next/server';
+
+export async function POST(req: NextRequest) {
   try {
     const apiKey = process.env.OPENAI_API_KEY;
     if (!apiKey) {
