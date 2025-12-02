@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 
 type AccountType = "user" | "company" | "influencer";
 
@@ -13,6 +13,7 @@ interface ProfileFormState {
   location: string;
   website: string;
   isPublic: boolean;
+  avatarUrl: string | null; // futuro: URL en storage
 }
 
 export default function ProfilePage() {
@@ -25,7 +26,11 @@ export default function ProfilePage() {
     location: "",
     website: "",
     isPublic: true,
+    avatarUrl: null,
   });
+
+  const [avatarFile, setAvatarFile] = useState<File | null>(null);
+  const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
 
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<null | { type: "ok" | "error"; text: string }>(
@@ -42,20 +47,58 @@ export default function ProfilePage() {
     }));
   }
 
+  // Manejo de cambio de foto de perfil
+  function handleAvatarChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Pequeño filtro básico por tipo
+    if (!file.type.startsWith("image/")) {
+      setMessage({
+        type: "error",
+        text: "El archivo debe ser una imagen (jpg, png, webp...).",
+      });
+      return;
+    }
+
+    // Podríamos limitar tamaño en MB si queremos (solo avisar, no obligatorio)
+    const maxSizeMB = 5;
+    if (file.size > maxSizeMB * 1024 * 1024) {
+      setMessage({
+        type: "error",
+        text: `La imagen es demasiado grande. Máximo ${maxSizeMB} MB.`,
+      });
+      return;
+    }
+
+    setAvatarFile(file);
+    const url = URL.createObjectURL(file);
+    setAvatarPreview(url);
+  }
+
+  // Limpieza del objeto URL cuando cambie o se destruya
+  useEffect(() => {
+    return () => {
+      if (avatarPreview) {
+        URL.revokeObjectURL(avatarPreview);
+      }
+    };
+  }, [avatarPreview]);
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setSaving(true);
     setMessage(null);
 
     try {
-      // AQUÍ luego conectaremos con Supabase / API real
-      // Ejemplo futuro: await saveProfileToSupabase(form);
+      // Próximo paso: aquí subiremos la imagen a Supabase Storage
+      // y guardaremos form + avatarUrl en la base de datos.
 
-      await new Promise((resolve) => setTimeout(resolve, 500)); // demo
+      await new Promise((resolve) => setTimeout(resolve, 600)); // demo
 
       setMessage({
         type: "ok",
-        text: "Cambios guardados (demo). Próximo paso: conectar con tu base de datos.",
+        text: "Cambios guardados (demo). Próximo paso: conectar con tu base de datos y storage de imágenes.",
       });
     } catch (err) {
       console.error(err);
@@ -100,6 +143,47 @@ export default function ProfilePage() {
         <div className="grid gap-6 md:grid-cols-[2fr,1.3fr]">
           {/* Formulario */}
           <form onSubmit={handleSubmit} className="space-y-6">
+            {/* Foto de perfil */}
+            <section className="space-y-3">
+              <h2 className="text-lg font-semibold">Foto de perfil</h2>
+              <p className="text-xs text-gray-400">
+                Usa una foto que te represente bien. En empresas, puedes usar el logo.
+              </p>
+
+              <div className="flex items-center gap-4">
+                {/* Preview círculo */}
+                <div className="h-16 w-16 rounded-full bg-gradient-to-br from-emerald-500 to-emerald-300 flex items-center justify-center overflow-hidden text-sm font-bold text-black">
+                  {avatarPreview ? (
+                    <img
+                      src={avatarPreview}
+                      alt="Foto de perfil"
+                      className="h-full w-full object-cover"
+                    />
+                  ) : form.displayName ? (
+                    form.displayName.charAt(0).toUpperCase()
+                  ) : (
+                    "EQ"
+                  )}
+                </div>
+
+                {/* Input de archivo */}
+                <div className="space-y-2 text-xs">
+                  <label className="inline-flex items-center rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-1.5 text-gray-200 cursor-pointer hover:border-emerald-500 hover:text-emerald-200 transition">
+                    <span>Subir imagen</span>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={handleAvatarChange}
+                      className="hidden"
+                    />
+                  </label>
+                  <p className="text-[11px] text-gray-500">
+                    Formatos recomendados: JPG, PNG, WEBP. Tamaño máx. 5 MB.
+                  </p>
+                </div>
+              </div>
+            </section>
+
             {/* Tipo de cuenta */}
             <section className="space-y-3">
               <h2 className="text-lg font-semibold">Tipo de cuenta</h2>
@@ -315,10 +399,18 @@ export default function ProfilePage() {
             <div className="space-y-4">
               {/* Cabecera */}
               <div className="flex items-center gap-3">
-                <div className="h-12 w-12 rounded-full bg-gradient-to-br from-emerald-500 to-emerald-300 flex items-center justify-center text-xs font-bold text-black">
-                  {form.displayName
-                    ? form.displayName.charAt(0).toUpperCase()
-                    : "EQ"}
+                <div className="h-12 w-12 rounded-full bg-gradient-to-br from-emerald-500 to-emerald-300 flex items-center justify-center overflow-hidden text-xs font-bold text-black">
+                  {avatarPreview ? (
+                    <img
+                      src={avatarPreview}
+                      alt="Foto de perfil"
+                      className="h-full w-full object-cover"
+                    />
+                  ) : form.displayName ? (
+                    form.displayName.charAt(0).toUpperCase()
+                  ) : (
+                    "EQ"
+                  )}
                 </div>
                 <div className="flex flex-col">
                   <span className="text-sm font-semibold">
