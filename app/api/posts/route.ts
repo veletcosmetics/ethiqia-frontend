@@ -2,89 +2,124 @@ import { NextResponse } from "next/server";
 import { supabaseServer } from "@/lib/supabaseServer";
 import { moderatePost } from "@/lib/moderatePost";
 
+// GET: devuelve lista de posts para el feed
 export async function GET() {
-  const { data, error } = await supabaseServer
-    .from("posts")
-    .select("*")
-    .order("created_at", { ascending: false })
-    .limit(50);
+  try {
+    const { data, error } = await supabaseServer
+      .from("posts")
+      .select("*")
+      .order("created_at", { ascending: false })
+      .limit(50);
 
-  if (error) {
-    console.error("Error GET /api/posts:", error);
-    return NextResponse.json({ error: "Error cargando posts" }, { status: 500 });
+    if (error) {
+      console.error("Error leyendo posts desde Supabase:", error);
+      // Para la beta, si falla la tabla, devolvemos lista vacía
+      return NextResponse.json([], { status: 200 });
+    }
+
+    const mapped =
+      data?.map((row: any) => ({
+        id: row.id ?? `temp-${Date.now()}-${Math.random()}`,
+        authorName: row.author_name ?? "Usuario",
+        createdAt: row.created_at
+          ? new Date(row.created_at).toLocaleString("es-ES")
+          : "",
+        text: row.text ?? null,
+        imageUrl: row.image_url ?? null,
+        aiProbability: row.ai_probability ?? 0,
+        globalScore: row.global_score ?? 0,
+      })) ?? [];
+
+    return NextResponse.json(mapped, { status: 200 });
+  } catch (err) {
+    console.error("Error inesperado en GET /api/posts:", err);
+    return NextResponse.json([], { status: 200 });
   }
-
-  const mapped = (data ?? []).map((row) => ({
-    id: row.id,
-    authorName: "Usuario demo", // luego lo conectamos al perfil real
-    createdAt: new Date(row.created_at).toLocaleString("es-ES"),
-    text: row.text,
-    imageUrl: row.image_url,
-    aiProbability: row.ai_probability ?? 0,
-    globalScore: row.global_score ?? 0,
-  }));
-
-  return NextResponse.json(mapped);
 }
 
+// POST: crea un nuevo post con moderación de IA
 export async function POST(req: Request) {
   try {
-    const body = await req.json();
-    const { text, imageUrl, userId } = body;
+    const body = await req.json().catch(() => ({}));
+    const { text, imageUrl, userId } = body as {
+      text?: string | null;
+      imageUrl?: string | null;
+      userId?: string | null;
+    };
 
-    if (!userId) {
+    if (!imageUrl) {
       return NextResponse.json(
-        { error: "Falta userId (usuario no autenticado)" },
+        { error: "Falta la imagen para crear el post" },
         { status: 400 }
       );
     }
 
-    const moderation = await moderatePost({ text, imageUrl });
+    // 1) Moderación con IA
+    const moderation = await moderatePost({
+      text: text ?? "",
+      imageUrl,
+    });
 
-    if (!moderation.allowed) {
+    const aiProbability = moderation.aiProbability ?? 0;
+    const globalScore = moderation.globalScore ?? 0;
+    const blocked = moderation.blocked ?? false;
+    const reason = moderation.reason ?? null;
+
+    // Si la IA decide bloquear, devolvemos 400 con la info
+    if (blocked) {
       return NextResponse.json(
         {
-          error: "Contenido bloqueado por moderación",
-          reason: moderation.reason,
-          aiProbability: moderation.aiProbability,
+          error: "Contenido bloqueado por moderación de IA",
+          aiProbability,
+          globalScore,
+          reason,
         },
         { status: 400 }
       );
     }
 
-    const globalScore = 100 - moderation.aiProbability;
+    const createdAtIso = new Date().toISOString();
 
-    const { data, error } = await supabaseServer
-      .from("posts")
-      .insert({
-        user_id: userId,
-        text,
-        image_url: imageUrl,
-        ai_probability: moderation.aiProbability,
-        global_score: globalScore,
-      })
-      .select("*")
-      .single();
+    // 2) Intentar guardar en Supabase (pero sin romper la beta si falla)
+    let inserted: any | null = null;
 
-    if (error) {
-      console.error("Error insertando post:", error);
-      return NextResponse.json(
-        { error: "No se ha podido crear el post" },
-        { status: 500 }
-      );
+    try {
+      const { data, error } = await supabaseServer
+        .from("posts")
+        .insert({
+          text: text ?? null,
+          image_url: imageUrl,
+          user_id: userId ?? null,
+          ai_probability: aiProbability,
+          global_score: globalScore,
+          created_at: createdAtIso,
+        })
+        .select("*")
+        .single();
+
+      if (error) {
+        console.error("Error insertando post en Supabase:", error);
+      } else {
+        inserted = data;
+      }
+    } catch (dbErr) {
+      console.error("Error inesperado insertando post en Supabase:", dbErr);
     }
 
-    const mapped = {
-      id: data.id,
-      authorName: "Usuario demo",
-      createdAt: new Date(data.created_at).toLocaleString("es-ES"),
-      text: data.text,
-      imageUrl: data.image_url,
-      aiProbability: data.ai_probability ?? 0,
-      globalScore: data.global_score ?? 0,
+    // 3) Construir el objeto de respuesta aunque la inserción falle
+    const responsePost = {
+      id: inserted?.id ?? `temp-${Date.now()}`,
+      authorName: inserted?.author_name ?? "Usuario demo",
+      createdAt: inserted?.created_at
+        ? new Date(inserted.created_at).toLocaleString("es-ES")
+        : new Date(createdAtIso).toLocaleString("es-ES"),
+      text: inserted?.text ?? text ?? null,
+      imageUrl: inserted?.image_url ?? imageUrl ?? null,
+      aiProbability: inserted?.ai_probability ?? aiProbability,
+      globalScore: inserted?.global_score ?? globalScore,
     };
 
-    return NextResponse.json(mapped, { status: 201 });
+    return NextResponse.json(responsePost, { status: 200 });
   } catch (err) {
     console.error("Error inesperado en POST /api/posts:", err);
     return NextResponse.json(
