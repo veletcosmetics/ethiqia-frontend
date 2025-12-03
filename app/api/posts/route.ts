@@ -61,7 +61,11 @@ export async function POST(req: Request) {
     });
 
     const aiProbability = moderation.aiProbability ?? 0;
-    const globalScore = moderation.globalScore ?? 0;
+
+    // Calculamos un Ethiqia Score simple para la beta:
+    // a menor probabilidad de IA, mayor score.
+    const globalScore = Math.max(0, Math.min(100, Math.round(100 - aiProbability)));
+
     const blocked = moderation.blocked ?? false;
     const reason = moderation.reason ?? null;
 
@@ -80,7 +84,7 @@ export async function POST(req: Request) {
 
     const createdAtIso = new Date().toISOString();
 
-    // 2) Intentar guardar en Supabase (pero sin romper la beta si falla)
+    // 2) Intentar guardar en Supabase
     let inserted: any | null = null;
 
     try {
