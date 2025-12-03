@@ -62,25 +62,12 @@ export async function POST(req: Request) {
 
     const aiProbability = moderation.aiProbability ?? 0;
 
-    // Calculamos un Ethiqia Score simple para la beta:
+    // Ethiqia Score simple para la beta:
     // a menor probabilidad de IA, mayor score.
-    const globalScore = Math.max(0, Math.min(100, Math.round(100 - aiProbability)));
-
-    const blocked = moderation.blocked ?? false;
-    const reason = moderation.reason ?? null;
-
-    // Si la IA decide bloquear, devolvemos 400 con la info
-    if (blocked) {
-      return NextResponse.json(
-        {
-          error: "Contenido bloqueado por moderación de IA",
-          aiProbability,
-          globalScore,
-          reason,
-        },
-        { status: 400 }
-      );
-    }
+    const globalScore = Math.max(
+      0,
+      Math.min(100, Math.round(100 - aiProbability))
+    );
 
     const createdAtIso = new Date().toISOString();
 
@@ -110,7 +97,7 @@ export async function POST(req: Request) {
       console.error("Error inesperado insertando post en Supabase:", dbErr);
     }
 
-    // 3) Construir el objeto de respuesta aunque la inserción falle
+    // 3) Construir el objeto de respuesta (aunque la inserción falle)
     const responsePost = {
       id: inserted?.id ?? `temp-${Date.now()}`,
       authorName: inserted?.author_name ?? "Usuario demo",
