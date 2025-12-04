@@ -1,129 +1,132 @@
-'use client';
+"use client";
 
-import { useState, FormEvent } from 'react';
-import { useRouter } from 'next/navigation';
-import { supabase } from '@/lib/supabaseClient';
+import React, { useState } from "react";
+import { useRouter } from "next/navigation";
+import { supabaseClient } from "@/lib/supabaseClient";
 
 export default function RegisterPage() {
   const router = useRouter();
-  const [displayName, setDisplayName] = useState('');
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [confirm, setConfirm] = useState("");
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [info, setInfo] = useState<string | null>(null);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [infoMsg, setInfoMsg] = useState<string | null>(null);
 
-  const handleSubmit = async (e: FormEvent) => {
+  const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError(null);
-    setInfo(null);
+    setErrorMsg(null);
+    setInfoMsg(null);
+
+    if (password !== confirm) {
+      setErrorMsg("Las contraseñas no coinciden.");
+      return;
+    }
+
     setLoading(true);
 
-    try {
-      // 1) Crear usuario en Supabase Auth
-      const { error: signUpError } = await supabase.auth.signUp({
-        email,
-        password,
-      });
+    const { data, error } = await supabaseClient.auth.signUp({
+      email,
+      password,
+    });
 
-      if (signUpError) throw signUpError;
+    setLoading(false);
 
-      // 2) Obtener usuario actual
-      const { data: userData, error: userError } = await supabase.auth.getUser();
-      if (userError) throw userError;
+    if (error) {
+      console.error("Error registro:", error);
+      setErrorMsg(error.message || "No se ha podido crear la cuenta");
+      return;
+    }
 
-      const user = userData.user;
-      if (!user) {
-        // Si tienes confirmación de email activada, puede que aún no haya sesión
-        setInfo(
-          'Cuenta creada. Revisa tu email para confirmar la cuenta antes de poder entrar.'
-        );
-        setLoading(false);
-        return;
-      }
-
-      // 3) Crear/actualizar perfil en nuestra tabla "profiles"
-      const { error: profileError } = await supabase
-        .from('profiles')
-        .upsert(
-          {
-            user_id: user.id,
-            display_name: displayName || email.split('@')[0],
-          },
-          {
-            onConflict: 'user_id',
-          }
-        );
-
-      if (profileError) throw profileError;
-
-      // 4) Todo OK → al feed
-      router.push('/feed');
-    } catch (err: any) {
-      setError(err.message || 'Error al crear la cuenta');
-    } finally {
-      setLoading(false);
+    // Dependiendo de la configuración de Supabase:
+    // - si NO requiere confirmación por email -> puede haber session directa
+    // - si SÍ requiere confirmación -> data.session será null
+    if (data.session) {
+      // Sesión creada -> directo al feed
+      router.push("/feed");
+    } else {
+      setInfoMsg(
+        "Cuenta creada. Revisa tu correo para confirmar la cuenta y luego inicia sesión."
+      );
     }
   };
 
   return (
-    <main className="min-h-screen flex items-center justify-center px-4">
-      <div className="w-full max-w-md border rounded-2xl p-6 flex flex-col gap-4">
-        <h1 className="text-2xl font-bold text-center">Crear cuenta en Ethiqia</h1>
+    <div className="min-h-screen bg-black text-white flex items-center justify-center px-4">
+      <div className="w-full max-w-md border border-zinc-800 rounded-2xl p-8 bg-zinc-950/70 backdrop-blur">
+        <h1 className="text-2xl font-semibold mb-2">Crear cuenta</h1>
+        <p className="text-sm text-zinc-400 mb-6">
+          Regístrate para empezar a construir tu reputación en Ethiqia.
+        </p>
 
-        <form onSubmit={handleSubmit} className="flex flex-col gap-3">
-          <div className="flex flex-col gap-1">
-            <label className="text-sm font-medium">Nombre público</label>
-            <input
-              type="text"
-              className="border rounded-xl px-3 py-2 text-sm"
-              value={displayName}
-              onChange={(e) => setDisplayName(e.target.value)}
-              placeholder="Cómo quieres que te vean en el perfil"
-            />
-          </div>
-
-          <div className="flex flex-col gap-1">
-            <label className="text-sm font-medium">Email</label>
+        <form onSubmit={handleRegister} className="space-y-4">
+          <div>
+            <label className="block text-sm mb-1">Email</label>
             <input
               type="email"
-              className="border rounded-xl px-3 py-2 text-sm"
+              required
+              className="w-full rounded-lg bg-zinc-900 border border-zinc-700 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              required
+              placeholder="tucorreo@ejemplo.com"
             />
           </div>
 
-          <div className="flex flex-col gap-1">
-            <label className="text-sm font-medium">Contraseña</label>
+          <div>
+            <label className="block text-sm mb-1">Contraseña</label>
             <input
               type="password"
-              className="border rounded-xl px-3 py-2 text-sm"
+              required
+              className="w-full rounded-lg bg-zinc-900 border border-zinc-700 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              required
+              placeholder="Mínimo 6 caracteres"
             />
           </div>
 
-          {error && <p className="text-xs text-red-600">{error}</p>}
-          {info && <p className="text-xs text-blue-600">{info}</p>}
+          <div>
+            <label className="block text-sm mb-1">Repetir contraseña</label>
+            <input
+              type="password"
+              required
+              className="w-full rounded-lg bg-zinc-900 border border-zinc-700 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+              value={confirm}
+              onChange={(e) => setConfirm(e.target.value)}
+              placeholder="Repite la contraseña"
+            />
+          </div>
+
+          {errorMsg && (
+            <p className="text-sm text-red-400 bg-red-950/40 border border-red-900 rounded-lg px-3 py-2">
+              {errorMsg}
+            </p>
+          )}
+
+          {infoMsg && (
+            <p className="text-sm text-emerald-300 bg-emerald-950/40 border border-emerald-900 rounded-lg px-3 py-2">
+              {infoMsg}
+            </p>
+          )}
 
           <button
             type="submit"
             disabled={loading}
-            className="mt-2 bg-black text-white rounded-xl px-3 py-2 text-sm font-semibold disabled:opacity-60"
+            className="w-full rounded-lg bg-emerald-500 hover:bg-emerald-400 text-black font-medium py-2.5 text-sm disabled:opacity-60"
           >
-            {loading ? 'Creando cuenta...' : 'Crear cuenta'}
+            {loading ? "Creando cuenta..." : "Crear cuenta"}
           </button>
         </form>
 
-        <p className="text-xs text-center text-gray-500">
-          ¿Ya tienes cuenta?{' '}
-          <a href="/login" className="underline">
-            Inicia sesión
+        <p className="mt-4 text-sm text-zinc-400">
+          ¿Ya tienes cuenta?{" "}
+          <a
+            href="/login"
+            className="text-emerald-400 hover:text-emerald-300 underline"
+          >
+            Iniciar sesión
           </a>
         </p>
       </div>
-    </main>
+    </div>
   );
 }
