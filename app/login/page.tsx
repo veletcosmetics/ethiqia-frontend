@@ -1,84 +1,101 @@
-'use client';
+"use client";
 
-import { useState, FormEvent } from 'react';
-import { useRouter } from 'next/navigation';
-import { supabase } from '@/lib/supabaseClient';
+import React, { useState } from "react";
+import { useRouter } from "next/navigation";
+import { supabaseClient } from "@/lib/supabaseClient";
 
 export default function LoginPage() {
   const router = useRouter();
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
-  const handleSubmit = async (e: FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError(null);
+    setErrorMsg(null);
     setLoading(true);
 
-    try {
-      const { error } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      });
+    const { data, error } = await supabaseClient.auth.signInWithPassword({
+      email,
+      password,
+    });
 
-      if (error) throw error;
+    setLoading(false);
 
-      // Login correcto → al feed
-      router.push('/feed');
-    } catch (err: any) {
-      setError(err.message || 'Error al iniciar sesión');
-    } finally {
-      setLoading(false);
+    if (error) {
+      console.error("Error login:", error);
+      setErrorMsg(error.message || "No se ha podido iniciar sesión");
+      return;
     }
+
+    if (!data.session) {
+      setErrorMsg("No se ha creado sesión. Revisa tu email o contraseña.");
+      return;
+    }
+
+    // Login correcto -> al feed
+    router.push("/feed");
   };
 
   return (
-    <main className="min-h-screen flex items-center justify-center px-4">
-      <div className="w-full max-w-md border rounded-2xl p-6 flex flex-col gap-4">
-        <h1 className="text-2xl font-bold text-center">Entrar en Ethiqia</h1>
+    <div className="min-h-screen bg-black text-white flex items-center justify-center px-4">
+      <div className="w-full max-w-md border border-zinc-800 rounded-2xl p-8 bg-zinc-950/70 backdrop-blur">
+        <h1 className="text-2xl font-semibold mb-2">Iniciar sesión</h1>
+        <p className="text-sm text-zinc-400 mb-6">
+          Accede a tu cuenta de Ethiqia para publicar y ver tu reputación.
+        </p>
 
-        <form onSubmit={handleSubmit} className="flex flex-col gap-3">
-          <div className="flex flex-col gap-1">
-            <label className="text-sm font-medium">Email</label>
+        <form onSubmit={handleLogin} className="space-y-4">
+          <div>
+            <label className="block text-sm mb-1">Email</label>
             <input
               type="email"
-              className="border rounded-xl px-3 py-2 text-sm"
+              required
+              className="w-full rounded-lg bg-zinc-900 border border-zinc-700 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              required
+              placeholder="tucorreo@ejemplo.com"
             />
           </div>
 
-          <div className="flex flex-col gap-1">
-            <label className="text-sm font-medium">Contraseña</label>
+          <div>
+            <label className="block text-sm mb-1">Contraseña</label>
             <input
               type="password"
-              className="border rounded-xl px-3 py-2 text-sm"
+              required
+              className="w-full rounded-lg bg-zinc-900 border border-zinc-700 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              required
+              placeholder="••••••••"
             />
           </div>
 
-          {error && <p className="text-xs text-red-600">{error}</p>}
+          {errorMsg && (
+            <p className="text-sm text-red-400 bg-red-950/40 border border-red-900 rounded-lg px-3 py-2">
+              {errorMsg}
+            </p>
+          )}
 
           <button
             type="submit"
             disabled={loading}
-            className="mt-2 bg-black text-white rounded-xl px-3 py-2 text-sm font-semibold disabled:opacity-60"
+            className="w-full rounded-lg bg-emerald-500 hover:bg-emerald-400 text-black font-medium py-2.5 text-sm disabled:opacity-60"
           >
-            {loading ? 'Entrando...' : 'Entrar'}
+            {loading ? "Entrando..." : "Entrar"}
           </button>
         </form>
 
-        <p className="text-xs text-center text-gray-500">
-          ¿No tienes cuenta?{' '}
-          <a href="/register" className="underline">
+        <p className="mt-4 text-sm text-zinc-400">
+          ¿No tienes cuenta?{" "}
+          <a
+            href="/register"
+            className="text-emerald-400 hover:text-emerald-300 underline"
+          >
             Crear cuenta
           </a>
         </p>
       </div>
-    </main>
+    </div>
   );
 }
