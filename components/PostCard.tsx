@@ -1,151 +1,144 @@
 "use client";
 
-import React from "react";
+import { useEffect, useState } from "react";
+import { createClient, SupabaseClient } from "@supabase/supabase-js";
 
-export type Post = {
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+
+const supabase: SupabaseClient = createClient(supabaseUrl, supabaseAnonKey);
+
+type Post = {
   id: string;
-  authorName: string;
-  createdAt: string;
-  text?: string | null;
-  imageUrl?: string | null;
-  aiProbability?: number | null;
-  globalScore?: number | null;
+  user_id: string | null;
+  created_at: string;
+  text: string | null;
+  image_url: string | null;
+  ai_probability: number | null;
+  global_score: number | null;
+  blocked: boolean | null;
+  reason: string | null;
 };
 
-type PostCardProps = { post: Post };
+type Props = {
+  post: Post;
+};
 
-function getAiLabel(prob: number | null | undefined) {
-  const p = prob ?? 0;
-  if (p >= 70) return "Alta probabilidad de IA";
-  if (p >= 40) return "Probabilidad media de IA";
-  return "Baja probabilidad de IA";
-}
+export default function PostCard({ post }: Props) {
+  const [authorName, setAuthorName] = useState("Usuario demo");
+  const [loadingAuthor, setLoadingAuthor] = useState<boolean>(!!post.user_id);
 
-export default function PostCard({ post }: PostCardProps) {
-  const aiProb = post.aiProbability ?? 0;
-  const globalScore = post.globalScore ?? 0;
+  useEffect(() => {
+    const loadAuthor = async () => {
+      if (!post.user_id) {
+        setLoadingAuthor(false);
+        return;
+      }
 
-  const aiLabel = getAiLabel(aiProb);
+      setLoadingAuthor(true);
 
-  const aiPillClass =
-    aiProb >= 70
-      ? "bg-rose-900/60 text-rose-100 border border-rose-500/60"
-      : aiProb >= 40
-      ? "bg-amber-900/60 text-amber-100 border border-amber-500/60"
-      : "bg-emerald-900/60 text-emerald-100 border border-emerald-500/60";
+      const { data, error } = await supabase
+        .from("profiles")
+        .select("full_name")
+        .eq("id", post.user_id)
+        .maybeSingle();
+
+      if (error) {
+        console.error("Error cargando autor:", error);
+        setLoadingAuthor(false);
+        return;
+      }
+
+      if (data?.full_name) {
+        setAuthorName(data.full_name);
+      }
+
+      setLoadingAuthor(false);
+    };
+
+    loadAuthor();
+  }, [post.user_id]);
+
+  const formattedDate = new Date(post.created_at).toLocaleString("es-ES", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+
+  const aiProbability = post.ai_probability ?? 0;
+  const globalScore =
+    post.global_score ?? Math.max(0, Math.min(100, Math.round(100 - aiProbability)));
+
+  const isBlocked = post.blocked ?? false;
+  const reason = post.reason ?? null;
 
   return (
-    <article className="max-w-2xl mx-auto rounded-2xl border border-zinc-800 bg-black/80 overflow-hidden mb-6">
-      {/* Cabecera */}
-      <header className="flex items-center justify-between px-4 py-3">
+    <article className="rounded-2xl border border-zinc-800 bg-zinc-950/80 overflow-hidden">
+      {/* Cabecera: autor + fecha */}
+      <header className="px-4 py-3 flex items-center justify-between gap-3 border-b border-zinc-800">
         <div className="flex items-center gap-3">
-          <div className="h-9 w-9 rounded-full bg-zinc-800 flex items-center justify-center text-xs font-semibold text-gray-200">
-            {post.authorName ? post.authorName.charAt(0).toUpperCase() : "E"}
+          {/* Avatar simple */}
+          <div className="h-9 w-9 rounded-full bg-emerald-500/90 flex items-center justify-center text-black text-sm font-semibold">
+            {authorName.charAt(0).toUpperCase()}
           </div>
-          <div className="flex flex-col leading-tight">
-            <span className="text-sm font-semibold text-gray-100">
-              {post.authorName || "Usuario"}
+          <div className="flex flex-col">
+            <span className="text-sm font-medium text-zinc-50">
+              {loadingAuthor ? "Cargando..." : authorName}
             </span>
-            <span className="text-[11px] text-gray-400">{post.createdAt}</span>
+            <span className="text-xs text-zinc-500">{formattedDate}</span>
           </div>
-        </div>
-
-        <div
-          className={`px-3 py-1 rounded-full text-[11px] font-medium ${aiPillClass}`}
-        >
-          {aiLabel}
         </div>
       </header>
 
       {/* Imagen */}
-      {post.imageUrl && (
+      {post.image_url && (
         <div className="w-full bg-black">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
-            src={post.imageUrl}
-            alt=""
-            className="w-full h-auto object-contain bg-black"
+            src={post.image_url}
+            alt={post.text ?? "Publicación"}
+            className="w-full max-h-[480px] object-contain bg-black"
           />
         </div>
       )}
 
-      {/* Texto + score */}
-      <div className="px-4 pt-3 pb-1">
+      {/* Texto + info IA */}
+      <div className="px-4 py-3 space-y-3">
         {post.text && (
-          <p className="text-sm text-gray-100 whitespace-pre-wrap mb-2">
+          <p className="text-sm text-zinc-200 whitespace-pre-wrap break-words">
             {post.text}
           </p>
         )}
 
-        <div className="space-y-1 text-[11px] text-gray-400 mb-2">
-          <div className="flex items-center justify-between">
-            <span>Ethiqia Score global</span>
-            <span className="text-emerald-400 font-semibold">
-              {globalScore}/100
+        {/* Datos de IA / autenticidad */}
+        <div className="flex flex-wrap items-center gap-3 text-xs">
+          <span className="rounded-full border border-emerald-500/60 bg-emerald-900/20 px-3 py-1 text-emerald-200">
+            Score autenticidad:{" "}
+            <span className="font-semibold">{globalScore.toFixed(0)} / 100</span>
+          </span>
+
+          <span className="rounded-full border border-zinc-700 bg-zinc-900/60 px-3 py-1 text-zinc-300">
+            Prob. IA:{" "}
+            <span className="font-semibold">
+              {aiProbability.toFixed(1).replace(".", ",")}%
             </span>
-          </div>
-          <div className="h-1.5 w-full rounded-full bg-zinc-800 overflow-hidden">
-            <div
-              className="h-full rounded-full bg-emerald-500"
-              style={{
-                width: `${Math.max(
-                  0,
-                  Math.min(100, Number(globalScore || 0))
-                )}%`,
-              }}
-            />
-          </div>
-        </div>
-      </div>
+          </span>
 
-      {/* Acciones y caja de comentario (solo UI) */}
-      <div className="px-4 pt-2 pb-3 border-t border-zinc-800">
-        <div className="flex items-center justify-between text-xs text-gray-300 mb-2">
-          <div className="flex items-center gap-4">
-            <button
-              type="button"
-              className="inline-flex items-center gap-1 hover:text-white transition"
-            >
-              <span>♡</span>
-              <span>Te gusta</span>
-            </button>
-            <button
-              type="button"
-              className="inline-flex items-center gap-1 hover:text-white transition"
-            >
-              <span>💬</span>
-              <span>Comentar</span>
-            </button>
-            <button
-              type="button"
-              className="inline-flex items-center gap-1 hover:text-white transition"
-            >
-              <span>🔖</span>
-              <span>Guardar</span>
-            </button>
-          </div>
-
-          <button
-            type="button"
-            className="inline-flex items-center gap-1 hover:text-white transition"
-          >
-            <span>↗</span>
-            <span>Compartir</span>
-          </button>
+          {isBlocked && (
+            <span className="rounded-full border border-red-500/70 bg-red-900/30 px-3 py-1 text-red-200">
+              Contenido limitado por moderación
+            </span>
+          )}
         </div>
 
-        <div className="flex items-center gap-2">
-          <input
-            type="text"
-            placeholder="Escribe un comentario respetuoso..."
-            className="flex-1 rounded-full border border-zinc-700 bg-black px-3 py-1.5 text-xs outline-none focus:border-emerald-500"
-          />
-          <button
-            type="button"
-            className="px-3 py-1.5 rounded-full bg-emerald-500 text-[11px] font-semibold text-black hover:bg-emerald-400 transition"
-          >
-            Publicar
-          </button>
-        </div>
+        {/* Motivo de moderación si existe */}
+        {reason && (
+          <div className="mt-1 rounded-xl border border-amber-500/40 bg-amber-900/20 px-3 py-2 text-[11px] text-amber-100">
+            Motivo moderación: {reason}
+          </div>
+        )}
       </div>
     </article>
   );
