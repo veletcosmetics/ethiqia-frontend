@@ -15,6 +15,7 @@ export default function FeedPage() {
     caption: "",
     file: null,
   });
+
   const [posts, setPosts] = useState<Post[]>([]);
   const [loadingPosts, setLoadingPosts] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -34,7 +35,7 @@ export default function FeedPage() {
         setCurrentUser(user ?? null);
 
         if (user) {
-          // Leer perfil de la tabla profiles (asumiendo que id = auth.user.id)
+          // Leemos el perfil desde la tabla profiles (id = user.id)
           const { data: profile, error } = await supabaseBrowser
             .from("profiles")
             .select("display_name")
