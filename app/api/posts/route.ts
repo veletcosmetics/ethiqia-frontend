@@ -1,45 +1,23 @@
 // app/api/posts/route.ts
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const supabaseKey =
-  process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+const supabase = createClient(
+  process.env.SUPABASE_URL!,
+  process.env.SUPABASE_ANON_KEY!
+);
 
-if (!supabaseUrl || !supabaseKey) {
-  throw new Error("Faltan variables de entorno de Supabase");
-}
-
-const supabase = createClient(supabaseUrl, supabaseKey, {
-  auth: { persistSession: false },
-});
-
-type PostInsertPayload = {
-  userId: string;
-  imageUrl?: string | null;
-  caption?: string | null;
-  aiProbability?: number | null;
-  globalScore?: number | null;
-  text?: string | null;
-  blocked?: boolean | null;
-  reason?: string | null;
-};
-
-// GET /api/posts → lista de posts para el feed
-export async function GET(_req: NextRequest) {
+export async function GET() {
   try {
     const { data, error } = await supabase
       .from("posts")
-      .select(
-        "id,user_id,company_id,image_url,caption,created_at,moderation_status,moderation_reason,moderation_labels,moderation_decided_at,moderation_decided_by,ai_probability,global_score,text,blocked,reason"
-      )
-      .order("created_at", { ascending: false })
-      .limit(50);
+      .select("*")
+      .order("created_at", { ascending: false });
 
     if (error) {
       console.error("Error cargando posts:", error);
       return NextResponse.json(
-        { error: "Error al cargar publicaciones" },
+        { error: "Error cargando posts" },
         { status: 500 }
       );
     }
@@ -48,74 +26,73 @@ export async function GET(_req: NextRequest) {
   } catch (err) {
     console.error("Error inesperado en GET /api/posts:", err);
     return NextResponse.json(
-      { error: "Error interno al cargar publicaciones" },
+      { error: "Error interno del servidor" },
       { status: 500 }
     );
   }
 }
 
-// POST /api/posts → crea un post nuevo REAL
-export async function POST(req: NextRequest) {
+export async function POST(req: Request) {
   try {
-    const body = (await req.json()) as PostInsertPayload;
-
+    const body = await req.json();
     const {
       userId,
       imageUrl,
       caption,
+      text,
       aiProbability,
       globalScore,
-      text,
       blocked,
       reason,
-    } = body;
+    } = body as {
+      userId: string;
+      imageUrl: string;
+      caption: string;
+      text: string;
+      aiProbability: number;
+      globalScore: number;
+      blocked: boolean;
+      reason: string | null;
+    };
 
     if (!userId) {
       return NextResponse.json(
-        { error: "userId es obligatorio" },
+        { error: "Falta userId" },
         { status: 400 }
       );
     }
 
-    const safeAiProb =
-      typeof aiProbability === "number" && !Number.isNaN(aiProbability)
-        ? aiProbability
-        : 0;
+    if (!imageUrl) {
+      return NextResponse.json(
+        { error: "Falta imageUrl (URL pública de la imagen)" },
+        { status: 400 }
+      );
+    }
 
-    const safeGlobalScore =
-      typeof globalScore === "number" && !Number.isNaN(globalScore)
-        ? globalScore
-        : Math.max(0, Math.min(100, Math.round(100 - safeAiProb)));
-
-    const isBlocked = !!blocked;
-    const nowIso = new Date().toISOString();
+    const moderationStatus = blocked ? "rejected" : "approved";
 
     const { data, error } = await supabase
       .from("posts")
       .insert({
         user_id: userId,
-        image_url: imageUrl ?? null,          // 👈 aquí se guarda la URL de Supabase Storage
-        caption: caption ?? null,
-        text: text ?? caption ?? null,
-        ai_probability: safeAiProb,
-        global_score: safeGlobalScore,
-        blocked: isBlocked,
+        image_url: imageUrl,        // ← AQUÍ GUARDAMOS LA URL
+        caption,
+        text,
+        ai_probability: aiProbability ?? 0,
+        global_score: globalScore ?? 0,
+        blocked: blocked ?? false,
         reason: reason ?? null,
-        moderation_status: isBlocked ? "rejected" : "approved",
-        moderation_reason: reason ?? null,
-        moderation_decided_at: nowIso,
+        moderation_status: moderationStatus,
         moderation_decided_by: "ai-v1",
-        // moderation_labels las puedes rellenar más adelante si quieres
+        moderation_decided_at: new Date().toISOString(),
       })
-      .select(
-        "id,user_id,company_id,image_url,caption,created_at,moderation_status,moderation_reason,moderation_labels,moderation_decided_at,moderation_decided_by,ai_probability,global_score,text,blocked,reason"
-      )
+      .select("*")
       .single();
 
     if (error) {
       console.error("Error insertando post en Supabase:", error);
       return NextResponse.json(
-        { error: "Error al guardar la publicación" },
+        { error: "Error insertando post" },
         { status: 500 }
       );
     }
@@ -124,7 +101,7 @@ export async function POST(req: NextRequest) {
   } catch (err) {
     console.error("Error inesperado en POST /api/posts:", err);
     return NextResponse.json(
-      { error: "Error interno al crear la publicación" },
+      { error: "Error interno del servidor" },
       { status: 500 }
     );
   }
