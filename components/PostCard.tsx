@@ -8,7 +8,8 @@ const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 
 const supabase: SupabaseClient = createClient(supabaseUrl, supabaseAnonKey);
 
-type Post = {
+// 🔹 Exportamos el tipo Post para que app/feed/page.tsx pueda usarlo
+export type Post = {
   id: string;
   user_id: string | null;
   created_at: string;
