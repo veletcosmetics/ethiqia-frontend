@@ -11,7 +11,7 @@ if (!supabaseUrl || !supabaseKey) {
 
 const supabase = createClient(supabaseUrl, supabaseKey);
 
-// Tipo de Post según tu tabla
+// Tipo básico para usar en el feed
 export type Post = {
   id: string;
   user_id: string | null;
@@ -46,7 +46,7 @@ export async function GET() {
     );
   }
 
-  return NextResponse.json({ posts: data as Post[] });
+  return NextResponse.json({ posts: (data ?? []) as Post[] });
 }
 
 // POST → crear un post real en la tabla
@@ -55,8 +55,7 @@ export async function POST(req: Request) {
     const body = await req.json();
 
     const {
-      userId,          // opcional por ahora
-      companyId,
+      // OJO: NO vamos a usar userId todavía
       imageUrl,
       caption,
       aiProbability,
@@ -66,13 +65,11 @@ export async function POST(req: Request) {
       reason,
       moderationStatus,
       moderationRaw,
-      moderationLabels,
-      moderationDecision,
+      // NO usamos moderationLabels ni moderationDecision por ahora
     } = body;
 
     const insertPayload = {
-      user_id: userId ?? null,
-      company_id: companyId ?? null,
+      // SIN user_id → no tocamos la FK
       image_url: imageUrl ?? null,
       caption: caption ?? null,
       ai_probability: aiProbability ?? null,
@@ -82,8 +79,7 @@ export async function POST(req: Request) {
       reason: reason ?? null,
       moderation_status: moderationStatus ?? "pending",
       moderation_raw: moderationRaw ?? null,
-      moderation_labels: moderationLabels ?? null,
-      moderation_decision: moderationDecision ?? null,
+      // NO enviamos moderation_labels ni moderation_decision
     };
 
     const { data, error } = await supabase
@@ -93,7 +89,7 @@ export async function POST(req: Request) {
       .single();
 
     if (error) {
-      console.error("Error creando post:", error);
+      console.error("Error insertando post en Supabase:", error);
       return NextResponse.json(
         { error: "Error creando post" },
         { status: 500 }
