@@ -2,6 +2,8 @@
 
 import React, { useEffect, useState, FormEvent } from "react";
 import PostCard, { Post } from "@/components/PostCard";
+import { supabaseBrowser } from "@/lib/supabaseBrowserClient";
+import type { User } from "@supabase/supabase-js";
 
 type NewPostState = {
   caption: string;
@@ -18,7 +20,42 @@ export default function FeedPage() {
   const [submitting, setSubmitting] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
 
-  // Cargar posts reales al entrar
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [currentUserName, setCurrentUserName] = useState<string>("Usuario Ethiqia");
+  const [authChecked, setAuthChecked] = useState(false);
+
+  // 1) Cargar usuario actual + su perfil
+  useEffect(() => {
+    const initAuthAndProfile = async () => {
+      try {
+        const {
+          data: { user },
+        } = await supabaseBrowser.auth.getUser();
+        setCurrentUser(user ?? null);
+
+        if (user) {
+          // Leer perfil de la tabla profiles (asumiendo que id = auth.user.id)
+          const { data: profile, error } = await supabaseBrowser
+            .from("profiles")
+            .select("display_name")
+            .eq("id", user.id)
+            .single();
+
+          if (!error && profile?.display_name) {
+            setCurrentUserName(profile.display_name as string);
+          }
+        }
+      } catch (err) {
+        console.error("Error obteniendo usuario/perfil:", err);
+      } finally {
+        setAuthChecked(true);
+      }
+    };
+
+    initAuthAndProfile();
+  }, []);
+
+  // 2) Cargar posts reales al entrar
   useEffect(() => {
     const loadPosts = async () => {
       setLoadingPosts(true);
@@ -52,6 +89,11 @@ export default function FeedPage() {
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setMessage(null);
+
+    if (!currentUser) {
+      setMessage("Debes iniciar sesión para publicar.");
+      return;
+    }
 
     if (!newPost.file) {
       setMessage("Primero selecciona una imagen.");
@@ -101,11 +143,12 @@ export default function FeedPage() {
         Math.min(100, Math.round(100 - aiProbability))
       );
 
-      // 3) Guardar post REAL en la tabla posts
+      // 3) Guardar post REAL en la tabla posts con user_id real
       const saveRes = await fetch("/api/posts", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          userId: currentUser.id,
           imageUrl,
           caption: newPost.caption,
           aiProbability,
@@ -138,6 +181,26 @@ export default function FeedPage() {
     }
   };
 
+  // Si ya hemos comprobado auth y no hay usuario, mensaje claro
+  if (authChecked && !currentUser) {
+    return (
+      <main className="min-h-screen bg-black text-white flex items-center justify-center">
+        <div className="text-center space-y-3">
+          <h1 className="text-2xl font-semibold">Ethiqia</h1>
+          <p className="text-sm text-gray-400">
+            Debes iniciar sesión para ver y publicar en el feed.
+          </p>
+          <a
+            href="/login"
+            className="inline-flex items-center justify-center rounded-full bg-emerald-500 hover:bg-emerald-600 px-6 py-2 text-sm font-semibold"
+          >
+            Ir a iniciar sesión
+          </a>
+        </div>
+      </main>
+    );
+  }
+
   return (
     <main className="min-h-screen bg-black text-white">
       <section className="max-w-3xl mx-auto px-4 py-8">
@@ -148,6 +211,7 @@ export default function FeedPage() {
           calcular tu Ethiqia Score.
         </p>
 
+        {/* Formulario de nueva publicación */}
         <form
           onSubmit={handleSubmit}
           className="bg-neutral-900 rounded-xl p-6 mb-8 space-y-4"
@@ -197,9 +261,15 @@ export default function FeedPage() {
         )}
 
         <div className="space-y-4 mt-4">
-          {posts.map((post) => (
-            <PostCard key={post.id} post={post} />
-          ))}
+          {posts.map((post) => {
+            // Si el post es del usuario actual, mostramos su nombre real
+            const isMine = currentUser && post.user_id === currentUser.id;
+            const authorName = isMine ? currentUserName : "Usuario Ethiqia";
+
+            return (
+              <PostCard key={post.id} post={post} authorName={authorName} />
+            );
+          })}
         </div>
       </section>
     </main>
