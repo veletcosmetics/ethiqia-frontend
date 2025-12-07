@@ -11,19 +11,13 @@ if (!supabaseUrl || !supabaseKey) {
 
 const supabase = createClient(supabaseUrl, supabaseKey);
 
-// Tipo básico para usar en el feed
+// Tipo básico para los posts que usamos en el feed
 export type Post = {
   id: string;
   user_id: string | null;
-  company_id: string | null;
   image_url: string | null;
   caption: string | null;
   created_at: string;
-  moderation_status: string | null;
-  moderation_raw: string | null;
-  moderation_labels: any | null;
-  moderation_decided_at: string | null;
-  moderation_decision: string | null;
   ai_probability: number | null;
   global_score: number | null;
   text: string | null;
@@ -31,7 +25,6 @@ export type Post = {
   reason: string | null;
 };
 
-// GET → devolver posts reales desde Supabase
 export async function GET() {
   const { data, error } = await supabase
     .from("posts")
@@ -49,13 +42,11 @@ export async function GET() {
   return NextResponse.json({ posts: (data ?? []) as Post[] });
 }
 
-// POST → crear un post real en la tabla
 export async function POST(req: Request) {
   try {
     const body = await req.json();
 
     const {
-      // OJO: NO vamos a usar userId todavía
       imageUrl,
       caption,
       aiProbability,
@@ -63,23 +54,18 @@ export async function POST(req: Request) {
       text,
       blocked,
       reason,
-      moderationStatus,
-      moderationRaw,
-      // NO usamos moderationLabels ni moderationDecision por ahora
     } = body;
 
+    // Insert mínimo: solo columnas que sabemos que EXISTEN
     const insertPayload = {
-      // SIN user_id → no tocamos la FK
       image_url: imageUrl ?? null,
       caption: caption ?? null,
+      text: text ?? caption ?? null,
       ai_probability: aiProbability ?? null,
       global_score: globalScore ?? 0,
-      text: text ?? null,
       blocked: blocked ?? false,
       reason: reason ?? null,
-      moderation_status: moderationStatus ?? "pending",
-      moderation_raw: moderationRaw ?? null,
-      // NO enviamos moderation_labels ni moderation_decision
+      // NO tocamos user_id todavía para no romper la FK
     };
 
     const { data, error } = await supabase
