@@ -17,9 +17,10 @@ export type Post = {
 
 type Props = {
   post: Post;
+  authorName: string; // nombre que le pasamos desde el feed
 };
 
-export default function PostCard({ post }: Props) {
+export default function PostCard({ post, authorName }: Props) {
   const createdAt = new Date(post.created_at);
   const formattedDate = isNaN(createdAt.getTime())
     ? ""
@@ -33,22 +34,23 @@ export default function PostCard({ post }: Props) {
 
   const aiProbability = post.ai_probability ?? 0;
   const globalScore =
-    post.global_score ?? Math.max(0, Math.min(100, Math.round(100 - aiProbability)));
+    post.global_score ??
+    Math.max(0, Math.min(100, Math.round(100 - aiProbability)));
 
   const isBlocked = post.blocked ?? false;
   const reason = post.reason ?? null;
 
   return (
     <article className="rounded-2xl border border-zinc-800 bg-zinc-950/80 overflow-hidden">
-      {/* Cabecera simple: usuario genérico + fecha */}
+      {/* Cabecera: nombre + fecha */}
       <header className="px-4 py-3 flex items-center justify-between gap-3 border-b border-zinc-800">
         <div className="flex items-center gap-3">
           <div className="h-9 w-9 rounded-full bg-emerald-500/90 flex items-center justify-center text-black text-sm font-semibold">
-            U
+            {authorName.charAt(0).toUpperCase()}
           </div>
           <div className="flex flex-col">
             <span className="text-sm font-medium text-zinc-50">
-              Usuario Ethiqia
+              {authorName}
             </span>
             {formattedDate && (
               <span className="text-xs text-zinc-500">{formattedDate}</span>
