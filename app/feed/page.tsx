@@ -16,9 +16,6 @@ export default function FeedPage() {
     file: null,
   });
 
-  // URL pública de la última imagen subida (por si queremos usarla / depurar)
-  const [imageUrl, setImageUrl] = useState<string | null>(null);
-
   const [posts, setPosts] = useState<Post[]>([]);
   const [loadingPosts, setLoadingPosts] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -39,7 +36,6 @@ export default function FeedPage() {
         setCurrentUser(user ?? null);
 
         if (user) {
-          // Leemos el perfil desde la tabla profiles (id = user.id)
           const { data: profile, error } = await supabaseBrowser
             .from("profiles")
             .select("display_name")
@@ -121,11 +117,20 @@ export default function FeedPage() {
         throw new Error("Error subiendo la imagen");
       }
 
-      const { publicUrl } = await uploadRes.json();
-      const uploadedImageUrl: string = publicUrl;
+      const uploadData = await uploadRes.json();
+      console.log("uploadData", uploadData);
 
-      // guardamos en estado por si queremos usarlo / depurar
-      setImageUrl(uploadedImageUrl);
+      // Intentamos leer la URL con varios nombres posibles
+      const imageUrl: string | undefined =
+        uploadData.publicUrl ??
+        uploadData.public_url ??
+        uploadData.url ??
+        uploadData.path ??
+        uploadData.imageUrl;
+
+      if (!imageUrl || typeof imageUrl !== "string") {
+        throw new Error("No se obtuvo URL pública de la imagen");
+      }
 
       // 2) Moderar con IA
       const moderationRes = await fetch("/api/moderate-post", {
@@ -133,7 +138,7 @@ export default function FeedPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           caption: newPost.caption,
-          imageUrl: uploadedImageUrl,
+          imageUrl,
         }),
       });
 
@@ -157,7 +162,7 @@ export default function FeedPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           userId: currentUser.id,
-          imageUrl: uploadedImageUrl, // 👈 se envía al backend
+          imageUrl,
           caption: newPost.caption,
           aiProbability,
           globalScore,
@@ -168,6 +173,8 @@ export default function FeedPage() {
       });
 
       if (!saveRes.ok) {
+        const errText = await saveRes.text();
+        console.error("Error respuesta /api/posts:", errText);
         throw new Error("Error guardando el post");
       }
 
@@ -176,8 +183,6 @@ export default function FeedPage() {
       // 4) Añadir al estado sin recargar
       setPosts((prev) => [post as Post, ...prev]);
       setNewPost({ caption: "", file: null });
-      setImageUrl(null); // limpiamos la url en memoria
-
       setMessage(
         `Publicación creada correctamente. Probabilidad estimada de IA: ${Math.round(
           aiProbability
@@ -191,7 +196,6 @@ export default function FeedPage() {
     }
   };
 
-  // Si ya hemos comprobado auth y no hay usuario, mensaje claro
   if (authChecked && !currentUser) {
     return (
       <main className="min-h-screen bg-black text-white flex items-center justify-center">
@@ -272,7 +276,6 @@ export default function FeedPage() {
 
         <div className="space-y-4 mt-4">
           {posts.map((post) => {
-            // Si el post es del usuario actual, mostramos su nombre real
             const isMine = currentUser && post.user_id === currentUser.id;
             const authorName = isMine ? currentUserName : "Usuario Ethiqia";
 
