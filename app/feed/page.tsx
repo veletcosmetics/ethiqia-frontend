@@ -1,9 +1,7 @@
-// app/feed/page.tsx
 "use client";
 
 import React, { useEffect, useState, FormEvent } from "react";
-import PostCard from "@/components/PostCard";
-import type { Post } from "../api/posts/route";
+import PostCard, { Post } from "@/components/PostCard";
 
 type NewPostState = {
   caption: string;
@@ -98,18 +96,16 @@ export default function FeedPage() {
       const blocked = moderation.blocked ?? false;
       const reason = moderation.reason ?? null;
 
-      // Por ahora score simple: 100 - prob. IA
       const globalScore = Math.max(
         0,
         Math.min(100, Math.round(100 - aiProbability))
       );
 
-      // 3) Guardar post en Supabase (tabla posts)
+      // 3) Guardar post REAL en la tabla posts
       const saveRes = await fetch("/api/posts", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          // userId: aquí más adelante meteremos el user real
           imageUrl,
           caption: newPost.caption,
           aiProbability,
@@ -117,10 +113,6 @@ export default function FeedPage() {
           text: newPost.caption,
           blocked,
           reason,
-          moderationStatus: blocked ? "blocked" : "approved",
-          moderationRaw: JSON.stringify(moderation),
-          moderationLabels: moderation.labels ?? null,
-          moderationDecision: blocked ? "blocked" : "allowed",
         }),
       });
 
