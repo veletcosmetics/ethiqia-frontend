@@ -1,120 +1,110 @@
+// app/api/posts/route.ts
 import { NextResponse } from "next/server";
-import { supabaseServer } from "@/lib/supabaseServer";
-import { moderatePost } from "@/lib/moderatePost";
+import { createClient } from "@supabase/supabase-js";
 
-// GET: devuelve lista de posts para el feed
-export async function GET() {
-  try {
-    const { data, error } = await supabaseServer
-      .from("posts")
-      .select("*")
-      .order("created_at", { ascending: false })
-      .limit(50);
+const supabaseUrl = process.env.SUPABASE_URL;
+const supabaseKey = process.env.SUPABASE_ANON_KEY;
 
-    if (error) {
-      console.error("Error leyendo posts desde Supabase:", error);
-      // Para la beta, si falla la tabla, devolvemos lista vacía
-      return NextResponse.json([], { status: 200 });
-    }
-
-    const mapped =
-      data?.map((row: any) => ({
-        id: row.id ?? `temp-${Date.now()}-${Math.random()}`,
-        authorName: row.author_name ?? "Usuario",
-        createdAt: row.created_at
-          ? new Date(row.created_at).toLocaleString("es-ES")
-          : "",
-        text: row.text ?? null,
-        imageUrl: row.image_url ?? null,
-        aiProbability: row.ai_probability ?? 0,
-        globalScore: row.global_score ?? 0,
-      })) ?? [];
-
-    return NextResponse.json(mapped, { status: 200 });
-  } catch (err) {
-    console.error("Error inesperado en GET /api/posts:", err);
-    return NextResponse.json([], { status: 200 });
-  }
+if (!supabaseUrl || !supabaseKey) {
+  throw new Error("SUPABASE_URL o SUPABASE_ANON_KEY no están definidos");
 }
 
-// POST: crea un nuevo post con moderación de IA
+const supabase = createClient(supabaseUrl, supabaseKey);
+
+// Tipo de Post según tu tabla
+export type Post = {
+  id: string;
+  user_id: string | null;
+  company_id: string | null;
+  image_url: string | null;
+  caption: string | null;
+  created_at: string;
+  moderation_status: string | null;
+  moderation_raw: string | null;
+  moderation_labels: any | null;
+  moderation_decided_at: string | null;
+  moderation_decision: string | null;
+  ai_probability: number | null;
+  global_score: number | null;
+  text: string | null;
+  blocked: boolean | null;
+  reason: string | null;
+};
+
+// GET → devolver posts reales desde Supabase
+export async function GET() {
+  const { data, error } = await supabase
+    .from("posts")
+    .select("*")
+    .order("created_at", { ascending: false });
+
+  if (error) {
+    console.error("Error obteniendo posts:", error);
+    return NextResponse.json(
+      { error: "Error obteniendo posts" },
+      { status: 500 }
+    );
+  }
+
+  return NextResponse.json({ posts: data as Post[] });
+}
+
+// POST → crear un post real en la tabla
 export async function POST(req: Request) {
   try {
-    const body = await req.json().catch(() => ({}));
-    const { text, imageUrl, userId } = body as {
-      text?: string | null;
-      imageUrl?: string | null;
-      userId?: string | null;
+    const body = await req.json();
+
+    const {
+      userId,          // opcional por ahora
+      companyId,
+      imageUrl,
+      caption,
+      aiProbability,
+      globalScore,
+      text,
+      blocked,
+      reason,
+      moderationStatus,
+      moderationRaw,
+      moderationLabels,
+      moderationDecision,
+    } = body;
+
+    const insertPayload = {
+      user_id: userId ?? null,
+      company_id: companyId ?? null,
+      image_url: imageUrl ?? null,
+      caption: caption ?? null,
+      ai_probability: aiProbability ?? null,
+      global_score: globalScore ?? 0,
+      text: text ?? null,
+      blocked: blocked ?? false,
+      reason: reason ?? null,
+      moderation_status: moderationStatus ?? "pending",
+      moderation_raw: moderationRaw ?? null,
+      moderation_labels: moderationLabels ?? null,
+      moderation_decision: moderationDecision ?? null,
     };
 
-    if (!imageUrl) {
+    const { data, error } = await supabase
+      .from("posts")
+      .insert([insertPayload])
+      .select()
+      .single();
+
+    if (error) {
+      console.error("Error creando post:", error);
       return NextResponse.json(
-        { error: "Falta la imagen para crear el post" },
-        { status: 400 }
+        { error: "Error creando post" },
+        { status: 500 }
       );
     }
 
-    // 1) Moderación con IA
-    const moderation = await moderatePost({
-      text: text ?? "",
-      imageUrl,
-    });
-
-    const aiProbability = moderation.aiProbability ?? 0;
-
-    // Ethiqia Score simple para la beta:
-    // a menor probabilidad de IA, mayor score.
-    const globalScore = Math.max(
-      0,
-      Math.min(100, Math.round(100 - aiProbability))
-    );
-
-    const createdAtIso = new Date().toISOString();
-
-    // 2) Intentar guardar en Supabase
-    let inserted: any | null = null;
-
-    try {
-      const { data, error } = await supabaseServer
-        .from("posts")
-        .insert({
-          text: text ?? null,
-          image_url: imageUrl,
-          user_id: userId ?? null,
-          ai_probability: aiProbability,
-          global_score: globalScore,
-          created_at: createdAtIso,
-        })
-        .select("*")
-        .single();
-
-      if (error) {
-        console.error("Error insertando post en Supabase:", error);
-      } else {
-        inserted = data;
-      }
-    } catch (dbErr) {
-      console.error("Error inesperado insertando post en Supabase:", dbErr);
-    }
-
-    // 3) Construir el objeto de respuesta (aunque la inserción falle)
-    const responsePost = {
-      id: inserted?.id ?? `temp-${Date.now()}`,
-      authorName: inserted?.author_name ?? "Usuario demo",
-      createdAt: inserted?.created_at
-        ? new Date(inserted.created_at).toLocaleString("es-ES")
-        : new Date(createdAtIso).toLocaleString("es-ES"),
-      text: inserted?.text ?? text ?? null,
-      imageUrl: inserted?.image_url ?? imageUrl ?? null,
-      aiProbability: inserted?.ai_probability ?? aiProbability,
-      globalScore: inserted?.global_score ?? globalScore,
-    };
-
-    return NextResponse.json(responsePost, { status: 200 });
+    return NextResponse.json({ post: data as Post });
   } catch (err) {
-    console.error("Error inesperado en POST /api/posts:", err);
+    console.error("Error en POST /api/posts:", err);
     return NextResponse.json(
-      { error: "Error inesperado al crear el post" },
+      { error: "Error en el servidor" },
       { status: 500 }
     );
   }
