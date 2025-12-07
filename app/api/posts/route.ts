@@ -47,6 +47,7 @@ export async function POST(req: Request) {
     const body = await req.json();
 
     const {
+      userId,
       imageUrl,
       caption,
       aiProbability,
@@ -58,6 +59,7 @@ export async function POST(req: Request) {
 
     // Insert mínimo: solo columnas que sabemos que EXISTEN
     const insertPayload = {
+      user_id: userId ?? null,
       image_url: imageUrl ?? null,
       caption: caption ?? null,
       text: text ?? caption ?? null,
@@ -65,7 +67,6 @@ export async function POST(req: Request) {
       global_score: globalScore ?? 0,
       blocked: blocked ?? false,
       reason: reason ?? null,
-      // NO tocamos user_id todavía para no romper la FK
     };
 
     const { data, error } = await supabase
