@@ -16,13 +16,17 @@ export default function FeedPage() {
     file: null,
   });
 
+  // URL pública de la última imagen subida (por si queremos usarla / depurar)
+  const [imageUrl, setImageUrl] = useState<string | null>(null);
+
   const [posts, setPosts] = useState<Post[]>([]);
   const [loadingPosts, setLoadingPosts] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
 
   const [currentUser, setCurrentUser] = useState<User | null>(null);
-  const [currentUserName, setCurrentUserName] = useState<string>("Usuario Ethiqia");
+  const [currentUserName, setCurrentUserName] =
+    useState<string>("Usuario Ethiqia");
   const [authChecked, setAuthChecked] = useState(false);
 
   // 1) Cargar usuario actual + su perfil
@@ -118,7 +122,10 @@ export default function FeedPage() {
       }
 
       const { publicUrl } = await uploadRes.json();
-      const imageUrl: string = publicUrl;
+      const uploadedImageUrl: string = publicUrl;
+
+      // guardamos en estado por si queremos usarlo / depurar
+      setImageUrl(uploadedImageUrl);
 
       // 2) Moderar con IA
       const moderationRes = await fetch("/api/moderate-post", {
@@ -126,7 +133,7 @@ export default function FeedPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           caption: newPost.caption,
-          imageUrl,
+          imageUrl: uploadedImageUrl,
         }),
       });
 
@@ -150,7 +157,7 @@ export default function FeedPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           userId: currentUser.id,
-          imageUrl,
+          imageUrl: uploadedImageUrl, // 👈 se envía al backend
           caption: newPost.caption,
           aiProbability,
           globalScore,
@@ -169,6 +176,8 @@ export default function FeedPage() {
       // 4) Añadir al estado sin recargar
       setPosts((prev) => [post as Post, ...prev]);
       setNewPost({ caption: "", file: null });
+      setImageUrl(null); // limpiamos la url en memoria
+
       setMessage(
         `Publicación creada correctamente. Probabilidad estimada de IA: ${Math.round(
           aiProbability
