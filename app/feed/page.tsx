@@ -10,6 +10,19 @@ type NewPostState = {
   file: File | null;
 };
 
+type ProfileRow = {
+  id: string;
+  display_name: string | null;
+  full_name: string | null;
+};
+
+type ProfilesMap = Record<
+  string,
+  {
+    name: string;
+  }
+>;
+
 export default function FeedPage() {
   const [newPost, setNewPost] = useState<NewPostState>({
     caption: "",
@@ -22,13 +35,15 @@ export default function FeedPage() {
   const [message, setMessage] = useState<string | null>(null);
 
   const [currentUser, setCurrentUser] = useState<User | null>(null);
-  const [currentUserName, setCurrentUserName] =
-    useState<string>("Usuario Ethiqia");
+  const [currentUserName, setCurrentUserName] = useState<string>("Usuario Ethiqia");
   const [authChecked, setAuthChecked] = useState(false);
 
-  const [showOnlyMine, setShowOnlyMine] = useState(false);
+  // Mapa user_id -> nombre público
+  const [profilesMap, setProfilesMap] = useState<ProfilesMap>({});
 
-  // 1) Cargar usuario actual + su perfil
+  /**
+   * 1) Cargar usuario actual + su perfil
+   */
   useEffect(() => {
     const initAuthAndProfile = async () => {
       try {
@@ -42,14 +57,22 @@ export default function FeedPage() {
             .from("profiles")
             .select("display_name, full_name")
             .eq("id", user.id)
-            .single();
+            .maybeSingle();
 
           if (!error && profile) {
-            if (profile.display_name) {
-              setCurrentUserName(profile.display_name as string);
-            } else if (profile.full_name) {
-              setCurrentUserName(profile.full_name as string);
-            }
+            const p = profile as ProfileRow;
+            const name =
+              (p.display_name && p.display_name.trim()) ||
+              (p.full_name && p.full_name.trim()) ||
+              "Usuario Ethiqia";
+
+            setCurrentUserName(name);
+
+            // Guardamos también en el mapa por si lo necesitamos
+            setProfilesMap((prev) => ({
+              ...prev,
+              [user.id]: { name },
+            }));
           }
         }
       } catch (err) {
@@ -62,7 +85,61 @@ export default function FeedPage() {
     initAuthAndProfile();
   }, []);
 
-  // 2) Cargar posts reales al entrar
+  /**
+   * 2) Cargar perfiles de los autores de los posts
+   */
+  const loadProfilesForPosts = async (postsToProcess: Post[]) => {
+    try {
+      const userIds = Array.from(
+        new Set(
+          postsToProcess
+            .map((p) => p.user_id)
+            .filter((id): id is string => !!id)
+        )
+      );
+
+      if (userIds.length === 0) return;
+
+      // Filtramos los que ya tenemos en el mapa para no repetir llamadas
+      const missingIds = userIds.filter((id) => !profilesMap[id]);
+      if (missingIds.length === 0) return;
+
+      const { data, error } = await supabaseBrowser
+        .from("profiles")
+        .select("id, display_name, full_name")
+        .in("id", missingIds);
+
+      if (error) {
+        console.error("Error cargando perfiles de autores:", error);
+        return;
+      }
+
+      if (!data || data.length === 0) return;
+
+      const rows = data as ProfileRow[];
+      const newMap: ProfilesMap = {};
+
+      for (const row of rows) {
+        const name =
+          (row.display_name && row.display_name.trim()) ||
+          (row.full_name && row.full_name.trim()) ||
+          "Usuario Ethiqia";
+
+        newMap[row.id] = { name };
+      }
+
+      setProfilesMap((prev) => ({
+        ...prev,
+        ...newMap,
+      }));
+    } catch (err) {
+      console.error("Error procesando perfiles de posts:", err);
+    }
+  };
+
+  /**
+   * 3) Cargar posts reales al entrar
+   */
   useEffect(() => {
     const loadPosts = async () => {
       setLoadingPosts(true);
@@ -72,17 +149,27 @@ export default function FeedPage() {
           throw new Error("Error al cargar posts");
         }
         const data = await res.json();
-        setPosts(data.posts ?? []);
+        const fetchedPosts: Post[] = data.posts ?? [];
+        setPosts(fetchedPosts);
+
+        // Cargamos nombres de autores para esos posts
+        if (fetchedPosts.length > 0) {
+          await loadProfilesForPosts(fetchedPosts);
+        }
       } catch (err) {
-        console.error("Error cargando posts:", err);
+        console.error(err);
       } finally {
         setLoadingPosts(false);
       }
     };
 
     loadPosts();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  /**
+   * 4) Manejo del formulario
+   */
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0] ?? null;
     setNewPost((prev) => ({ ...prev, file }));
@@ -110,9 +197,7 @@ export default function FeedPage() {
     setSubmitting(true);
 
     try {
-      //
-      // 1) SUBIR IMAGEN A SUPABASE (API /api/upload)
-      //
+      // 1) Subir imagen a Supabase Storage
       const formData = new FormData();
       formData.append("file", newPost.file);
 
@@ -122,23 +207,13 @@ export default function FeedPage() {
       });
 
       if (!uploadRes.ok) {
-        console.error("Respuesta /api/upload no OK:", uploadRes.status);
         throw new Error("Error subiendo la imagen");
       }
 
-      const uploadJson = await uploadRes.json();
+      const uploadData = await uploadRes.json();
+      const imageUrl: string = uploadData.url;
 
-      // Tu /api/upload devuelve { url, path }
-      const imageUrl: string = uploadJson.url;
-
-      if (!imageUrl) {
-        console.error("Respuesta /api/upload sin url:", uploadJson);
-        throw new Error("El backend no devolvió una URL pública para la imagen");
-      }
-
-      //
-      // 2) MODERAR CONTENIDO CON IA (/api/moderate-post)
-      //
+      // 2) Moderar con IA
       const moderationRes = await fetch("/api/moderate-post", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -149,53 +224,56 @@ export default function FeedPage() {
       });
 
       if (!moderationRes.ok) {
-        console.error(
-          "Respuesta /api/moderate-post no OK:",
-          moderationRes.status
-        );
         throw new Error("Error moderando el contenido");
       }
 
       const moderation = await moderationRes.json();
-
-      const aiProbability: number = moderation.aiProbability ?? 0;
-      const blocked: boolean = moderation.blocked ?? false;
-      const reason: string | null = moderation.reason ?? null;
+      const aiProbability = moderation.aiProbability ?? 0;
+      const blocked = moderation.blocked ?? false;
+      const reason = moderation.reason ?? null;
 
       const globalScore = Math.max(
         0,
         Math.min(100, Math.round(100 - aiProbability))
       );
 
-      //
-      // 3) GUARDAR POST REAL EN SUPABASE (/api/posts)
-      //
+      // 3) Guardar post REAL en la tabla posts con user_id real
+      const payload = {
+        userId: currentUser.id,
+        imageUrl,
+        caption: newPost.caption,
+        aiProbability,
+        globalScore,
+        text: newPost.caption,
+        blocked,
+        reason,
+      };
+
+      console.log("Enviando payload a /api/posts:", payload);
+
       const saveRes = await fetch("/api/posts", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          userId: currentUser.id, // usuario real
-          imageUrl, // 👈 AHORA SÍ SE ENVÍA
-          caption: newPost.caption,
-          aiProbability,
-          globalScore,
-          text: newPost.caption,
-          blocked,
-          reason,
-        }),
+        body: JSON.stringify(payload),
       });
 
       if (!saveRes.ok) {
-        console.error("Respuesta /api/posts no OK:", saveRes.status);
+        const errorText = await saveRes.text();
+        console.error("Respuesta de /api/posts:", errorText);
         throw new Error("Error guardando el post");
       }
 
       const { post } = await saveRes.json();
 
-      //
-      // 4) ACTUALIZAR ESTADO Y LIMPIAR FORMULARIO
-      //
+      // 4) Añadir al estado sin recargar
       setPosts((prev) => [post as Post, ...prev]);
+
+      // Aseguramos que el mapa tiene el nombre del usuario actual
+      setProfilesMap((prev) => ({
+        ...prev,
+        [currentUser.id]: { name: currentUserName },
+      }));
+
       setNewPost({ caption: "", file: null });
       setMessage(
         `Publicación creada correctamente. Probabilidad estimada de IA: ${Math.round(
@@ -203,14 +281,16 @@ export default function FeedPage() {
         )}%`
       );
     } catch (err) {
-      console.error("Error en handleSubmit:", err);
+      console.error(err);
       setMessage("Ha ocurrido un error al crear la publicación.");
     } finally {
       setSubmitting(false);
     }
   };
 
-  // Si ya hemos comprobado auth y no hay usuario, mensaje claro
+  /**
+   * 5) Si ya hemos comprobado auth y no hay usuario
+   */
   if (authChecked && !currentUser) {
     return (
       <main className="min-h-screen bg-black text-white flex items-center justify-center">
@@ -230,11 +310,9 @@ export default function FeedPage() {
     );
   }
 
-  // Filtrado “Solo mis publicaciones” (solo a nivel de UI)
-  const visiblePosts = showOnlyMine && currentUser
-    ? posts.filter((p) => p.user_id === currentUser.id)
-    : posts;
-
+  /**
+   * 6) Render del feed
+   */
   return (
     <main className="min-h-screen bg-black text-white">
       <section className="max-w-3xl mx-auto px-4 py-8">
@@ -284,49 +362,33 @@ export default function FeedPage() {
           </button>
         </form>
 
-        {/* Filtro: todo el feed / solo mis publicaciones */}
-        <div className="flex gap-2 mb-4">
-          <button
-            type="button"
-            onClick={() => setShowOnlyMine(false)}
-            className={`px-4 py-1 rounded-full text-sm border ${
-              !showOnlyMine
-                ? "bg-emerald-500 border-emerald-500"
-                : "border-neutral-700"
-            }`}
-          >
-            Todo el feed
-          </button>
-          <button
-            type="button"
-            onClick={() => setShowOnlyMine(true)}
-            className={`px-4 py-1 rounded-full text-sm border ${
-              showOnlyMine
-                ? "bg-emerald-500 border-emerald-500"
-                : "border-neutral-700"
-            }`}
-          >
-            Solo mis publicaciones
-          </button>
-        </div>
-
         {loadingPosts && (
           <p className="text-sm text-gray-400">Cargando publicaciones...</p>
         )}
 
-        {!loadingPosts && visiblePosts.length === 0 && (
+        {!loadingPosts && posts.length === 0 && (
           <p className="text-sm text-gray-500">
             Todavía no hay publicaciones. Sube la primera foto auténtica.
           </p>
         )}
 
         <div className="space-y-4 mt-4">
-          {visiblePosts.map((post) => {
+          {posts.map((post) => {
             const isMine = currentUser && post.user_id === currentUser.id;
-            const authorName = isMine ? currentUserName : "Usuario Ethiqia";
+            const profileEntry = post.user_id
+              ? profilesMap[post.user_id]
+              : undefined;
+
+            const authorName =
+              profileEntry?.name ||
+              (isMine ? currentUserName : "Usuario Ethiqia");
 
             return (
-              <PostCard key={post.id} post={post} authorName={authorName} />
+              <PostCard
+                key={post.id}
+                post={post}
+                authorName={authorName}
+              />
             );
           })}
         </div>
