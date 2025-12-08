@@ -37,7 +37,6 @@ export default function FeedPage() {
         setCurrentUser(user ?? null);
 
         if (user) {
-          // Perfil en tabla profiles (id = user.id)
           const { data: profile, error } = await supabaseBrowser
             .from("profiles")
             .select("display_name")
@@ -150,13 +149,15 @@ export default function FeedPage() {
         Math.min(100, Math.round(100 - aiProbability))
       );
 
-      // 3) Guardar post REAL en la tabla posts con user_id real
+      // 3) Guardar post REAL en la tabla posts
+      //    OJO: aquí volvemos a usar user_id (con guion bajo),
+      //    que es lo que espera la API /api/posts y la columna de la tabla.
       const saveRes = await fetch("/api/posts", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          userId: currentUser.id,
-          imageUrl,                  // IMPORTANTE: ahora se envía al backend
+          user_id: currentUser.id,      // <- CLAVE CORREGIDA
+          imageUrl,                     // se envía también la URL de la imagen
           caption: newPost.caption,
           aiProbability,
           globalScore,
@@ -301,7 +302,6 @@ export default function FeedPage() {
 
         <div className="space-y-4 mt-4">
           {postsToShow.map((post) => {
-            // Si el post es del usuario actual, mostramos su nombre real
             const isMine = currentUser && post.user_id === currentUser.id;
             const authorName = isMine ? currentUserName : "Usuario Ethiqia";
 
