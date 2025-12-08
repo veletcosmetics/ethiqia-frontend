@@ -34,28 +34,24 @@ export default function FeedPage() {
         } = await supabaseBrowser.auth.getUser();
         setCurrentUser(user ?? null);
 
-        let display = "Usuario Ethiqia";
-
         if (user) {
-          // 1º: intentar leer full_name de la tabla profiles
+          // Intentar leer el nombre desde profiles.full_name
           const { data: profile, error } = await supabaseBrowser
             .from("profiles")
             .select("full_name")
             .eq("id", user.id)
-            .maybeSingle();
+            .single();
 
           if (!error && profile?.full_name) {
-            display = profile.full_name as string;
-          } else if (user.user_metadata && typeof user.user_metadata.full_name === "string") {
-            // 2º: intentar user_metadata.full_name (según cómo se haya creado el usuario)
-            display = user.user_metadata.full_name as string;
+            setCurrentUserName(profile.full_name as string);
+          } else if (user.user_metadata && user.user_metadata.full_name) {
+            // Alternativa: nombre en metadata de Supabase
+            setCurrentUserName(String(user.user_metadata.full_name));
           } else if (user.email) {
-            // 3º: fallback al nombre antes de la @ del email
-            display = user.email.split("@")[0];
+            // Último fallback: email
+            setCurrentUserName(user.email);
           }
         }
-
-        setCurrentUserName(display);
       } catch (err) {
         console.error("Error obteniendo usuario/perfil:", err);
       } finally {
@@ -155,9 +151,9 @@ export default function FeedPage() {
       );
 
       // 3) Guardar post REAL en la tabla posts con user_id real
-      const payload = {
+      const bodyToSend = {
         userId: currentUser.id,
-        imageUrl,
+        imageUrl,                // ← IMPORTANTE: ahora sí mandamos la URL
         caption: newPost.caption,
         aiProbability,
         globalScore,
@@ -166,14 +162,16 @@ export default function FeedPage() {
         reason,
       };
 
+      console.log("Enviando a /api/posts:", bodyToSend);
+
       const saveRes = await fetch("/api/posts", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
+        body: JSON.stringify(bodyToSend),
       });
 
       if (!saveRes.ok) {
-        console.error("Error respuesta /api/posts:", await saveRes.text());
+        console.error("Respuesta /api/posts:", await saveRes.text());
         throw new Error("Error guardando el post");
       }
 
