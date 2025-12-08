@@ -1,12 +1,12 @@
-// app/api/posts/route.ts
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
-const supabase = createClient(
-  process.env.SUPABASE_URL!,
-  process.env.SUPABASE_ANON_KEY!
-);
+const supabaseUrl = process.env.SUPABASE_URL!;
+const supabaseAnonKey = process.env.SUPABASE_ANON_KEY!;
 
+const supabase = createClient(supabaseUrl, supabaseAnonKey);
+
+// GET /api/posts  → devuelve todos los posts ordenados del más nuevo al más antiguo
 export async function GET() {
   try {
     const { data, error } = await supabase
@@ -17,7 +17,7 @@ export async function GET() {
     if (error) {
       console.error("Error cargando posts:", error);
       return NextResponse.json(
-        { error: "Error cargando posts" },
+        { error: "Error cargando posts", details: error },
         { status: 500 }
       );
     }
@@ -26,65 +26,67 @@ export async function GET() {
   } catch (err) {
     console.error("Error inesperado en GET /api/posts:", err);
     return NextResponse.json(
-      { error: "Error interno del servidor" },
+      { error: "Error inesperado cargando posts" },
       { status: 500 }
     );
   }
 }
 
-export async function POST(req: Request) {
+// POST /api/posts  → guarda un post real en la tabla `posts`
+export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
+
     const {
       userId,
       imageUrl,
       caption,
-      text,
       aiProbability,
       globalScore,
+      text,
       blocked,
       reason,
-    } = body as {
-      userId: string;
-      imageUrl: string;
-      caption: string;
-      text: string;
-      aiProbability: number;
-      globalScore: number;
-      blocked: boolean;
-      reason: string | null;
-    };
+    } = body;
 
+    // Validaciones mínimas
     if (!userId) {
       return NextResponse.json(
-        { error: "Falta userId" },
+        { error: "Falta userId en el body" },
         { status: 400 }
       );
     }
 
     if (!imageUrl) {
       return NextResponse.json(
-        { error: "Falta imageUrl (URL pública de la imagen)" },
+        { error: "Falta imageUrl en el body" },
         { status: 400 }
       );
     }
 
-    const moderationStatus = blocked ? "rejected" : "approved";
+    const aiProb = typeof aiProbability === "number" ? aiProbability : 0;
+    const gScore = typeof globalScore === "number" ? globalScore : 0;
+    const isBlocked = Boolean(blocked);
+
+    const moderationStatus = isBlocked ? "rejected" : "approved";
 
     const { data, error } = await supabase
       .from("posts")
       .insert({
         user_id: userId,
-        image_url: imageUrl,        // ← AQUÍ GUARDAMOS LA URL
-        caption,
-        text,
-        ai_probability: aiProbability ?? 0,
-        global_score: globalScore ?? 0,
-        blocked: blocked ?? false,
+        image_url: imageUrl,
+        caption: caption ?? null,
+        ai_probability: aiProb,
+        global_score: gScore,
+        text: text ?? null,
+        blocked: isBlocked,
         reason: reason ?? null,
+
+        // Campos de moderación según tu esquema actual
         moderation_status: moderationStatus,
-        moderation_decided_by: "ai-v1",
         moderation_decided_at: new Date().toISOString(),
+        moderation_decided_by: "ai-v1",
+        // moderation_labels lo dejamos a null por ahora
+        moderation_labels: null,
       })
       .select("*")
       .single();
@@ -92,8 +94,8 @@ export async function POST(req: Request) {
     if (error) {
       console.error("Error insertando post en Supabase:", error);
       return NextResponse.json(
-        { error: "Error insertando post" },
-        { status: 500 }
+        { error: "Error insertando post", details: error },
+        { status: 400 }
       );
     }
 
@@ -101,7 +103,7 @@ export async function POST(req: Request) {
   } catch (err) {
     console.error("Error inesperado en POST /api/posts:", err);
     return NextResponse.json(
-      { error: "Error interno del servidor" },
+      { error: "Error inesperado guardando el post" },
       { status: 500 }
     );
   }
