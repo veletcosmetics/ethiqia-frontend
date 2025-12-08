@@ -25,7 +25,6 @@ export default function FeedPage() {
   const [currentUserName, setCurrentUserName] = useState<string>("Usuario Ethiqia");
   const [authChecked, setAuthChecked] = useState(false);
 
-  // NUEVO: modo de filtrado del feed
   const [showOnlyMine, setShowOnlyMine] = useState(false);
 
   // 1) Cargar usuario actual + su perfil
@@ -38,7 +37,7 @@ export default function FeedPage() {
         setCurrentUser(user ?? null);
 
         if (user) {
-          // Leer el perfil desde la tabla profiles (id = user.id)
+          // Perfil en tabla profiles (id = user.id)
           const { data: profile, error } = await supabaseBrowser
             .from("profiles")
             .select("display_name")
@@ -80,6 +79,8 @@ export default function FeedPage() {
     loadPosts();
   }, []);
 
+  // 3) Gestión del formulario
+
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0] ?? null;
     setNewPost((prev) => ({ ...prev, file }));
@@ -107,7 +108,7 @@ export default function FeedPage() {
     setSubmitting(true);
 
     try {
-      // 1) Subir imagen a Supabase Storage mediante /api/upload
+      // 1) Subir imagen a Supabase Storage vía /api/upload
       const formData = new FormData();
       formData.append("file", newPost.file);
 
@@ -135,14 +136,14 @@ export default function FeedPage() {
       });
 
       if (!moderationRes.ok) {
-        console.error("Respuesta moderación:", await moderationRes.text());
+        console.error("Respuesta moderation:", await moderationRes.text());
         throw new Error("Error moderando el contenido");
       }
 
       const moderation = await moderationRes.json();
-      const aiProbability = moderation.aiProbability ?? 0;
-      const blocked = moderation.blocked ?? false;
-      const reason = moderation.reason ?? null;
+      const aiProbability: number = moderation.aiProbability ?? 0;
+      const blocked: boolean = moderation.blocked ?? false;
+      const reason: string | null = moderation.reason ?? null;
 
       const globalScore = Math.max(
         0,
@@ -155,7 +156,7 @@ export default function FeedPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           userId: currentUser.id,
-          imageUrl,
+          imageUrl,                  // IMPORTANTE: ahora se envía al backend
           caption: newPost.caption,
           aiProbability,
           globalScore,
@@ -166,7 +167,7 @@ export default function FeedPage() {
       });
 
       if (!saveRes.ok) {
-        console.error("Respuesta save post:", await saveRes.text());
+        console.error("Respuesta posts:", await saveRes.text());
         throw new Error("Error guardando el post");
       }
 
@@ -208,11 +209,10 @@ export default function FeedPage() {
     );
   }
 
-  // Posts a mostrar según el filtro
-  const visiblePosts =
-    showOnlyMine && currentUser
-      ? posts.filter((p) => p.user_id === currentUser.id)
-      : posts;
+  // Filtrado para “Solo mis publicaciones”
+  const postsToShow = showOnlyMine && currentUser
+    ? posts.filter((p) => p.user_id === currentUser.id)
+    : posts;
 
   return (
     <main className="min-h-screen bg-black text-white">
@@ -227,7 +227,7 @@ export default function FeedPage() {
         {/* Formulario de nueva publicación */}
         <form
           onSubmit={handleSubmit}
-          className="bg-neutral-900 rounded-xl p-6 mb-4 space-y-4"
+          className="bg-neutral-900 rounded-xl p-6 mb-8 space-y-4"
         >
           <label className="block text-sm font-medium mb-1">
             Cuenta algo sobre tu foto o contenido auténtico...
@@ -263,15 +263,15 @@ export default function FeedPage() {
           </button>
         </form>
 
-        {/* Controles de filtro del feed */}
-        <div className="flex items-center gap-3 mb-4">
+        {/* Filtro Todo el feed / Solo mis publicaciones */}
+        <div className="flex gap-3 mb-4">
           <button
             type="button"
             onClick={() => setShowOnlyMine(false)}
-            className={`px-3 py-1 rounded-full text-xs font-medium border ${
+            className={`px-4 py-2 rounded-full text-sm border ${
               !showOnlyMine
-                ? "bg-emerald-500 border-emerald-500 text-black"
-                : "border-neutral-700 text-gray-300"
+                ? "bg-emerald-500 border-emerald-500"
+                : "border-neutral-700"
             }`}
           >
             Todo el feed
@@ -279,10 +279,10 @@ export default function FeedPage() {
           <button
             type="button"
             onClick={() => setShowOnlyMine(true)}
-            className={`px-3 py-1 rounded-full text-xs font-medium border ${
+            className={`px-4 py-2 rounded-full text-sm border ${
               showOnlyMine
-                ? "bg-emerald-500 border-emerald-500 text-black"
-                : "border-neutral-700 text-gray-300"
+                ? "bg-emerald-500 border-emerald-500"
+                : "border-neutral-700"
             }`}
           >
             Solo mis publicaciones
@@ -293,14 +293,15 @@ export default function FeedPage() {
           <p className="text-sm text-gray-400">Cargando publicaciones...</p>
         )}
 
-        {!loadingPosts && visiblePosts.length === 0 && (
+        {!loadingPosts && postsToShow.length === 0 && (
           <p className="text-sm text-gray-500">
-            Todavía no hay publicaciones para este filtro.
+            Todavía no hay publicaciones. Sube la primera foto auténtica.
           </p>
         )}
 
         <div className="space-y-4 mt-4">
-          {visiblePosts.map((post) => {
+          {postsToShow.map((post) => {
+            // Si el post es del usuario actual, mostramos su nombre real
             const isMine = currentUser && post.user_id === currentUser.id;
             const authorName = isMine ? currentUserName : "Usuario Ethiqia";
 
