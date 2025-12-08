@@ -1,166 +1,154 @@
 "use client";
 
-import React, { useEffect, useState, FormEvent } from "react";
+import { useEffect, useState, ChangeEvent, FormEvent } from "react";
 import { supabaseBrowser } from "@/lib/supabaseBrowserClient";
 import type { User } from "@supabase/supabase-js";
-import PostCard, { Post } from "@/components/PostCard";
 
 type Profile = {
+  id: string;
   full_name: string | null;
   bio: string | null;
   avatar_url: string | null;
 };
 
 export default function ProfilePage() {
-  const [authChecked, setAuthChecked] = useState(false);
   const [user, setUser] = useState<User | null>(null);
-
-  const [profile, setProfile] = useState<Profile>({
-    full_name: "",
-    bio: "",
-    avatar_url: null,
-  });
-
-  const [posts, setPosts] = useState<Post[]>([]);
-  const [loadingProfile, setLoadingProfile] = useState(true);
-  const [savingProfile, setSavingProfile] = useState(false);
-  const [uploadingAvatar, setUploadingAvatar] = useState(false);
-  const [loadingPosts, setLoadingPosts] = useState(false);
-
+  const [profile, setProfile] = useState<Profile | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [avatarUploading, setAvatarUploading] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const [globalScore, setGlobalScore] = useState<number | null>(null);
 
-  // 1) Cargar usuario autenticado
+  // Cargar usuario + perfil + score
   useEffect(() => {
-    const initAuth = async () => {
+    const load = async () => {
       try {
         const {
           data: { user },
         } = await supabaseBrowser.auth.getUser();
-        setUser(user ?? null);
-      } catch (err) {
-        console.error("Error obteniendo usuario:", err);
-      } finally {
-        setAuthChecked(true);
-      }
-    };
 
-    initAuth();
-  }, []);
+        if (!user) {
+          setUser(null);
+          setLoading(false);
+          return;
+        }
 
-  // 2) Cargar perfil y posts cuando tengamos usuario
-  useEffect(() => {
-    const loadProfileAndPosts = async () => {
-      if (!user) {
-        setLoadingProfile(false);
-        setLoadingPosts(false);
-        return;
-      }
+        setUser(user);
 
-      setLoadingProfile(true);
-      setLoadingPosts(true);
-      setMessage(null);
-
-      try {
-        // PERFIL
-        const { data: profileRow, error: profileError } = await supabaseBrowser
+        // 1) Perfil
+        const { data: profileData, error: profileError } = await supabaseBrowser
           .from("profiles")
-          .select("full_name, bio, avatar_url")
+          .select("id, full_name, bio, avatar_url")
           .eq("id", user.id)
           .single();
 
         if (profileError && profileError.code !== "PGRST116") {
-          // PGRST116 = no rows returned
+          // PGRST116 = no rows
           console.error("Error cargando perfil:", profileError);
         }
 
-        if (profileRow) {
-          setProfile({
-            full_name: profileRow.full_name,
-            bio: profileRow.bio,
-            avatar_url: profileRow.avatar_url,
-          });
+        if (profileData) {
+          setProfile(profileData as Profile);
         } else {
-          // Si no existe, dejamos valores vacíos
-          setProfile({
-            full_name: "",
-            bio: "",
-            avatar_url: null,
-          });
+          // Si no existe perfil, lo creamos
+          const { data: newProfile, error: insertError } =
+            await supabaseBrowser
+              .from("profiles")
+              .insert({ id: user.id })
+              .select("id, full_name, bio, avatar_url")
+              .single();
+
+          if (insertError) {
+            console.error("Error creando perfil:", insertError);
+          } else if (newProfile) {
+            setProfile(newProfile as Profile);
+          }
         }
 
-        // POSTS DEL USUARIO
-        const { data: postsData, error: postsError } = await supabaseBrowser
+        // 2) Score global a partir de posts no bloqueados
+        const { data: posts, error: postsError } = await supabaseBrowser
           .from("posts")
-          .select("*")
+          .select("global_score, blocked")
           .eq("user_id", user.id)
-          .order("created_at", { ascending: false });
+          .eq("blocked", false);
 
         if (postsError) {
-          console.error("Error cargando posts del usuario:", postsError);
-        } else if (postsData) {
-          setPosts(postsData as Post[]);
+          console.error("Error cargando posts para score:", postsError);
+        } else if (posts && posts.length > 0) {
+          const validScores = posts
+            .map((p: any) => p.global_score)
+            .filter((v: any) => typeof v === "number");
+
+          if (validScores.length > 0) {
+            const sum = validScores.reduce((acc: number, v: number) => acc + v, 0);
+            setGlobalScore(Math.round(sum / validScores.length));
+          }
         }
-      } catch (err) {
-        console.error("Error cargando perfil/posts:", err);
+      } catch (error) {
+        console.error("Error cargando perfil/score:", error);
+        setMessage("No se ha podido cargar el perfil.");
       } finally {
-        setLoadingProfile(false);
-        setLoadingPosts(false);
+        setLoading(false);
       }
     };
 
-    if (user) {
-      loadProfileAndPosts();
-    }
-  }, [user]);
+    load();
+  }, []);
 
-  // 3) Guardar perfil (nombre + bio)
+  const handleProfileChange = (
+    e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
+  ) => {
+    if (!profile) return;
+    const { name, value } = e.target;
+    setProfile({ ...profile, [name]: value });
+  };
+
   const handleSaveProfile = async (e: FormEvent) => {
     e.preventDefault();
-    if (!user) return;
+    if (!user || !profile) return;
 
-    setSavingProfile(true);
+    setSaving(true);
     setMessage(null);
 
     try {
-      const { error } = await supabaseBrowser
+      const { data, error } = await supabaseBrowser
         .from("profiles")
-        .upsert(
-          {
-            id: user.id,
-            full_name: profile.full_name,
-            bio: profile.bio,
-            avatar_url: profile.avatar_url,
-          },
-          { onConflict: "id" }
-        );
+        .update({
+          full_name: profile.full_name,
+          bio: profile.bio,
+          // MUY IMPORTANTE: mantenemos avatar_url tal cual esté
+          avatar_url: profile.avatar_url,
+        })
+        .eq("id", user.id)
+        .select("id, full_name, bio, avatar_url")
+        .single();
 
-      if (error) {
-        console.error("Error guardando perfil:", error);
-        setMessage("No se ha podido guardar el perfil.");
-        return;
+      if (error) throw error;
+      if (data) {
+        setProfile(data as Profile);
       }
 
-      setMessage("Perfil actualizado correctamente.");
+      setMessage("Perfil guardado correctamente.");
     } catch (err) {
       console.error("Error guardando perfil:", err);
       setMessage("No se ha podido guardar el perfil.");
     } finally {
-      setSavingProfile(false);
+      setSaving(false);
     }
   };
 
-  // 4) Subir avatar
-  const handleAvatarChange = async (
-    e: React.ChangeEvent<HTMLInputElement>
-  ) => {
-    if (!user) return;
+  const handleAvatarChange = async (e: ChangeEvent<HTMLInputElement>) => {
+    if (!user || !profile) return;
+
     const file = e.target.files?.[0];
     if (!file) return;
 
-    setUploadingAvatar(true);
+    setAvatarUploading(true);
     setMessage(null);
 
     try {
+      // 1) Subir archivo a /api/upload (misma lógica que el feed)
       const formData = new FormData();
       formData.append("file", file);
 
@@ -170,78 +158,56 @@ export default function ProfilePage() {
       });
 
       if (!res.ok) {
-        throw new Error("Error subiendo avatar");
+        throw new Error("Error subiendo el avatar");
       }
 
-      const data = await res.json();
-      const publicUrl = data.publicUrl as string;
+      const { publicUrl } = await res.json();
 
-      // Guardamos en perfil
-      const { error } = await supabaseBrowser
+      if (!publicUrl) {
+        throw new Error("La API de subida no devolvió URL pública");
+      }
+
+      // 2) Guardar en la tabla profiles
+      const { data, error } = await supabaseBrowser
         .from("profiles")
-        .upsert(
-          {
-            id: user.id,
-            full_name: profile.full_name,
-            bio: profile.bio,
-            avatar_url: publicUrl,
-          },
-          { onConflict: "id" }
-        );
+        .update({ avatar_url: publicUrl })
+        .eq("id", user.id)
+        .select("id, full_name, bio, avatar_url")
+        .single();
 
-      if (error) {
-        console.error("Error guardando avatar en perfil:", error);
-        setMessage("Avatar subido pero no se ha podido guardar en el perfil.");
-        return;
+      if (error) throw error;
+
+      if (data) {
+        setProfile(data as Profile);
+      } else {
+        // fallback: actualizar solo en memoria
+        setProfile({ ...profile, avatar_url: publicUrl });
       }
-
-      setProfile((prev) => ({
-        ...prev,
-        avatar_url: publicUrl,
-      }));
 
       setMessage("Avatar actualizado correctamente.");
-    } catch (err) {
-      console.error(err);
+    } catch (error) {
+      console.error("Error subiendo avatar:", error);
       setMessage("No se ha podido subir el avatar.");
     } finally {
-      setUploadingAvatar(false);
+      setAvatarUploading(false);
     }
   };
 
-  // 5) Cerrar sesión
-  const handleLogout = async () => {
-    try {
-      await supabaseBrowser.auth.signOut();
-      window.location.href = "/login";
-    } catch (err) {
-      console.error("Error cerrando sesión:", err);
-    }
-  };
-
-  // 6) Calcular Ethiqia Score global del usuario
-  const userScore = React.useMemo(() => {
-    if (!posts || posts.length === 0) return null;
-
-    const validPosts = posts.filter((p) => !p.blocked);
-    if (validPosts.length === 0) return null;
-
-    const sum = validPosts.reduce(
-      (acc, p) => acc + (p.global_score ?? 0),
-      0
+  if (loading) {
+    return (
+      <main className="min-h-screen bg-black text-white flex items-center justify-center">
+        <p className="text-gray-400 text-sm">Cargando perfil...</p>
+      </main>
     );
-    const avg = sum / validPosts.length;
-    return Math.round(avg);
-  }, [posts]);
+  }
 
-  // Si ya comprobamos auth y no hay usuario
-  if (authChecked && !user) {
+  if (!user || !profile) {
     return (
       <main className="min-h-screen bg-black text-white flex items-center justify-center">
         <div className="text-center space-y-3">
-          <h1 className="text-2xl font-semibold">Perfil Ethiqia</h1>
+          <h1 className="text-2xl font-semibold">Ethiqia</h1>
           <p className="text-sm text-gray-400">
-            Debes iniciar sesión para ver tu perfil.
+            Debes iniciar sesión para ver y editar tu perfil.
           </p>
           <a
             href="/login"
@@ -254,150 +220,96 @@ export default function ProfilePage() {
     );
   }
 
+  const initialLetter =
+    profile.full_name?.trim()?.charAt(0)?.toUpperCase() ??
+    user.email?.charAt(0)?.toUpperCase() ??
+    "E";
+
   return (
     <main className="min-h-screen bg-black text-white">
       <section className="max-w-3xl mx-auto px-4 py-8 space-y-8">
-        {/* Cabecera perfil */}
+        {/* Cabecera con avatar + nombre + bio + score */}
         <header className="flex items-center gap-4">
-          <div className="w-20 h-20 rounded-full bg-neutral-800 flex items-center justify-center overflow-hidden">
-            {profile.avatar_url ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                src={profile.avatar_url}
-                alt={profile.full_name || "Avatar"}
-                className="w-full h-full object-cover"
-              />
-            ) : (
-              <span className="text-2xl font-semibold">
-                {profile.full_name
-                  ? profile.full_name.charAt(0).toUpperCase()
-                  : "E"}
-              </span>
-            )}
-          </div>
+          {profile.avatar_url ? (
+            <img
+              src={profile.avatar_url}
+              alt="Avatar"
+              className="w-16 h-16 rounded-full object-cover border border-neutral-700"
+            />
+          ) : (
+            <div className="w-16 h-16 rounded-full bg-emerald-600 flex items-center justify-center text-xl font-semibold">
+              {initialLetter}
+            </div>
+          )}
 
-          <div className="flex-1 space-y-1">
+          <div>
             <h1 className="text-2xl font-semibold">
-              {profile.full_name || "Usuario Ethiqia"}
+              {profile.full_name || user.email}
             </h1>
             <p className="text-sm text-gray-400">
-              {profile.bio || "Cuenta verificada en Ethiqia."}
+              {profile.bio || "Aún no has escrito tu bio."}
             </p>
-            {userScore !== null && (
-              <p className="text-sm text-emerald-400">
-                Ethiqia Score global:{" "}
-                <span className="font-semibold">{userScore}/100</span>
+            {globalScore !== null && (
+              <p className="mt-2 text-sm text-emerald-400">
+                Ethiqia Score global: {globalScore}/100
               </p>
             )}
           </div>
-
-          <button
-            onClick={handleLogout}
-            className="text-xs rounded-full border border-neutral-700 px-3 py-1 hover:bg-neutral-900"
-          >
-            Cerrar sesión
-          </button>
         </header>
 
-        {/* Formulario de edición de perfil */}
+        {message && (
+          <p className="text-sm text-emerald-400 whitespace-pre-line">{message}</p>
+        )}
+
+        {/* Formulario de edición */}
         <section className="bg-neutral-900 rounded-xl p-6 space-y-4">
           <h2 className="text-lg font-semibold">Editar perfil</h2>
 
-          {loadingProfile ? (
-            <p className="text-sm text-gray-400">Cargando perfil…</p>
-          ) : (
-            <form onSubmit={handleSaveProfile} className="space-y-4">
-              <div className="space-y-1">
-                <label className="text-sm font-medium">Nombre completo</label>
-                <input
-                  type="text"
-                  className="w-full rounded-lg bg-black border border-neutral-700 px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-emerald-500"
-                  value={profile.full_name ?? ""}
-                  onChange={(e) =>
-                    setProfile((prev) => ({
-                      ...prev,
-                      full_name: e.target.value,
-                    }))
-                  }
-                />
-              </div>
-
-              <div className="space-y-1">
-                <label className="text-sm font-medium">Bio</label>
-                <textarea
-                  className="w-full rounded-lg bg-black border border-neutral-700 px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-emerald-500"
-                  rows={3}
-                  value={profile.bio ?? ""}
-                  onChange={(e) =>
-                    setProfile((prev) => ({
-                      ...prev,
-                      bio: e.target.value,
-                    }))
-                  }
-                />
-              </div>
-
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Foto de perfil</label>
-                <div className="flex items-center gap-4">
-                  <input
-                    type="file"
-                    accept="image/*"
-                    onChange={handleAvatarChange}
-                    className="text-sm"
-                  />
-                  {uploadingAvatar && (
-                    <span className="text-xs text-gray-400">
-                      Subiendo avatar…
-                    </span>
-                  )}
-                </div>
-              </div>
-
-              {message && (
-                <p className="text-sm text-emerald-400 whitespace-pre-line">
-                  {message}
-                </p>
-              )}
-
-              <button
-                type="submit"
-                disabled={savingProfile}
-                className="inline-flex items-center justify-center rounded-full bg-emerald-500 hover:bg-emerald-600 px-6 py-2 text-sm font-semibold disabled:opacity-60"
-              >
-                {savingProfile ? "Guardando…" : "Guardar cambios"}
-              </button>
-            </form>
-          )}
-        </section>
-
-        {/* Publicaciones del usuario */}
-        <section className="space-y-4 pb-16">
-          <div className="flex items-center justify-between">
-            <h2 className="text-lg font-semibold">Tus publicaciones</h2>
-            {loadingPosts && (
-              <span className="text-xs text-gray-400">
-                Cargando publicaciones…
-              </span>
-            )}
-          </div>
-
-          {!loadingPosts && posts.length === 0 && (
-            <p className="text-sm text-gray-500">
-              Todavía no has publicado nada. Sube tu primera foto auténtica
-              desde el feed.
-            </p>
-          )}
-
-          <div className="space-y-4">
-            {posts.map((post) => (
-              <PostCard
-                key={post.id}
-                post={post}
-                authorName={profile.full_name || "Usuario Ethiqia"}
+          <form className="space-y-4" onSubmit={handleSaveProfile}>
+            <div className="space-y-1">
+              <label className="text-sm text-gray-300">Nombre completo</label>
+              <input
+                name="full_name"
+                type="text"
+                value={profile.full_name ?? ""}
+                onChange={handleProfileChange}
+                className="w-full rounded-lg bg-black border border-neutral-700 px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-emerald-500"
               />
-            ))}
-          </div>
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-sm text-gray-300">Bio</label>
+              <textarea
+                name="bio"
+                rows={3}
+                value={profile.bio ?? ""}
+                onChange={handleProfileChange}
+                className="w-full rounded-lg bg-black border border-neutral-700 px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-emerald-500"
+              />
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-sm text-gray-300">Foto de perfil</label>
+              <input
+                type="file"
+                accept="image/*"
+                onChange={handleAvatarChange}
+                disabled={avatarUploading}
+                className="text-sm"
+              />
+              {avatarUploading && (
+                <p className="text-xs text-gray-400 mt-1">Subiendo avatar...</p>
+              )}
+            </div>
+
+            <button
+              type="submit"
+              disabled={saving}
+              className="inline-flex items-center justify-center rounded-full bg-emerald-500 hover:bg-emerald-600 px-6 py-2 text-sm font-semibold disabled:opacity-60"
+            >
+              {saving ? "Guardando..." : "Guardar cambios"}
+            </button>
+          </form>
         </section>
       </section>
     </main>
