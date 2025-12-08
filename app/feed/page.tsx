@@ -10,19 +10,6 @@ type NewPostState = {
   file: File | null;
 };
 
-type ProfileRow = {
-  id: string;
-  display_name: string | null;
-  full_name: string | null;
-};
-
-type ProfilesMap = Record<
-  string,
-  {
-    name: string;
-  }
->;
-
 export default function FeedPage() {
   const [newPost, setNewPost] = useState<NewPostState>({
     caption: "",
@@ -38,12 +25,7 @@ export default function FeedPage() {
   const [currentUserName, setCurrentUserName] = useState<string>("Usuario Ethiqia");
   const [authChecked, setAuthChecked] = useState(false);
 
-  // Mapa user_id -> nombre público
-  const [profilesMap, setProfilesMap] = useState<ProfilesMap>({});
-
-  /**
-   * 1) Cargar usuario actual + su perfil
-   */
+  // 1) Cargar usuario actual + su perfil
   useEffect(() => {
     const initAuthAndProfile = async () => {
       try {
@@ -52,29 +34,28 @@ export default function FeedPage() {
         } = await supabaseBrowser.auth.getUser();
         setCurrentUser(user ?? null);
 
+        let display = "Usuario Ethiqia";
+
         if (user) {
+          // 1º: intentar leer full_name de la tabla profiles
           const { data: profile, error } = await supabaseBrowser
             .from("profiles")
-            .select("display_name, full_name")
+            .select("full_name")
             .eq("id", user.id)
             .maybeSingle();
 
-          if (!error && profile) {
-            const p = profile as ProfileRow;
-            const name =
-              (p.display_name && p.display_name.trim()) ||
-              (p.full_name && p.full_name.trim()) ||
-              "Usuario Ethiqia";
-
-            setCurrentUserName(name);
-
-            // Guardamos también en el mapa por si lo necesitamos
-            setProfilesMap((prev) => ({
-              ...prev,
-              [user.id]: { name },
-            }));
+          if (!error && profile?.full_name) {
+            display = profile.full_name as string;
+          } else if (user.user_metadata && typeof user.user_metadata.full_name === "string") {
+            // 2º: intentar user_metadata.full_name (según cómo se haya creado el usuario)
+            display = user.user_metadata.full_name as string;
+          } else if (user.email) {
+            // 3º: fallback al nombre antes de la @ del email
+            display = user.email.split("@")[0];
           }
         }
+
+        setCurrentUserName(display);
       } catch (err) {
         console.error("Error obteniendo usuario/perfil:", err);
       } finally {
@@ -85,61 +66,7 @@ export default function FeedPage() {
     initAuthAndProfile();
   }, []);
 
-  /**
-   * 2) Cargar perfiles de los autores de los posts
-   */
-  const loadProfilesForPosts = async (postsToProcess: Post[]) => {
-    try {
-      const userIds = Array.from(
-        new Set(
-          postsToProcess
-            .map((p) => p.user_id)
-            .filter((id): id is string => !!id)
-        )
-      );
-
-      if (userIds.length === 0) return;
-
-      // Filtramos los que ya tenemos en el mapa para no repetir llamadas
-      const missingIds = userIds.filter((id) => !profilesMap[id]);
-      if (missingIds.length === 0) return;
-
-      const { data, error } = await supabaseBrowser
-        .from("profiles")
-        .select("id, display_name, full_name")
-        .in("id", missingIds);
-
-      if (error) {
-        console.error("Error cargando perfiles de autores:", error);
-        return;
-      }
-
-      if (!data || data.length === 0) return;
-
-      const rows = data as ProfileRow[];
-      const newMap: ProfilesMap = {};
-
-      for (const row of rows) {
-        const name =
-          (row.display_name && row.display_name.trim()) ||
-          (row.full_name && row.full_name.trim()) ||
-          "Usuario Ethiqia";
-
-        newMap[row.id] = { name };
-      }
-
-      setProfilesMap((prev) => ({
-        ...prev,
-        ...newMap,
-      }));
-    } catch (err) {
-      console.error("Error procesando perfiles de posts:", err);
-    }
-  };
-
-  /**
-   * 3) Cargar posts reales al entrar
-   */
+  // 2) Cargar posts reales al entrar
   useEffect(() => {
     const loadPosts = async () => {
       setLoadingPosts(true);
@@ -149,13 +76,7 @@ export default function FeedPage() {
           throw new Error("Error al cargar posts");
         }
         const data = await res.json();
-        const fetchedPosts: Post[] = data.posts ?? [];
-        setPosts(fetchedPosts);
-
-        // Cargamos nombres de autores para esos posts
-        if (fetchedPosts.length > 0) {
-          await loadProfilesForPosts(fetchedPosts);
-        }
+        setPosts(data.posts ?? []);
       } catch (err) {
         console.error(err);
       } finally {
@@ -164,12 +85,8 @@ export default function FeedPage() {
     };
 
     loadPosts();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  /**
-   * 4) Manejo del formulario
-   */
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0] ?? null;
     setNewPost((prev) => ({ ...prev, file }));
@@ -210,8 +127,8 @@ export default function FeedPage() {
         throw new Error("Error subiendo la imagen");
       }
 
-      const uploadData = await uploadRes.json();
-      const imageUrl: string = uploadData.url;
+      const { publicUrl } = await uploadRes.json();
+      const imageUrl: string = publicUrl;
 
       // 2) Moderar con IA
       const moderationRes = await fetch("/api/moderate-post", {
@@ -249,8 +166,6 @@ export default function FeedPage() {
         reason,
       };
 
-      console.log("Enviando payload a /api/posts:", payload);
-
       const saveRes = await fetch("/api/posts", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -258,8 +173,7 @@ export default function FeedPage() {
       });
 
       if (!saveRes.ok) {
-        const errorText = await saveRes.text();
-        console.error("Respuesta de /api/posts:", errorText);
+        console.error("Error respuesta /api/posts:", await saveRes.text());
         throw new Error("Error guardando el post");
       }
 
@@ -267,13 +181,6 @@ export default function FeedPage() {
 
       // 4) Añadir al estado sin recargar
       setPosts((prev) => [post as Post, ...prev]);
-
-      // Aseguramos que el mapa tiene el nombre del usuario actual
-      setProfilesMap((prev) => ({
-        ...prev,
-        [currentUser.id]: { name: currentUserName },
-      }));
-
       setNewPost({ caption: "", file: null });
       setMessage(
         `Publicación creada correctamente. Probabilidad estimada de IA: ${Math.round(
@@ -288,9 +195,7 @@ export default function FeedPage() {
     }
   };
 
-  /**
-   * 5) Si ya hemos comprobado auth y no hay usuario
-   */
+  // Si ya hemos comprobado auth y no hay usuario, mensaje claro
   if (authChecked && !currentUser) {
     return (
       <main className="min-h-screen bg-black text-white flex items-center justify-center">
@@ -310,9 +215,6 @@ export default function FeedPage() {
     );
   }
 
-  /**
-   * 6) Render del feed
-   */
   return (
     <main className="min-h-screen bg-black text-white">
       <section className="max-w-3xl mx-auto px-4 py-8">
@@ -375,20 +277,10 @@ export default function FeedPage() {
         <div className="space-y-4 mt-4">
           {posts.map((post) => {
             const isMine = currentUser && post.user_id === currentUser.id;
-            const profileEntry = post.user_id
-              ? profilesMap[post.user_id]
-              : undefined;
-
-            const authorName =
-              profileEntry?.name ||
-              (isMine ? currentUserName : "Usuario Ethiqia");
+            const authorName = isMine ? currentUserName : "Usuario Ethiqia";
 
             return (
-              <PostCard
-                key={post.id}
-                post={post}
-                authorName={authorName}
-              />
+              <PostCard key={post.id} post={post} authorName={authorName} />
             );
           })}
         </div>
