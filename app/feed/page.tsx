@@ -22,9 +22,11 @@ export default function FeedPage() {
   const [message, setMessage] = useState<string | null>(null);
 
   const [currentUser, setCurrentUser] = useState<User | null>(null);
-  const [currentUserName, setCurrentUserName] =
-    useState<string>("Usuario Ethiqia");
+  const [currentUserName, setCurrentUserName] = useState<string>("Usuario Ethiqia");
   const [authChecked, setAuthChecked] = useState(false);
+
+  // NUEVO: modo de filtrado del feed
+  const [showOnlyMine, setShowOnlyMine] = useState(false);
 
   // 1) Cargar usuario actual + su perfil
   useEffect(() => {
@@ -36,6 +38,7 @@ export default function FeedPage() {
         setCurrentUser(user ?? null);
 
         if (user) {
+          // Leer el perfil desde la tabla profiles (id = user.id)
           const { data: profile, error } = await supabaseBrowser
             .from("profiles")
             .select("display_name")
@@ -104,7 +107,7 @@ export default function FeedPage() {
     setSubmitting(true);
 
     try {
-      // 1) Subir imagen a Supabase Storage
+      // 1) Subir imagen a Supabase Storage mediante /api/upload
       const formData = new FormData();
       formData.append("file", newPost.file);
 
@@ -114,23 +117,12 @@ export default function FeedPage() {
       });
 
       if (!uploadRes.ok) {
+        console.error("Respuesta upload:", await uploadRes.text());
         throw new Error("Error subiendo la imagen");
       }
 
-      const uploadData = await uploadRes.json();
-      console.log("uploadData", uploadData);
-
-      // Intentamos leer la URL con varios nombres posibles
-      const imageUrl: string | undefined =
-        uploadData.publicUrl ??
-        uploadData.public_url ??
-        uploadData.url ??
-        uploadData.path ??
-        uploadData.imageUrl;
-
-      if (!imageUrl || typeof imageUrl !== "string") {
-        throw new Error("No se obtuvo URL pública de la imagen");
-      }
+      const { publicUrl } = await uploadRes.json();
+      const imageUrl: string = publicUrl;
 
       // 2) Moderar con IA
       const moderationRes = await fetch("/api/moderate-post", {
@@ -143,6 +135,7 @@ export default function FeedPage() {
       });
 
       if (!moderationRes.ok) {
+        console.error("Respuesta moderación:", await moderationRes.text());
         throw new Error("Error moderando el contenido");
       }
 
@@ -173,8 +166,7 @@ export default function FeedPage() {
       });
 
       if (!saveRes.ok) {
-        const errText = await saveRes.text();
-        console.error("Error respuesta /api/posts:", errText);
+        console.error("Respuesta save post:", await saveRes.text());
         throw new Error("Error guardando el post");
       }
 
@@ -196,6 +188,7 @@ export default function FeedPage() {
     }
   };
 
+  // Si ya hemos comprobado auth y no hay usuario, mensaje claro
   if (authChecked && !currentUser) {
     return (
       <main className="min-h-screen bg-black text-white flex items-center justify-center">
@@ -215,6 +208,12 @@ export default function FeedPage() {
     );
   }
 
+  // Posts a mostrar según el filtro
+  const visiblePosts =
+    showOnlyMine && currentUser
+      ? posts.filter((p) => p.user_id === currentUser.id)
+      : posts;
+
   return (
     <main className="min-h-screen bg-black text-white">
       <section className="max-w-3xl mx-auto px-4 py-8">
@@ -228,7 +227,7 @@ export default function FeedPage() {
         {/* Formulario de nueva publicación */}
         <form
           onSubmit={handleSubmit}
-          className="bg-neutral-900 rounded-xl p-6 mb-8 space-y-4"
+          className="bg-neutral-900 rounded-xl p-6 mb-4 space-y-4"
         >
           <label className="block text-sm font-medium mb-1">
             Cuenta algo sobre tu foto o contenido auténtico...
@@ -264,18 +263,44 @@ export default function FeedPage() {
           </button>
         </form>
 
+        {/* Controles de filtro del feed */}
+        <div className="flex items-center gap-3 mb-4">
+          <button
+            type="button"
+            onClick={() => setShowOnlyMine(false)}
+            className={`px-3 py-1 rounded-full text-xs font-medium border ${
+              !showOnlyMine
+                ? "bg-emerald-500 border-emerald-500 text-black"
+                : "border-neutral-700 text-gray-300"
+            }`}
+          >
+            Todo el feed
+          </button>
+          <button
+            type="button"
+            onClick={() => setShowOnlyMine(true)}
+            className={`px-3 py-1 rounded-full text-xs font-medium border ${
+              showOnlyMine
+                ? "bg-emerald-500 border-emerald-500 text-black"
+                : "border-neutral-700 text-gray-300"
+            }`}
+          >
+            Solo mis publicaciones
+          </button>
+        </div>
+
         {loadingPosts && (
           <p className="text-sm text-gray-400">Cargando publicaciones...</p>
         )}
 
-        {!loadingPosts && posts.length === 0 && (
+        {!loadingPosts && visiblePosts.length === 0 && (
           <p className="text-sm text-gray-500">
-            Todavía no hay publicaciones. Sube la primera foto auténtica.
+            Todavía no hay publicaciones para este filtro.
           </p>
         )}
 
         <div className="space-y-4 mt-4">
-          {posts.map((post) => {
+          {visiblePosts.map((post) => {
             const isMine = currentUser && post.user_id === currentUser.id;
             const authorName = isMine ? currentUserName : "Usuario Ethiqia";
 
