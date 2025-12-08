@@ -22,7 +22,8 @@ export default function FeedPage() {
   const [message, setMessage] = useState<string | null>(null);
 
   const [currentUser, setCurrentUser] = useState<User | null>(null);
-  const [currentUserName, setCurrentUserName] = useState<string>("Usuario Ethiqia");
+  const [currentUserName, setCurrentUserName] =
+    useState<string>("Usuario Ethiqia");
   const [authChecked, setAuthChecked] = useState(false);
 
   const [showOnlyMine, setShowOnlyMine] = useState(false);
@@ -39,12 +40,16 @@ export default function FeedPage() {
         if (user) {
           const { data: profile, error } = await supabaseBrowser
             .from("profiles")
-            .select("display_name")
+            .select("display_name, full_name")
             .eq("id", user.id)
             .single();
 
-          if (!error && profile?.display_name) {
-            setCurrentUserName(profile.display_name as string);
+          if (!error && profile) {
+            if (profile.display_name) {
+              setCurrentUserName(profile.display_name as string);
+            } else if (profile.full_name) {
+              setCurrentUserName(profile.full_name as string);
+            }
           }
         }
       } catch (err) {
@@ -69,7 +74,7 @@ export default function FeedPage() {
         const data = await res.json();
         setPosts(data.posts ?? []);
       } catch (err) {
-        console.error(err);
+        console.error("Error cargando posts:", err);
       } finally {
         setLoadingPosts(false);
       }
@@ -77,8 +82,6 @@ export default function FeedPage() {
 
     loadPosts();
   }, []);
-
-  // 3) Gestión del formulario
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0] ?? null;
@@ -107,7 +110,9 @@ export default function FeedPage() {
     setSubmitting(true);
 
     try {
-      // 1) Subir imagen a Supabase Storage vía /api/upload
+      //
+      // 1) SUBIR IMAGEN A SUPABASE (API /api/upload)
+      //
       const formData = new FormData();
       formData.append("file", newPost.file);
 
@@ -117,14 +122,23 @@ export default function FeedPage() {
       });
 
       if (!uploadRes.ok) {
-        console.error("Respuesta upload:", await uploadRes.text());
+        console.error("Respuesta /api/upload no OK:", uploadRes.status);
         throw new Error("Error subiendo la imagen");
       }
 
-      const { publicUrl } = await uploadRes.json();
-      const imageUrl: string = publicUrl;
+      const uploadJson = await uploadRes.json();
 
-      // 2) Moderar con IA
+      // Tu /api/upload devuelve { url, path }
+      const imageUrl: string = uploadJson.url;
+
+      if (!imageUrl) {
+        console.error("Respuesta /api/upload sin url:", uploadJson);
+        throw new Error("El backend no devolvió una URL pública para la imagen");
+      }
+
+      //
+      // 2) MODERAR CONTENIDO CON IA (/api/moderate-post)
+      //
       const moderationRes = await fetch("/api/moderate-post", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -135,11 +149,15 @@ export default function FeedPage() {
       });
 
       if (!moderationRes.ok) {
-        console.error("Respuesta moderation:", await moderationRes.text());
+        console.error(
+          "Respuesta /api/moderate-post no OK:",
+          moderationRes.status
+        );
         throw new Error("Error moderando el contenido");
       }
 
       const moderation = await moderationRes.json();
+
       const aiProbability: number = moderation.aiProbability ?? 0;
       const blocked: boolean = moderation.blocked ?? false;
       const reason: string | null = moderation.reason ?? null;
@@ -149,15 +167,15 @@ export default function FeedPage() {
         Math.min(100, Math.round(100 - aiProbability))
       );
 
-      // 3) Guardar post REAL en la tabla posts
-      //    Aquí usamos userId (camelCase) porque es lo que el backend
-      //    ya está recibiendo y manejando bien.
+      //
+      // 3) GUARDAR POST REAL EN SUPABASE (/api/posts)
+      //
       const saveRes = await fetch("/api/posts", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          userId: currentUser.id,   // <- IMPORTANTE: userId
-          imageUrl,                // <- IMPORTANTE: incluir imageUrl
+          userId: currentUser.id, // usuario real
+          imageUrl, // 👈 AHORA SÍ SE ENVÍA
           caption: newPost.caption,
           aiProbability,
           globalScore,
@@ -168,13 +186,15 @@ export default function FeedPage() {
       });
 
       if (!saveRes.ok) {
-        console.error("Respuesta posts:", await saveRes.text());
+        console.error("Respuesta /api/posts no OK:", saveRes.status);
         throw new Error("Error guardando el post");
       }
 
       const { post } = await saveRes.json();
 
-      // 4) Añadir al estado sin recargar
+      //
+      // 4) ACTUALIZAR ESTADO Y LIMPIAR FORMULARIO
+      //
       setPosts((prev) => [post as Post, ...prev]);
       setNewPost({ caption: "", file: null });
       setMessage(
@@ -183,7 +203,7 @@ export default function FeedPage() {
         )}%`
       );
     } catch (err) {
-      console.error(err);
+      console.error("Error en handleSubmit:", err);
       setMessage("Ha ocurrido un error al crear la publicación.");
     } finally {
       setSubmitting(false);
@@ -210,11 +230,10 @@ export default function FeedPage() {
     );
   }
 
-  // Filtrado para “Solo mis publicaciones”
-  const postsToShow =
-    showOnlyMine && currentUser
-      ? posts.filter((p) => p.user_id === currentUser.id)
-      : posts;
+  // Filtrado “Solo mis publicaciones” (solo a nivel de UI)
+  const visiblePosts = showOnlyMine && currentUser
+    ? posts.filter((p) => p.user_id === currentUser.id)
+    : posts;
 
   return (
     <main className="min-h-screen bg-black text-white">
@@ -265,12 +284,12 @@ export default function FeedPage() {
           </button>
         </form>
 
-        {/* Filtro Todo el feed / Solo mis publicaciones */}
-        <div className="flex gap-3 mb-4">
+        {/* Filtro: todo el feed / solo mis publicaciones */}
+        <div className="flex gap-2 mb-4">
           <button
             type="button"
             onClick={() => setShowOnlyMine(false)}
-            className={`px-4 py-2 rounded-full text-sm border ${
+            className={`px-4 py-1 rounded-full text-sm border ${
               !showOnlyMine
                 ? "bg-emerald-500 border-emerald-500"
                 : "border-neutral-700"
@@ -281,7 +300,7 @@ export default function FeedPage() {
           <button
             type="button"
             onClick={() => setShowOnlyMine(true)}
-            className={`px-4 py-2 rounded-full text-sm border ${
+            className={`px-4 py-1 rounded-full text-sm border ${
               showOnlyMine
                 ? "bg-emerald-500 border-emerald-500"
                 : "border-neutral-700"
@@ -295,14 +314,14 @@ export default function FeedPage() {
           <p className="text-sm text-gray-400">Cargando publicaciones...</p>
         )}
 
-        {!loadingPosts && postsToShow.length === 0 && (
+        {!loadingPosts && visiblePosts.length === 0 && (
           <p className="text-sm text-gray-500">
             Todavía no hay publicaciones. Sube la primera foto auténtica.
           </p>
         )}
 
         <div className="space-y-4 mt-4">
-          {postsToShow.map((post) => {
+          {visiblePosts.map((post) => {
             const isMine = currentUser && post.user_id === currentUser.id;
             const authorName = isMine ? currentUserName : "Usuario Ethiqia";
 
