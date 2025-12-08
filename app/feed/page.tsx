@@ -25,31 +25,25 @@ export default function FeedPage() {
   const [currentUserName, setCurrentUserName] = useState<string>("Usuario Ethiqia");
   const [authChecked, setAuthChecked] = useState(false);
 
-  // 1) Cargar usuario actual + su perfil
+  // 1) Cargar usuario actual + perfil (full_name en profiles)
   useEffect(() => {
     const initAuthAndProfile = async () => {
       try {
         const {
           data: { user },
         } = await supabaseBrowser.auth.getUser();
+
         setCurrentUser(user ?? null);
 
         if (user) {
-          // Intentar leer el nombre desde profiles.full_name
           const { data: profile, error } = await supabaseBrowser
             .from("profiles")
             .select("full_name")
             .eq("id", user.id)
-            .single();
+            .maybeSingle();
 
           if (!error && profile?.full_name) {
             setCurrentUserName(profile.full_name as string);
-          } else if (user.user_metadata && user.user_metadata.full_name) {
-            // Alternativa: nombre en metadata de Supabase
-            setCurrentUserName(String(user.user_metadata.full_name));
-          } else if (user.email) {
-            // Último fallback: email
-            setCurrentUserName(user.email);
           }
         }
       } catch (err) {
@@ -72,9 +66,9 @@ export default function FeedPage() {
           throw new Error("Error al cargar posts");
         }
         const data = await res.json();
-        setPosts(data.posts ?? []);
+        setPosts((data.posts ?? []) as Post[]);
       } catch (err) {
-        console.error(err);
+        console.error("Error cargando posts:", err);
       } finally {
         setLoadingPosts(false);
       }
@@ -110,7 +104,7 @@ export default function FeedPage() {
     setSubmitting(true);
 
     try {
-      // 1) Subir imagen a Supabase Storage
+      // 1) Subir imagen a /api/upload
       const formData = new FormData();
       formData.append("file", newPost.file);
 
@@ -120,11 +114,19 @@ export default function FeedPage() {
       });
 
       if (!uploadRes.ok) {
+        console.error("Error en /api/upload:", await uploadRes.text());
         throw new Error("Error subiendo la imagen");
       }
 
-      const { publicUrl } = await uploadRes.json();
-      const imageUrl: string = publicUrl;
+      const uploadJson = await uploadRes.json();
+      console.log("Respuesta de /api/upload:", uploadJson);
+
+      // Tu backend devuelve { url, path } — usamos url
+      const imageUrl = (uploadJson.url ?? uploadJson.publicUrl) as string | undefined;
+
+      if (!imageUrl) {
+        throw new Error("No se ha recibido la URL pública de la imagen");
+      }
 
       // 2) Moderar con IA
       const moderationRes = await fetch("/api/moderate-post", {
@@ -137,10 +139,13 @@ export default function FeedPage() {
       });
 
       if (!moderationRes.ok) {
+        console.error("Error en /api/moderate-post:", await moderationRes.text());
         throw new Error("Error moderando el contenido");
       }
 
       const moderation = await moderationRes.json();
+      console.log("Respuesta moderación:", moderation);
+
       const aiProbability = moderation.aiProbability ?? 0;
       const blocked = moderation.blocked ?? false;
       const reason = moderation.reason ?? null;
@@ -150,10 +155,10 @@ export default function FeedPage() {
         Math.min(100, Math.round(100 - aiProbability))
       );
 
-      // 3) Guardar post REAL en la tabla posts con user_id real
+      // 3) Guardar post REAL en /api/posts (incluyendo imageUrl)
       const bodyToSend = {
         userId: currentUser.id,
-        imageUrl,                // ← IMPORTANTE: ahora sí mandamos la URL
+        imageUrl, // ← CLAVE: URL pública de la imagen
         caption: newPost.caption,
         aiProbability,
         globalScore,
@@ -171,7 +176,7 @@ export default function FeedPage() {
       });
 
       if (!saveRes.ok) {
-        console.error("Respuesta /api/posts:", await saveRes.text());
+        console.error("Error en /api/posts:", await saveRes.text());
         throw new Error("Error guardando el post");
       }
 
@@ -186,7 +191,7 @@ export default function FeedPage() {
         )}%`
       );
     } catch (err) {
-      console.error(err);
+      console.error("Error creando publicación:", err);
       setMessage("Ha ocurrido un error al crear la publicación.");
     } finally {
       setSubmitting(false);
@@ -274,11 +279,16 @@ export default function FeedPage() {
 
         <div className="space-y-4 mt-4">
           {posts.map((post) => {
-            const isMine = currentUser && post.user_id === currentUser.id;
+            const isMine =
+              currentUser && post.user_id && post.user_id === currentUser.id;
             const authorName = isMine ? currentUserName : "Usuario Ethiqia";
 
             return (
-              <PostCard key={post.id} post={post} authorName={authorName} />
+              <PostCard
+                key={post.id}
+                post={post}
+                authorName={authorName}
+              />
             );
           })}
         </div>
