@@ -1,212 +1,405 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { createClient, SupabaseClient } from "@supabase/supabase-js";
+import React, { useEffect, useState, FormEvent } from "react";
+import { supabaseBrowser } from "@/lib/supabaseBrowserClient";
+import type { User } from "@supabase/supabase-js";
+import PostCard, { Post } from "@/components/PostCard";
 
 type Profile = {
-  id: string;
   full_name: string | null;
   bio: string | null;
   avatar_url: string | null;
 };
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
-
-// Cliente Supabase en el navegador
-const supabase: SupabaseClient = createClient(supabaseUrl, supabaseAnonKey);
-
 export default function ProfilePage() {
-  const [profile, setProfile] = useState<Profile | null>(null);
-  const [fullName, setFullName] = useState("");
-  const [bio, setBio] = useState("");
+  const [authChecked, setAuthChecked] = useState(false);
+  const [user, setUser] = useState<User | null>(null);
 
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
+  const [profile, setProfile] = useState<Profile>({
+    full_name: "",
+    bio: "",
+    avatar_url: null,
+  });
 
-  const [error, setError] = useState<string | null>(null);
+  const [posts, setPosts] = useState<Post[]>([]);
+  const [loadingProfile, setLoadingProfile] = useState(true);
+  const [savingProfile, setSavingProfile] = useState(false);
+  const [uploadingAvatar, setUploadingAvatar] = useState(false);
+  const [loadingPosts, setLoadingPosts] = useState(false);
+
   const [message, setMessage] = useState<string | null>(null);
 
-  // Cargar perfil al entrar
+  // 1) Cargar usuario autenticado
   useEffect(() => {
-    const load = async () => {
-      setLoading(true);
-      setError(null);
-      setMessage(null);
-
-      const {
-        data: { user },
-        error: userError,
-      } = await supabase.auth.getUser();
-
-      if (userError) {
-        console.error("Error obteniendo usuario:", userError);
-        setError("No se ha podido obtener el usuario. Inicia sesión de nuevo.");
-        setLoading(false);
-        return;
+    const initAuth = async () => {
+      try {
+        const {
+          data: { user },
+        } = await supabaseBrowser.auth.getUser();
+        setUser(user ?? null);
+      } catch (err) {
+        console.error("Error obteniendo usuario:", err);
+      } finally {
+        setAuthChecked(true);
       }
-
-      if (!user) {
-        setError("No hay sesión activa. Vuelve a iniciar sesión.");
-        setLoading(false);
-        return;
-      }
-
-      const { data, error: profileError } = await supabase
-        .from("profiles")
-        .select("id, full_name, bio, avatar_url")
-        .eq("id", user.id)
-        .maybeSingle();
-
-      if (profileError) {
-        console.error("Error cargando perfil:", profileError);
-        setError("No se ha podido cargar el perfil.");
-        setLoading(false);
-        return;
-      }
-
-      const current: Profile =
-        data ??
-        ({
-          id: user.id,
-          full_name: user.email,
-          bio: null,
-          avatar_url: null,
-        } as Profile);
-
-      setProfile(current);
-      setFullName(current.full_name ?? "");
-      setBio(current.bio ?? "");
-      setLoading(false);
     };
 
-    load();
+    initAuth();
   }, []);
 
-  const handleSave = async () => {
-    if (!profile) return;
+  // 2) Cargar perfil y posts cuando tengamos usuario
+  useEffect(() => {
+    const loadProfileAndPosts = async () => {
+      if (!user) {
+        setLoadingProfile(false);
+        setLoadingPosts(false);
+        return;
+      }
 
-    setSaving(true);
-    setError(null);
+      setLoadingProfile(true);
+      setLoadingPosts(true);
+      setMessage(null);
+
+      try {
+        // PERFIL
+        const { data: profileRow, error: profileError } = await supabaseBrowser
+          .from("profiles")
+          .select("full_name, bio, avatar_url")
+          .eq("id", user.id)
+          .single();
+
+        if (profileError && profileError.code !== "PGRST116") {
+          // PGRST116 = no rows returned
+          console.error("Error cargando perfil:", profileError);
+        }
+
+        if (profileRow) {
+          setProfile({
+            full_name: profileRow.full_name,
+            bio: profileRow.bio,
+            avatar_url: profileRow.avatar_url,
+          });
+        } else {
+          // Si no existe, dejamos valores vacíos
+          setProfile({
+            full_name: "",
+            bio: "",
+            avatar_url: null,
+          });
+        }
+
+        // POSTS DEL USUARIO
+        const { data: postsData, error: postsError } = await supabaseBrowser
+          .from("posts")
+          .select("*")
+          .eq("user_id", user.id)
+          .order("created_at", { ascending: false });
+
+        if (postsError) {
+          console.error("Error cargando posts del usuario:", postsError);
+        } else if (postsData) {
+          setPosts(postsData as Post[]);
+        }
+      } catch (err) {
+        console.error("Error cargando perfil/posts:", err);
+      } finally {
+        setLoadingProfile(false);
+        setLoadingPosts(false);
+      }
+    };
+
+    if (user) {
+      loadProfileAndPosts();
+    }
+  }, [user]);
+
+  // 3) Guardar perfil (nombre + bio)
+  const handleSaveProfile = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!user) return;
+
+    setSavingProfile(true);
     setMessage(null);
 
-    const {
-      data: { user },
-      error: userError,
-    } = await supabase.auth.getUser();
+    try {
+      const { error } = await supabaseBrowser
+        .from("profiles")
+        .upsert(
+          {
+            id: user.id,
+            full_name: profile.full_name,
+            bio: profile.bio,
+            avatar_url: profile.avatar_url,
+          },
+          { onConflict: "id" }
+        );
 
-    if (userError || !user) {
-      setError("Sesión no válida. Vuelve a iniciar sesión.");
-      setSaving(false);
-      return;
-    }
-
-    const { error: upsertError } = await supabase.from("profiles").upsert(
-      {
-        id: user.id, // importante para cumplir RLS
-        full_name: fullName.trim() || null,
-        bio: bio.trim() || null,
-      },
-      {
-        onConflict: "id",
+      if (error) {
+        console.error("Error guardando perfil:", error);
+        setMessage("No se ha podido guardar el perfil.");
+        return;
       }
-    );
 
-    if (upsertError) {
-      console.error("Error guardando perfil:", upsertError);
-      setError("No se ha podido guardar el perfil.");
-      setSaving(false);
-      return;
+      setMessage("Perfil actualizado correctamente.");
+    } catch (err) {
+      console.error("Error guardando perfil:", err);
+      setMessage("No se ha podido guardar el perfil.");
+    } finally {
+      setSavingProfile(false);
     }
-
-    setMessage("Perfil guardado correctamente.");
-    setSaving(false);
   };
 
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-black text-zinc-100 flex items-center justify-center">
-        <p className="text-zinc-400">Cargando perfil...</p>
-      </div>
-    );
-  }
+  // 4) Subir avatar
+  const handleAvatarChange = async (
+    e: React.ChangeEvent<HTMLInputElement>
+  ) => {
+    if (!user) return;
+    const file = e.target.files?.[0];
+    if (!file) return;
 
-  if (error) {
+    setUploadingAvatar(true);
+    setMessage(null);
+
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+
+      const res = await fetch("/api/upload", {
+        method: "POST",
+        body: formData,
+      });
+
+      if (!res.ok) {
+        throw new Error("Error subiendo avatar");
+      }
+
+      const data = await res.json();
+      const publicUrl = data.publicUrl as string;
+
+      // Guardamos en perfil
+      const { error } = await supabaseBrowser
+        .from("profiles")
+        .upsert(
+          {
+            id: user.id,
+            full_name: profile.full_name,
+            bio: profile.bio,
+            avatar_url: publicUrl,
+          },
+          { onConflict: "id" }
+        );
+
+      if (error) {
+        console.error("Error guardando avatar en perfil:", error);
+        setMessage("Avatar subido pero no se ha podido guardar en el perfil.");
+        return;
+      }
+
+      setProfile((prev) => ({
+        ...prev,
+        avatar_url: publicUrl,
+      }));
+
+      setMessage("Avatar actualizado correctamente.");
+    } catch (err) {
+      console.error(err);
+      setMessage("No se ha podido subir el avatar.");
+    } finally {
+      setUploadingAvatar(false);
+    }
+  };
+
+  // 5) Cerrar sesión
+  const handleLogout = async () => {
+    try {
+      await supabaseBrowser.auth.signOut();
+      window.location.href = "/login";
+    } catch (err) {
+      console.error("Error cerrando sesión:", err);
+    }
+  };
+
+  // 6) Calcular Ethiqia Score global del usuario
+  const userScore = React.useMemo(() => {
+    if (!posts || posts.length === 0) return null;
+
+    const validPosts = posts.filter((p) => !p.blocked);
+    if (validPosts.length === 0) return null;
+
+    const sum = validPosts.reduce(
+      (acc, p) => acc + (p.global_score ?? 0),
+      0
+    );
+    const avg = sum / validPosts.length;
+    return Math.round(avg);
+  }, [posts]);
+
+  // Si ya comprobamos auth y no hay usuario
+  if (authChecked && !user) {
     return (
-      <div className="min-h-screen bg-black text-zinc-100 flex items-center justify-center">
-        <div className="bg-zinc-900 border border-red-500/40 rounded-2xl px-6 py-4 max-w-md text-center">
-          <p className="text-red-400 mb-3">{error}</p>
-          <p className="text-zinc-400 text-xs">
-            Si el problema continúa, prueba a cerrar sesión y volver a entrar.
+      <main className="min-h-screen bg-black text-white flex items-center justify-center">
+        <div className="text-center space-y-3">
+          <h1 className="text-2xl font-semibold">Perfil Ethiqia</h1>
+          <p className="text-sm text-gray-400">
+            Debes iniciar sesión para ver tu perfil.
           </p>
+          <a
+            href="/login"
+            className="inline-flex items-center justify-center rounded-full bg-emerald-500 hover:bg-emerald-600 px-6 py-2 text-sm font-semibold"
+          >
+            Ir a iniciar sesión
+          </a>
         </div>
-      </div>
+      </main>
     );
   }
 
   return (
-    <div className="min-h-screen bg-black text-zinc-100">
-      <div className="max-w-3xl mx-auto px-4 py-8">
-        <h1 className="text-2xl font-semibold mb-2">Mi perfil</h1>
-        <p className="text-zinc-400 mb-6 text-sm">
-          Configura cómo quieres aparecer en Ethiqia. Estos datos se usarán en
-          el feed y en futuras funciones de reputación.
-        </p>
-
-        {message && (
-          <div className="mb-4 rounded-xl border border-emerald-500/50 bg-emerald-900/20 px-4 py-2 text-sm text-emerald-200">
-            {message}
+    <main className="min-h-screen bg-black text-white">
+      <section className="max-w-3xl mx-auto px-4 py-8 space-y-8">
+        {/* Cabecera perfil */}
+        <header className="flex items-center gap-4">
+          <div className="w-20 h-20 rounded-full bg-neutral-800 flex items-center justify-center overflow-hidden">
+            {profile.avatar_url ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={profile.avatar_url}
+                alt={profile.full_name || "Avatar"}
+                className="w-full h-full object-cover"
+              />
+            ) : (
+              <span className="text-2xl font-semibold">
+                {profile.full_name
+                  ? profile.full_name.charAt(0).toUpperCase()
+                  : "E"}
+              </span>
+            )}
           </div>
-        )}
 
-        <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6 space-y-6">
-          {/* Nombre público */}
-          <div>
-            <label className="block text-sm font-medium text-zinc-200 mb-1">
-              Nombre público
-            </label>
-            <input
-              type="text"
-              value={fullName}
-              onChange={(e) => setFullName(e.target.value)}
-              className="w-full bg-black/60 border border-zinc-700 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
-              placeholder="Ej: David G. · Emprendedor · IA + ética"
-            />
-            <p className="text-xs text-zinc-500 mt-1">
-              Este nombre se mostrará encima de tus publicaciones.
+          <div className="flex-1 space-y-1">
+            <h1 className="text-2xl font-semibold">
+              {profile.full_name || "Usuario Ethiqia"}
+            </h1>
+            <p className="text-sm text-gray-400">
+              {profile.bio || "Cuenta verificada en Ethiqia."}
             </p>
+            {userScore !== null && (
+              <p className="text-sm text-emerald-400">
+                Ethiqia Score global:{" "}
+                <span className="font-semibold">{userScore}/100</span>
+              </p>
+            )}
           </div>
 
-          {/* Bio */}
-          <div>
-            <label className="block text-sm font-medium text-zinc-200 mb-1">
-              Bio
-            </label>
-            <textarea
-              value={bio}
-              onChange={(e) => setBio(e.target.value)}
-              rows={4}
-              className="w-full bg-black/60 border border-zinc-700 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 resize-none"
-              placeholder="Cuenta en pocas líneas quién eres y por qué estás en Ethiqia."
-            />
-            <p className="text-xs text-zinc-500 mt-1">
-              Esto se mostrará en tu perfil y podremos usarlo en futuras
-              métricas de reputación.
+          <button
+            onClick={handleLogout}
+            className="text-xs rounded-full border border-neutral-700 px-3 py-1 hover:bg-neutral-900"
+          >
+            Cerrar sesión
+          </button>
+        </header>
+
+        {/* Formulario de edición de perfil */}
+        <section className="bg-neutral-900 rounded-xl p-6 space-y-4">
+          <h2 className="text-lg font-semibold">Editar perfil</h2>
+
+          {loadingProfile ? (
+            <p className="text-sm text-gray-400">Cargando perfil…</p>
+          ) : (
+            <form onSubmit={handleSaveProfile} className="space-y-4">
+              <div className="space-y-1">
+                <label className="text-sm font-medium">Nombre completo</label>
+                <input
+                  type="text"
+                  className="w-full rounded-lg bg-black border border-neutral-700 px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                  value={profile.full_name ?? ""}
+                  onChange={(e) =>
+                    setProfile((prev) => ({
+                      ...prev,
+                      full_name: e.target.value,
+                    }))
+                  }
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-sm font-medium">Bio</label>
+                <textarea
+                  className="w-full rounded-lg bg-black border border-neutral-700 px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                  rows={3}
+                  value={profile.bio ?? ""}
+                  onChange={(e) =>
+                    setProfile((prev) => ({
+                      ...prev,
+                      bio: e.target.value,
+                    }))
+                  }
+                />
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Foto de perfil</label>
+                <div className="flex items-center gap-4">
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={handleAvatarChange}
+                    className="text-sm"
+                  />
+                  {uploadingAvatar && (
+                    <span className="text-xs text-gray-400">
+                      Subiendo avatar…
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              {message && (
+                <p className="text-sm text-emerald-400 whitespace-pre-line">
+                  {message}
+                </p>
+              )}
+
+              <button
+                type="submit"
+                disabled={savingProfile}
+                className="inline-flex items-center justify-center rounded-full bg-emerald-500 hover:bg-emerald-600 px-6 py-2 text-sm font-semibold disabled:opacity-60"
+              >
+                {savingProfile ? "Guardando…" : "Guardar cambios"}
+              </button>
+            </form>
+          )}
+        </section>
+
+        {/* Publicaciones del usuario */}
+        <section className="space-y-4 pb-16">
+          <div className="flex items-center justify-between">
+            <h2 className="text-lg font-semibold">Tus publicaciones</h2>
+            {loadingPosts && (
+              <span className="text-xs text-gray-400">
+                Cargando publicaciones…
+              </span>
+            )}
+          </div>
+
+          {!loadingPosts && posts.length === 0 && (
+            <p className="text-sm text-gray-500">
+              Todavía no has publicado nada. Sube tu primera foto auténtica
+              desde el feed.
             </p>
-          </div>
+          )}
 
-          {/* Botón guardar */}
-          <div className="flex justify-end">
-            <button
-              onClick={handleSave}
-              disabled={saving}
-              className="px-4 py-2 rounded-xl bg-emerald-500 text-black text-sm font-semibold hover:bg-emerald-400 disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
-            >
-              {saving ? "Guardando..." : "Guardar cambios"}
-            </button>
+          <div className="space-y-4">
+            {posts.map((post) => (
+              <PostCard
+                key={post.id}
+                post={post}
+                authorName={profile.full_name || "Usuario Ethiqia"}
+              />
+            ))}
           </div>
-        </div>
-      </div>
-    </div>
+        </section>
+      </section>
+    </main>
   );
 }
