@@ -150,14 +150,14 @@ export default function FeedPage() {
       );
 
       // 3) Guardar post REAL en la tabla posts
-      //    OJO: aquí volvemos a usar user_id (con guion bajo),
-      //    que es lo que espera la API /api/posts y la columna de la tabla.
+      //    Aquí usamos userId (camelCase) porque es lo que el backend
+      //    ya está recibiendo y manejando bien.
       const saveRes = await fetch("/api/posts", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          user_id: currentUser.id,      // <- CLAVE CORREGIDA
-          imageUrl,                     // se envía también la URL de la imagen
+          userId: currentUser.id,   // <- IMPORTANTE: userId
+          imageUrl,                // <- IMPORTANTE: incluir imageUrl
           caption: newPost.caption,
           aiProbability,
           globalScore,
@@ -211,9 +211,10 @@ export default function FeedPage() {
   }
 
   // Filtrado para “Solo mis publicaciones”
-  const postsToShow = showOnlyMine && currentUser
-    ? posts.filter((p) => p.user_id === currentUser.id)
-    : posts;
+  const postsToShow =
+    showOnlyMine && currentUser
+      ? posts.filter((p) => p.user_id === currentUser.id)
+      : posts;
 
   return (
     <main className="min-h-screen bg-black text-white">
