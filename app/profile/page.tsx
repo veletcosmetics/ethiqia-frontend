@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState, FormEvent } from "react";
-import Image from "next/image";
 import type { User } from "@supabase/supabase-js";
 import { supabaseBrowser } from "@/lib/supabaseBrowserClient";
 
@@ -114,7 +113,7 @@ export default function ProfilePage() {
     setAvatarUploading(true);
 
     try {
-      // reutilizamos /api/upload (ya configurada para post-images/uploads)
+      // reutilizamos /api/upload (misma que el feed)
       const formData = new FormData();
       formData.append("file", file);
 
@@ -129,8 +128,9 @@ export default function ProfilePage() {
         return;
       }
 
-      const { publicUrl } = await res.json();
-      if (!publicUrl) {
+      // IMPORTANTE: /api/upload devuelve { url, path }
+      const { url } = await res.json();
+      if (!url) {
         setAvatarMessage("No se recibió la URL pública del avatar.");
         return;
       }
@@ -138,7 +138,7 @@ export default function ProfilePage() {
       // guardamos en la tabla profiles
       const { error } = await supabaseBrowser
         .from("profiles")
-        .update({ avatar_url: publicUrl })
+        .update({ avatar_url: url })
         .eq("id", user.id);
 
       if (error) {
@@ -152,7 +152,7 @@ export default function ProfilePage() {
         prev
           ? {
               ...prev,
-              avatar_url: publicUrl,
+              avatar_url: url,
             }
           : prev
       );
@@ -163,7 +163,6 @@ export default function ProfilePage() {
       setAvatarMessage("Error al subir la foto de perfil.");
     } finally {
       setAvatarUploading(false);
-      // limpiamos el input para poder volver a subir la misma imagen si quiere
       e.target.value = "";
     }
   };
