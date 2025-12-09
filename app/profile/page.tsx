@@ -11,6 +11,15 @@ type Profile = {
   avatar_url: string | null;
 };
 
+type UserPost = {
+  id: string;
+  image_url: string | null;
+  caption: string | null;
+  created_at: string;
+  ai_probability: number | null;
+  global_score: number | null;
+};
+
 export default function ProfilePage() {
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
@@ -23,19 +32,25 @@ export default function ProfilePage() {
   const [avatarUploading, setAvatarUploading] = useState(false);
   const [avatarMessage, setAvatarMessage] = useState<string | null>(null);
 
-  // 1) Cargar usuario + perfil
+  const [myPosts, setMyPosts] = useState<UserPost[]>([]);
+  const [loadingPosts, setLoadingPosts] = useState(false);
+
+  // 1) Cargar usuario + perfil + sus posts
   useEffect(() => {
     const loadUserAndProfile = async () => {
       try {
         const {
           data: { user },
         } = await supabaseBrowser.auth.getUser();
+
         if (!user) {
           setUser(null);
           return;
         }
+
         setUser(user);
 
+        // Perfil
         const { data, error } = await supabaseBrowser
           .from("profiles")
           .select("id, full_name, bio, avatar_url")
@@ -44,15 +59,32 @@ export default function ProfilePage() {
 
         if (error) {
           console.error("Error cargando perfil:", error);
-          return;
+        } else if (data) {
+          const p = data as Profile;
+          setProfile(p);
+          setFullName(p.full_name ?? "");
+          setBio(p.bio ?? "");
         }
 
-        const p = data as Profile;
-        setProfile(p);
-        setFullName(p.full_name ?? "");
-        setBio(p.bio ?? "");
+        // Posts del usuario
+        setLoadingPosts(true);
+        const { data: postsData, error: postsError } = await supabaseBrowser
+          .from("posts")
+          .select(
+            "id, image_url, caption, created_at, ai_probability, global_score"
+          )
+          .eq("user_id", user.id)
+          .order("created_at", { ascending: false });
+
+        if (postsError) {
+          console.error("Error cargando posts del usuario:", postsError);
+        } else if (postsData) {
+          setMyPosts(postsData as UserPost[]);
+        }
       } catch (err) {
         console.error("Error inicializando perfil:", err);
+      } finally {
+        setLoadingPosts(false);
       }
     };
 
@@ -113,7 +145,7 @@ export default function ProfilePage() {
     setAvatarUploading(true);
 
     try {
-      // reutilizamos /api/upload (misma que el feed)
+      // Reutilizamos /api/upload (igual que en el feed)
       const formData = new FormData();
       formData.append("file", file);
 
@@ -128,14 +160,13 @@ export default function ProfilePage() {
         return;
       }
 
-      // IMPORTANTE: /api/upload devuelve { url, path }
+      // /api/upload devuelve { url, path }
       const { url } = await res.json();
       if (!url) {
         setAvatarMessage("No se recibió la URL pública del avatar.");
         return;
       }
 
-      // guardamos en la tabla profiles
       const { error } = await supabaseBrowser
         .from("profiles")
         .update({ avatar_url: url })
@@ -147,7 +178,6 @@ export default function ProfilePage() {
         return;
       }
 
-      // actualizamos estado local para que se vea al momento
       setProfile((prev) =>
         prev
           ? {
@@ -189,6 +219,7 @@ export default function ProfilePage() {
   return (
     <main className="min-h-screen bg-black text-white">
       <section className="max-w-3xl mx-auto px-4 py-8 space-y-8">
+        {/* Cabecera */}
         <header className="flex items-center gap-4">
           <div className="relative h-20 w-20 rounded-full bg-neutral-800 overflow-hidden flex items-center justify-center text-xl font-semibold">
             {profile?.avatar_url ? (
@@ -269,6 +300,66 @@ export default function ProfilePage() {
               {savingProfile ? "Guardando..." : "Guardar cambios"}
             </button>
           </form>
+        </section>
+
+        {/* Mis publicaciones */}
+        <section className="bg-neutral-900 rounded-xl p-6">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-lg font-semibold">Mis publicaciones</h2>
+            {loadingPosts && (
+              <p className="text-xs text-gray-400">Cargando publicaciones…</p>
+            )}
+          </div>
+
+          {!loadingPosts && myPosts.length === 0 && (
+            <p className="text-sm text-gray-500">
+              Todavía no has publicado contenido. Sube tu primera foto
+              auténtica desde el feed.
+            </p>
+          )}
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {myPosts.map((post) => (
+              <article
+                key={post.id}
+                className="rounded-lg overflow-hidden bg-black border border-neutral-800"
+              >
+                {post.image_url && (
+                  <div className="aspect-[4/3] overflow-hidden bg-neutral-900">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={post.image_url}
+                      alt={post.caption ?? "Publicación"}
+                      className="w-full h-full object-cover"
+                    />
+                  </div>
+                )}
+                <div className="p-3 space-y-1">
+                  <p className="text-sm">
+                    {post.caption && post.caption.trim().length > 0
+                      ? post.caption
+                      : "Sin texto"}
+                  </p>
+                  <div className="flex items-center justify-between text-[11px] text-gray-400">
+                    <span>
+                      {new Date(post.created_at).toLocaleString("es-ES", {
+                        day: "2-digit",
+                        month: "2-digit",
+                        year: "2-digit",
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      })}
+                    </span>
+                    {typeof post.ai_probability === "number" && (
+                      <span>
+                        Prob. IA: {Math.round(post.ai_probability)}%
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </article>
+            ))}
+          </div>
         </section>
       </section>
     </main>
