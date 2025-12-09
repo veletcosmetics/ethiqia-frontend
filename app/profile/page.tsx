@@ -91,7 +91,24 @@ export default function ProfilePage() {
     loadUserAndProfile();
   }, []);
 
-  // 2) Guardar nombre + bio
+  // 2) Score global calculado en cliente a partir de los posts
+  const scoreStats = (() => {
+    if (!myPosts.length) return null;
+    const valid = myPosts.filter(
+      (p) => typeof p.global_score === "number"
+    ) as (UserPost & { global_score: number })[];
+
+    if (!valid.length) return null;
+
+    const sum = valid.reduce((acc, p) => acc + p.global_score, 0);
+    const avg = Math.round(sum / valid.length);
+    return {
+      avg,
+      count: valid.length,
+    };
+  })();
+
+  // 3) Guardar nombre + bio
   const handleSaveProfile = async (e: FormEvent) => {
     e.preventDefault();
     if (!user) return;
@@ -132,7 +149,7 @@ export default function ProfilePage() {
     }
   };
 
-  // 3) Subir avatar y guardar avatar_url
+  // 4) Subir avatar y guardar avatar_url
   const handleAvatarChange = async (
     e: React.ChangeEvent<HTMLInputElement>
   ) => {
@@ -145,7 +162,6 @@ export default function ProfilePage() {
     setAvatarUploading(true);
 
     try {
-      // Reutilizamos /api/upload (igual que en el feed)
       const formData = new FormData();
       formData.append("file", file);
 
@@ -160,7 +176,6 @@ export default function ProfilePage() {
         return;
       }
 
-      // /api/upload devuelve { url, path }
       const { url } = await res.json();
       if (!url) {
         setAvatarMessage("No se recibió la URL pública del avatar.");
@@ -247,6 +262,31 @@ export default function ProfilePage() {
           </div>
         </header>
 
+        {/* Tarjeta de Score global */}
+        <section className="bg-neutral-900 rounded-xl p-6 flex items-center justify-between gap-4">
+          <div>
+            <h2 className="text-lg font-semibold">Ethiqia Score (beta)</h2>
+            {scoreStats ? (
+              <p className="text-sm text-gray-400 mt-1">
+                Basado en {scoreStats.count} publicación
+                {scoreStats.count === 1 ? "" : "es"} auténtica
+                {scoreStats.count === 1 ? "" : "s"}.
+              </p>
+            ) : (
+              <p className="text-sm text-gray-400 mt-1">
+                Todavía no hay suficientes publicaciones para calcular tu
+                score. Sube contenido auténtico en el feed.
+              </p>
+            )}
+          </div>
+          <div className="flex items-center justify-center min-w-[96px] h-16 rounded-full border border-emerald-500 px-4">
+            <span className="text-2xl font-bold">
+              {scoreStats ? scoreStats.avg : "--"}
+            </span>
+            <span className="text-xs text-gray-400 ml-1">/100</span>
+          </div>
+        </section>
+
         {/* Avatar */}
         <section className="bg-neutral-900 rounded-xl p-6 space-y-3">
           <h2 className="text-lg font-semibold mb-2">Foto de perfil</h2>
@@ -313,8 +353,8 @@ export default function ProfilePage() {
 
           {!loadingPosts && myPosts.length === 0 && (
             <p className="text-sm text-gray-500">
-              Todavía no has publicado contenido. Sube tu primera foto
-              auténtica desde el feed.
+              Todavía no has publicado contenido. Sube tu primera foto auténtica
+              desde el feed.
             </p>
           )}
 
