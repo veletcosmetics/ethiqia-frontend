@@ -1,7 +1,7 @@
 "use client";
 
+import React, { useEffect, useState } from "react";
 import Image from "next/image";
-import { useEffect, useState } from "react";
 import { supabaseBrowser } from "@/lib/supabaseBrowserClient";
 
 export type Post = {
@@ -13,6 +13,8 @@ export type Post = {
   ai_probability: number | null;
   global_score: number | null;
   text: string | null;
+  blocked: boolean | null;
+  reason: string | null;
 };
 
 type Props = {
@@ -20,219 +22,276 @@ type Props = {
   authorName: string;
 };
 
+type Comment = {
+  id: string;
+  post_id: string;
+  user_id: string | null;
+  content: string;
+  created_at: string;
+};
+
+const supabase = supabaseBrowser;
+
 export default function PostCard({ post, authorName }: Props) {
-  // OJO: aquí está el cambio importante
-  const supabase = supabaseBrowser;
+  const [comments, setComments] = useState<Comment[]>([]);
+  const [showComments, setShowComments] = useState(false);
+  const [newComment, setNewComment] = useState("");
+  const [loadingComments, setLoadingComments] = useState(false);
+  const [sendingComment, setSendingComment] = useState(false);
 
-  const [likeCount, setLikeCount] = useState<number>(0);
-  const [hasLiked, setHasLiked] = useState<boolean>(false);
-  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
-  const [savingLike, setSavingLike] = useState<boolean>(false);
+  // ---------- Utilidades ----------
 
-  // Cargar usuario actual + likes del post
-  useEffect(() => {
-    const fetchLikesAndUser = async () => {
-      try {
-        // 1) Usuario actual
-        const {
-          data: { user },
-        } = await supabase.auth.getUser();
-        const userId = user?.id ?? null;
-        setCurrentUserId(userId);
+  const createdAt = post.created_at
+    ? new Date(post.created_at)
+    : new Date();
 
-        // 2) Likes del post
-        const { data: likesData, error: likesError } = await supabase
-          .from("post_likes")
-          .select("user_id")
-          .eq("post_id", post.id);
+  const formattedDate = createdAt.toLocaleString("es-ES", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 
-        if (likesError) {
-          console.error("Error obteniendo likes:", likesError);
-          return;
-        }
+  const aiProb = post.ai_probability ?? 0;
+  const score = post.global_score ?? 0;
 
-        const likes = likesData ?? [];
-        setLikeCount(likes.length);
+  let aiLabel = "Prob. IA: baja";
+  let aiColor = "bg-emerald-600";
 
-        if (userId) {
-          const userHasLiked = likes.some((l) => l.user_id === userId);
-          setHasLiked(userHasLiked);
-        }
-      } catch (err) {
-        console.error("Error en fetchLikesAndUser:", err);
-      }
-    };
+  if (aiProb >= 70) {
+    aiLabel = "Prob. IA: muy alta";
+    aiColor = "bg-red-600";
+  } else if (aiProb >= 40) {
+    aiLabel = "Prob. IA: media";
+    aiColor = "bg-yellow-500";
+  }
 
-    fetchLikesAndUser();
-  }, [post.id, supabase]);
+  // ---------- Comentarios ----------
 
-  const handleToggleLike = async () => {
-    if (!currentUserId) return;
-    if (savingLike) return;
-
-    setSavingLike(true);
+  const fetchComments = async () => {
+    setLoadingComments(true);
     try {
-      if (hasLiked) {
-        // Quitar like
-        const { error } = await supabase
-          .from("post_likes")
-          .delete()
-          .eq("post_id", post.id)
-          .eq("user_id", currentUserId);
+      const { data, error } = await supabase
+        .from("comments")
+        .select("id, post_id, user_id, content, created_at")
+        .eq("post_id", post.id)
+        .order("created_at", { ascending: true });
 
-        if (error) {
-          console.error("Error quitando like:", error);
-        } else {
-          setHasLiked(false);
-          setLikeCount((prev) => Math.max(0, prev - 1));
-        }
-      } else {
-        // Añadir like
-        const { error } = await supabase
-          .from("post_likes")
-          .insert({
-            post_id: post.id,
-            user_id: currentUserId,
-          });
-
-        if (error) {
-          console.error("Error añadiendo like:", error);
-        } else {
-          setHasLiked(true);
-          setLikeCount((prev) => prev + 1);
-        }
+      if (error) {
+        console.error("Error cargando comentarios", error);
+        return;
       }
-    } catch (err) {
-      console.error("Error en handleToggleLike:", err);
+
+      setComments((data ?? []) as Comment[]);
     } finally {
-      setSavingLike(false);
+      setLoadingComments(false);
     }
   };
 
-  const aiProbability = post.ai_probability ?? 0;
-  const globalScore = post.global_score ?? 0;
+  const handleToggleComments = async () => {
+    const next = !showComments;
+    setShowComments(next);
 
-  let aiLabel = "No analizado";
-  if (aiProbability < 10) aiLabel = "Probabilidad IA muy baja";
-  else if (aiProbability < 40) aiLabel = "Probabilidad IA baja";
-  else if (aiProbability < 70) aiLabel = "Probabilidad IA media";
-  else aiLabel = "Probabilidad IA alta";
+    if (next && comments.length === 0) {
+      await fetchComments();
+    }
+  };
 
-  const createdAt = post.created_at
-    ? new Date(post.created_at).toLocaleString("es-ES", {
-        day: "2-digit",
-        month: "2-digit",
-        year: "2-digit",
-        hour: "2-digit",
-        minute: "2-digit",
-      })
-    : "";
+  const handleSendComment = async () => {
+    const content = newComment.trim();
+    if (!content) return;
 
-  const firstLetter =
-    authorName && authorName.trim().length > 0
-      ? authorName.trim()[0].toUpperCase()
-      : "E";
+    setSendingComment(true);
+    try {
+      const {
+        data: { user },
+        error: authError,
+      } = await supabase.auth.getUser();
+
+      if (authError) {
+        console.error("Error obteniendo usuario", authError);
+        alert("Error de sesión, vuelve a iniciar sesión.");
+        return;
+      }
+
+      if (!user) {
+        alert("Debes iniciar sesión para comentar.");
+        return;
+      }
+
+      const { data, error } = await supabase
+        .from("comments")
+        .insert({
+          post_id: post.id,
+          user_id: user.id,
+          content,
+        })
+        .select("id, post_id, user_id, content, created_at")
+        .single();
+
+      if (error) {
+        console.error("Error creando comentario", error);
+        alert("No se ha podido publicar el comentario.");
+        return;
+      }
+
+      if (data) {
+        setComments((prev) => [...prev, data as Comment]);
+        setNewComment("");
+      }
+    } finally {
+      setSendingComment(false);
+    }
+  };
+
+  // ---------- Render ----------
 
   return (
-    <article className="rounded-xl border border-neutral-800 bg-neutral-950/60 p-4 sm:p-5">
-      {/* Cabecera: avatar + nombre + fecha */}
-      <header className="flex items-center justify-between gap-3 mb-3">
+    <article className="bg-neutral-900 rounded-2xl p-4 sm:p-5 mb-4 border border-neutral-800">
+      {/* Cabecera */}
+      <header className="flex justify-between items-start gap-3">
         <div className="flex items-center gap-3">
-          <div className="h-9 w-9 rounded-full bg-emerald-600 flex items-center justify-center text-sm font-semibold">
-            {firstLetter}
+          <div className="h-10 w-10 rounded-full bg-emerald-600 flex items-center justify-center text-sm font-semibold">
+            {authorName?.[0]?.toUpperCase() ?? "U"}
           </div>
           <div>
-            <div className="text-sm font-medium">{authorName}</div>
-            {createdAt && (
-              <div className="text-xs text-neutral-500">{createdAt}</div>
-            )}
+            <div className="text-sm font-semibold">{authorName}</div>
+            <div className="text-xs text-neutral-400">{formattedDate}</div>
           </div>
         </div>
 
-        <div className="text-right text-xs text-neutral-400">
-          <div>Ethiqia Score</div>
-          <div className="text-emerald-400 font-semibold">
-            {globalScore}/100
+        <div className="text-right">
+          <div className="text-[10px] uppercase tracking-wide text-neutral-400">
+            Ethiqia Score
+          </div>
+          <div className="text-emerald-400 text-sm font-semibold">
+            {score}/100
           </div>
         </div>
       </header>
 
       {/* Imagen */}
       {post.image_url && (
-        <div className="relative w-full overflow-hidden rounded-xl border border-neutral-800 bg-black mb-3">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
+        <div className="mt-4 relative overflow-hidden rounded-xl border border-neutral-800 bg-black">
+          <Image
             src={post.image_url}
-            alt={post.caption ?? "Publicación Ethiqia"}
-            className="w-full object-cover max-h-[480px]"
+            alt={post.caption ?? "Publicación"}
+            width={1200}
+            height={800}
+            className="w-full h-auto object-cover"
           />
         </div>
       )}
 
-      {/* Texto + score */}
-      {(post.text || typeof post.ai_probability === "number") && (
-        <div className="space-y-2 mb-3">
-          {post.text && (
-            <p className="text-sm text-neutral-100 whitespace-pre-line">
-              {post.text}
+      {/* Texto */}
+      {post.caption && (
+        <p className="mt-3 text-sm text-neutral-100 whitespace-pre-line">
+          {post.caption}
+        </p>
+      )}
+
+      {/* Badges IA y estado */}
+      <div className="mt-3 flex flex-wrap gap-2 items-center">
+        <span
+          className={`inline-flex items-center rounded-full px-3 py-1 text-[11px] font-medium ${aiColor} text-white`}
+        >
+          {aiLabel} · {Math.round(aiProb)}%
+        </span>
+
+        {post.blocked && (
+          <span className="inline-flex items-center rounded-full px-3 py-1 text-[11px] font-medium bg-red-700/70 text-red-50">
+            Publicación bloqueada
+          </span>
+        )}
+      </div>
+
+      {/* Botones de interacción */}
+      <div className="mt-4 flex items-center gap-4 text-xs text-neutral-400">
+        {/* Aquí más adelante podemos añadir likes, guardar, compartir, etc. */}
+        <button
+          type="button"
+          onClick={handleToggleComments}
+          className="flex items-center gap-1 hover:text-emerald-400 transition-colors"
+        >
+          <span>💬</span>
+          <span>
+            Comentarios{comments.length > 0 ? ` (${comments.length})` : ""}
+          </span>
+        </button>
+      </div>
+
+      {/* Sección de comentarios */}
+      {showComments && (
+        <div className="mt-4 border-t border-neutral-800 pt-3 space-y-3">
+          {loadingComments ? (
+            <p className="text-xs text-neutral-400">
+              Cargando comentarios...
             </p>
+          ) : comments.length === 0 ? (
+            <p className="text-xs text-neutral-500">
+              Todavía no hay comentarios. Sé el primero en comentar.
+            </p>
+          ) : (
+            <ul className="space-y-2">
+              {comments.map((comment) => {
+                const created = comment.created_at
+                  ? new Date(comment.created_at)
+                  : null;
+                const createdLabel = created
+                  ? created.toLocaleString("es-ES", {
+                      day: "2-digit",
+                      month: "2-digit",
+                      year: "2-digit",
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    })
+                  : "";
+
+                return (
+                  <li
+                    key={comment.id}
+                    className="text-xs bg-neutral-950/60 border border-neutral-800 rounded-lg px-3 py-2"
+                  >
+                    <div className="flex justify-between items-baseline gap-3">
+                      <span className="font-medium text-neutral-100">
+                        Usuario Ethiqia
+                      </span>
+                      {createdLabel && (
+                        <span className="text-[10px] text-neutral-500">
+                          {createdLabel}
+                        </span>
+                      )}
+                    </div>
+                    <p className="mt-1 text-neutral-100">
+                      {comment.content}
+                    </p>
+                  </li>
+                );
+              })}
+            </ul>
           )}
 
-          <div className="flex flex-wrap items-center gap-2 text-xs">
-            <span className="inline-flex items-center rounded-full border border-neutral-700 bg-black px-2.5 py-1 text-[11px] text-neutral-300">
-              Prob. IA:{" "}
-              <span className="ml-1 font-semibold">
-                {Math.round(aiProbability)}%
-              </span>
-            </span>
-            <span className="inline-flex items-center rounded-full bg-emerald-500/10 border border-emerald-600/60 px-2.5 py-1 text-[11px] text-emerald-300">
-              {aiLabel}
-            </span>
+          {/* Formulario nuevo comentario */}
+          <div className="flex items-center gap-2">
+            <input
+              type="text"
+              value={newComment}
+              onChange={(e) => setNewComment(e.target.value)}
+              placeholder="Escribe un comentario auténtico…"
+              className="flex-1 rounded-full bg-black border border-neutral-700 px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500"
+            />
+            <button
+              type="button"
+              onClick={handleSendComment}
+              disabled={sendingComment || !newComment.trim()}
+              className="rounded-full bg-emerald-500 hover:bg-emerald-600 px-4 py-2 text-xs font-semibold text-white disabled:opacity-60"
+            >
+              {sendingComment ? "Enviando…" : "Publicar"}
+            </button>
           </div>
         </div>
       )}
-
-      {/* Barra de acciones: like, comentarios, guardar, compartir */}
-      <footer className="flex items-center justify-between pt-2 border-t border-neutral-900 mt-2">
-        <div className="flex items-center gap-4 text-sm">
-          <button
-            type="button"
-            onClick={handleToggleLike}
-            disabled={savingLike || !currentUserId}
-            className={`inline-flex items-center gap-1.5 ${
-              hasLiked ? "text-emerald-400" : "text-neutral-400"
-            } hover:text-emerald-300 disabled:opacity-60`}
-          >
-            <span className="text-base">♥</span>
-            <span>{likeCount}</span>
-          </button>
-
-          <button
-            type="button"
-            className="inline-flex items-center gap-1.5 text-neutral-400 hover:text-neutral-200"
-          >
-            <span className="text-base">💬</span>
-            <span>Comentarios</span>
-          </button>
-        </div>
-
-        <div className="flex items-center gap-3 text-sm">
-          <button
-            type="button"
-            className="inline-flex items-center gap-1.5 text-neutral-400 hover:text-neutral-200"
-          >
-            <span className="text-base">🔖</span>
-            <span>Guardar</span>
-          </button>
-          <button
-            type="button"
-            className="inline-flex items-center gap-1.5 text-neutral-400 hover:text-neutral-200"
-          >
-            <span className="text-base">↗</span>
-            <span>Compartir</span>
-          </button>
-        </div>
-      </footer>
     </article>
   );
 }
