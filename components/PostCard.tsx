@@ -41,9 +41,7 @@ export default function PostCard({ post, authorName }: Props) {
 
   // ---------- Utilidades ----------
 
-  const createdAt = post.created_at
-    ? new Date(post.created_at)
-    : new Date();
+  const createdAt = post.created_at ? new Date(post.created_at) : new Date();
 
   const formattedDate = createdAt.toLocaleString("es-ES", {
     day: "2-digit",
@@ -208,7 +206,6 @@ export default function PostCard({ post, authorName }: Props) {
 
       {/* Botones de interacción */}
       <div className="mt-4 flex items-center gap-4 text-xs text-neutral-400">
-        {/* Aquí más adelante podemos añadir likes, guardar, compartir, etc. */}
         <button
           type="button"
           onClick={handleToggleComments}
