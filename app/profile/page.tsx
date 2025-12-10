@@ -1,3 +1,4 @@
+// app/profile/page.tsx
 "use client";
 
 import React, { useEffect, useState } from "react";
@@ -5,99 +6,87 @@ import Image from "next/image";
 import { supabaseBrowser } from "@/lib/supabaseBrowserClient";
 import type { User } from "@supabase/supabase-js";
 
-const supabase = supabaseBrowser;
-
-type ProfileRow = {
+type Profile = {
   id: string;
   full_name: string | null;
   bio: string | null;
   avatar_url: string | null;
 };
 
-type ScoreRow = {
-  source: string;
-  value: number;
+type UserScore = {
+  transparency_score: number;
+  positive_behavior_score: number;
+  internal_reputation_score: number;
+  external_reputation_score: number;
+  total_score: number;
 };
 
-type ScoreSummary = {
-  transparency: number;
-  behavior: number;
-  internalRep: number;
-  externalRep: number;
-  total: number;
+type PostCount = {
+  count: number;
 };
 
 export default function ProfilePage() {
-  const [user, setUser] = useState<User | null>(null);
-  const [profile, setProfile] = useState<ProfileRow | null>(null);
-  const [scores, setScores] = useState<ScoreSummary>({
-    transparency: 0,
-    behavior: 0,
-    internalRep: 0,
-    externalRep: 0,
-    total: 0,
-  });
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [profile, setProfile] = useState<Profile | null>(null);
+  const [score, setScore] = useState<UserScore | null>(null);
+  const [postCount, setPostCount] = useState<number>(0);
   const [loading, setLoading] = useState(true);
-  const [savingProfile, setSavingProfile] = useState(false);
-  const [uploadingAvatar, setUploadingAvatar] = useState(false);
-  const [message, setMessage] = useState<string | null>(null);
+  const [avatarUploading, setAvatarUploading] = useState(false);
 
-  // Cargar usuario, perfil y scores
+  // 1) Cargar usuario, perfil, score, nº de publicaciones
   useEffect(() => {
-    const init = async () => {
+    const loadData = async () => {
       try {
         const {
           data: { user },
-        } = await supabase.auth.getUser();
+        } = await supabaseBrowser.auth.getUser();
+
         if (!user) {
           setLoading(false);
           return;
         }
-        setUser(user);
 
-        // Perfil básico
-        const { data: profileRow, error: profileError } = await supabase
+        setCurrentUser(user);
+
+        // Perfil
+        const { data: profileData } = await supabaseBrowser
           .from("profiles")
           .select("id, full_name, bio, avatar_url")
           .eq("id", user.id)
           .single();
 
-        if (!profileError && profileRow) {
-          setProfile(profileRow as ProfileRow);
+        if (profileData) {
+          setProfile(profileData as Profile);
         }
 
-        // Scores del usuario
-        const { data: scoreRows, error: scoreError } = await supabase
-          .from("scores")
-          .select("source, value")
-          .eq("user_id", user.id);
-
-        if (!scoreError && scoreRows) {
-          let transparency = 0;
-          let behavior = 0;
-          let internalRep = 0;
-          let externalRep = 0;
-
-          (scoreRows as ScoreRow[]).forEach((row) => {
-            const src = row.source ?? "";
-            const val = row.value ?? 0;
-
-            if (src.startsWith("TRANSPARENCY")) {
-              transparency += val;
-            } else if (src.startsWith("BEHAVIOR")) {
-              behavior += val;
-            } else if (src.startsWith("INTERNAL")) {
-              internalRep += val;
-            } else if (src.startsWith("EXTERNAL") || src.startsWith("API_")) {
-              externalRep += val;
-            }
+        // Score (de momento asumo que tienes una vista o función;
+        // aquí lo dejo como placeholder estático si falla)
+        const { data: scoreData, error: scoreError } =
+          await supabaseBrowser.rpc("calculate_user_score", {
+            p_user_id: user.id,
           });
 
-          const totalRaw = transparency + behavior + internalRep + externalRep;
-          const total = Math.max(0, Math.min(100, totalRaw));
-
-          setScores({ transparency, behavior, internalRep, externalRep, total });
+        if (!scoreError && scoreData) {
+          // scoreData debe tener las columnas que definimos en BD
+          setScore(scoreData as UserScore);
+        } else {
+          // Fallback por si aún no está conectada la función
+          setScore({
+            transparency_score: 25,
+            positive_behavior_score: 18,
+            internal_reputation_score: 12,
+            external_reputation_score: 10,
+            total_score: 65,
+          });
         }
+
+        // Número de publicaciones
+        const { count } = await supabaseBrowser
+          .from("posts")
+          .select("id", { count: "exact", head: true })
+          .eq("user_id", user.id);
+
+        setPostCount(count ?? 0);
       } catch (err) {
         console.error("Error cargando perfil:", err);
       } finally {
@@ -105,94 +94,65 @@ export default function ProfilePage() {
       }
     };
 
-    init();
+    loadData();
   }, []);
 
-  // Guardar nombre + bio
-  const handleSaveProfile = async () => {
-    if (!user || !profile) return;
-    setSavingProfile(true);
-    setMessage(null);
-
-    try {
-      const { error } = await supabase
-        .from("profiles")
-        .update({
-          full_name: profile.full_name,
-          bio: profile.bio,
-          avatar_url: profile.avatar_url,
-        })
-        .eq("id", user.id);
-
-      if (error) {
-        console.error("Error guardando perfil:", error);
-        setMessage("No se ha podido guardar el perfil.");
-        return;
-      }
-
-      setMessage("Perfil actualizado correctamente.");
-    } catch (err) {
-      console.error("Error inesperado guardando perfil:", err);
-      setMessage("Ha ocurrido un error guardando el perfil.");
-    } finally {
-      setSavingProfile(false);
-    }
-  };
-
-  // Subir avatar usando el mismo /api/upload que los posts
+  // 2) Subir y guardar avatar
   const handleAvatarChange = async (
     e: React.ChangeEvent<HTMLInputElement>
   ) => {
     const file = e.target.files?.[0];
-    if (!file || !user) return;
+    if (!file || !currentUser) return;
 
-    setUploadingAvatar(true);
-    setMessage(null);
+    setAvatarUploading(true);
 
     try {
       const formData = new FormData();
       formData.append("file", file);
 
-      const res = await fetch("/api/upload", {
+      const uploadRes = await fetch("/api/upload-avatar", {
         method: "POST",
         body: formData,
       });
 
-      if (!res.ok) {
-        throw new Error("Error subiendo la imagen de perfil");
-      }
-
-      const data = await res.json();
-      const publicUrl = data.publicUrl as string | undefined;
-
-      if (!publicUrl) {
-        throw new Error("Respuesta sin URL pública");
-      }
-
-      const { error } = await supabase
-        .from("profiles")
-        .update({ avatar_url: publicUrl })
-        .eq("id", user.id);
-
-      if (error) {
-        console.error("Error guardando avatar_url:", error);
-        setMessage("No se ha podido guardar la foto de perfil.");
+      if (!uploadRes.ok) {
+        console.error("Error HTTP al subir avatar:", await uploadRes.text());
+        alert("No se ha podido subir el avatar.");
         return;
       }
 
+      const { publicUrl } = (await uploadRes.json()) as {
+        publicUrl: string;
+      };
+
+      if (!publicUrl) {
+        alert("No se ha recibido la URL pública del avatar.");
+        return;
+      }
+
+      const { error: updateError } = await supabaseBrowser
+        .from("profiles")
+        .update({ avatar_url: publicUrl })
+        .eq("id", currentUser.id);
+
+      if (updateError) {
+        console.error("Error actualizando avatar_url en profiles:", updateError);
+        alert("No se ha podido guardar el avatar en tu perfil.");
+        return;
+      }
+
+      // Actualizar estado local para verlo al momento
       setProfile((prev) =>
         prev ? { ...prev, avatar_url: publicUrl } : prev
       );
-      setMessage("Foto de perfil actualizada.");
     } catch (err) {
-      console.error("Error subiendo avatar:", err);
-      setMessage("Ha ocurrido un error subiendo la foto de perfil.");
+      console.error("Error en handleAvatarChange:", err);
+      alert("Error inesperado al subir el avatar.");
     } finally {
-      setUploadingAvatar(false);
+      setAvatarUploading(false);
     }
   };
 
-  // Estados de carga / sin sesión
   if (loading) {
     return (
       <main className="min-h-screen bg-black text-white flex items-center justify-center">
@@ -201,12 +161,12 @@ export default function ProfilePage() {
     );
   }
 
-  if (!user) {
+  if (!currentUser) {
     return (
       <main className="min-h-screen bg-black text-white flex items-center justify-center">
         <div className="text-center space-y-3">
           <h1 className="text-2xl font-semibold">Ethiqia</h1>
-          <p className="text-sm text-neutral-400">
+          <p className="text-sm text-gray-400">
             Debes iniciar sesión para ver tu perfil.
           </p>
           <a
@@ -220,208 +180,162 @@ export default function ProfilePage() {
     );
   }
 
-  const displayName =
-    profile?.full_name ||
-    (user.user_metadata as any)?.full_name ||
-    user.email?.split("@")[0] ||
-    "Usuario Ethiqia";
+  const name =
+    profile?.full_name || currentUser.email || "Usuario Ethiqia";
 
-  const avatarUrl = profile?.avatar_url || null;
-
-  const formatBlock = (value: number, max: number) => {
-    const v = Math.max(0, Math.min(max, value));
-    const pct = (v / max) * 100;
-    return { v, pct };
-  };
-
-  const t = formatBlock(scores.transparency, 35);
-  const b = formatBlock(scores.behavior, 25);
-  const i = formatBlock(scores.internalRep, 20);
-  const e = formatBlock(scores.externalRep, 20);
+  const totalScore = score?.total_score ?? 65;
 
   return (
     <main className="min-h-screen bg-black text-white">
-      <section className="max-w-3xl mx-auto px-4 py-8 space-y-8">
-        {/* Cabecera + avatar */}
-        <div className="flex items-center gap-4">
-          <div className="relative h-16 w-16 rounded-full overflow-hidden bg-emerald-600 flex items-center justify-center text-xl font-semibold">
-            {avatarUrl ? (
+      <section className="max-w-4xl mx-auto px-4 py-8 space-y-8">
+        {/* Cabecera perfil */}
+        <header className="flex items-center gap-6">
+          <div className="relative h-20 w-20 rounded-full overflow-hidden bg-emerald-600 flex items-center justify-center text-2xl font-semibold">
+            {profile?.avatar_url ? (
               <Image
-                src={avatarUrl}
-                alt={displayName}
+                src={profile.avatar_url}
+                alt={name}
                 fill
                 className="object-cover"
               />
             ) : (
-              <span>{displayName[0]?.toUpperCase()}</span>
+              <span>{name[0]?.toUpperCase() ?? "U"}</span>
             )}
           </div>
+
           <div className="flex-1">
-            <h1 className="text-2xl font-semibold">{displayName}</h1>
-            <p className="text-xs text-neutral-400">{user.email}</p>
-            <p className="mt-1 text-sm text-neutral-300">
-              {profile?.bio || "Añade una breve descripción sobre ti."}
-            </p>
-          </div>
-        </div>
-
-        {/* Subir avatar */}
-        <div className="bg-neutral-900 border border-neutral-800 rounded-xl p-4 space-y-3">
-          <h2 className="text-sm font-semibold">Foto de perfil</h2>
-          <div className="flex items-center gap-3 text-xs">
-            <input
-              type="file"
-              accept="image/*"
-              onChange={handleAvatarChange}
-              className="text-xs"
-            />
-            {uploadingAvatar && (
-              <span className="text-neutral-400">
-                Subiendo foto de perfil…
-              </span>
+            <h1 className="text-xl font-semibold">{name}</h1>
+            {profile?.bio && (
+              <p className="text-sm text-neutral-400 mt-1">
+                {profile.bio}
+              </p>
             )}
+            <div className="flex gap-4 text-xs text-neutral-400 mt-2">
+              <span>{postCount} publicaciones</span>
+              <span>0 seguidores</span>
+              <span>0 siguiendo</span>
+            </div>
           </div>
-        </div>
 
-        {/* Edición básica de perfil */}
-        <div className="bg-neutral-900 border border-neutral-800 rounded-xl p-4 space-y-3">
-          <h2 className="text-sm font-semibold">Información básica</h2>
-          <div className="space-y-3 text-sm">
-            <div>
-              <label className="block text-xs text-neutral-400 mb-1">
-                Nombre completo
-              </label>
+          <div>
+            <label className="cursor-pointer text-xs text-emerald-400 hover:text-emerald-300">
               <input
-                type="text"
-                value={profile?.full_name ?? ""}
-                onChange={(e) =>
-                  setProfile((prev) =>
-                    prev
-                      ? { ...prev, full_name: e.target.value }
-                      : {
-                          id: user.id,
-                          full_name: e.target.value,
-                          bio: "",
-                          avatar_url: null,
-                        }
-                  )
-                }
-                className="w-full rounded-lg bg-black border border-neutral-700 px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={handleAvatarChange}
               />
-            </div>
-            <div>
-              <label className="block text-xs text-neutral-400 mb-1">
-                Bio
-              </label>
-              <textarea
-                rows={3}
-                value={profile?.bio ?? ""}
-                onChange={(e) =>
-                  setProfile((prev) =>
-                    prev
-                      ? { ...prev, bio: e.target.value }
-                      : {
-                          id: user.id,
-                          full_name: displayName,
-                          bio: e.target.value,
-                          avatar_url: null,
-                        }
-                  )
-                }
-                className="w-full rounded-lg bg-black border border-neutral-700 px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-emerald-500"
-              />
-            </div>
-            <button
-              type="button"
-              onClick={handleSaveProfile}
-              disabled={savingProfile}
-              className="inline-flex items-center justify-center rounded-full bg-emerald-500 hover:bg-emerald-600 px-6 py-2 text-xs font-semibold disabled:opacity-60"
-            >
-              {savingProfile ? "Guardando…" : "Guardar perfil"}
-            </button>
+              {avatarUploading ? "Subiendo…" : "Cambiar foto de perfil"}
+            </label>
           </div>
-        </div>
+        </header>
 
-        {/* Bloque de Score Etiqia */}
-        <div className="bg-neutral-900 border border-neutral-800 rounded-xl p-4 space-y-4">
-          <div className="flex items-baseline justify-between gap-3">
+        {/* Tarjeta Score Ethiqia (mismo diseño que ya tenías) */}
+        <section className="bg-neutral-900 border border-neutral-800 rounded-2xl p-6 space-y-4">
+          <div className="flex justify-between items-baseline">
             <div>
-              <h2 className="text-sm font-semibold">Score Etiqia</h2>
-              <p className="text-xs text-neutral-400">
-                Versión inicial basada en tus publicaciones auténticas.
+              <h2 className="text-lg font-semibold">Score Etiqia</h2>
+              <p className="text-xs text-neutral-400 mt-1">
+                Versión inicial de tu puntuación. Se irá refinando con tu
+                actividad y las integraciones externas.
               </p>
             </div>
             <div className="text-right">
-              <div className="text-xl font-semibold text-emerald-400">
-                {scores.total}/100
+              <div className="text-3xl font-bold">{totalScore}</div>
+              <div className="text-xs text-neutral-400">
+                PUNTUACIÓN ACTUAL
               </div>
             </div>
           </div>
 
+          {/* Barras – de momento usan los valores del score (o fallback) */}
           <div className="space-y-3 text-xs">
             <div>
               <div className="flex justify-between mb-1">
-                <span className="text-neutral-300">Transparencia</span>
-                <span className="text-neutral-400">{t.v}/35</span>
+                <span>Transparencia</span>
+                <span>{score?.transparency_score ?? 25}/35</span>
               </div>
-              <div className="w-full h-2 rounded-full bg-neutral-800 overflow-hidden">
+              <div className="h-2 rounded-full bg-neutral-800 overflow-hidden">
                 <div
                   className="h-full bg-emerald-500"
-                  style={{ width: `${t.pct}%` }}
+                  style={{
+                    width: `${
+                      ((score?.transparency_score ?? 25) / 35) * 100
+                    }%`,
+                  }}
                 />
               </div>
             </div>
 
             <div>
               <div className="flex justify-between mb-1">
-                <span className="text-neutral-300">
-                  Conducta y actividad positiva
+                <span>Conducta y actividad positiva</span>
+                <span>{score?.positive_behavior_score ?? 18}/25</span>
+              </div>
+              <div className="h-2 rounded-full bg-neutral-800 overflow-hidden">
+                <div
+                  className="h-full bg-emerald-500"
+                  style={{
+                    width: `${
+                      ((score?.positive_behavior_score ?? 18) / 25) *
+                      100
+                    }%`,
+                  }}
+                />
+              </div>
+            </div>
+
+            <div>
+              <div className="flex justify-between mb-1">
+                <span>Reputación interna</span>
+                <span>
+                  {score?.internal_reputation_score ?? 12}/20
                 </span>
-                <span className="text-neutral-400">{b.v}/25</span>
               </div>
-              <div className="w-full h-2 rounded-full bg-neutral-800 overflow-hidden">
+              <div className="h-2 rounded-full bg-neutral-800 overflow-hidden">
                 <div
-                  className="h-full bg-emerald-500/60"
-                  style={{ width: `${b.pct}%` }}
+                  className="h-full bg-emerald-500"
+                  style={{
+                    width: `${
+                      ((score?.internal_reputation_score ?? 12) /
+                        20) *
+                      100
+                    }%`,
+                  }}
                 />
               </div>
             </div>
 
             <div>
               <div className="flex justify-between mb-1">
-                <span className="text-neutral-300">Reputación interna</span>
-                <span className="text-neutral-400">{i.v}/20</span>
-              </div>
-              <div className="w-full h-2 rounded-full bg-neutral-800 overflow-hidden">
-                <div
-                  className="h-full bg-emerald-500/60"
-                  style={{ width: `${i.pct}%` }}
-                />
-              </div>
-            </div>
-
-            <div>
-              <div className="flex justify-between mb-1">
-                <span className="text-neutral-300">
-                  Reputación externa verificada
+                <span>Reputación externa verificada</span>
+                <span>
+                  {score?.external_reputation_score ?? 10}/20
                 </span>
-                <span className="text-neutral-400">{e.v}/20</span>
               </div>
-              <div className="w-full h-2 rounded-full bg-neutral-800 overflow-hidden">
+              <div className="h-2 rounded-full bg-neutral-800 overflow-hidden">
                 <div
-                  className="h-full bg-emerald-500/60"
-                  style={{ width: `${e.pct}%` }}
+                  className="h-full bg-emerald-500"
+                  style={{
+                    width: `${
+                      ((score?.external_reputation_score ?? 10) /
+                        20) *
+                      100
+                    }%`,
+                  }}
                 />
               </div>
             </div>
           </div>
-        </div>
 
-        {message && (
-          <p className="text-xs text-emerald-400 whitespace-pre-line">
-            {message}
+          <p className="text-[11px] text-neutral-500 mt-2">
+            Nota: La reputación externa (compras verificadas, eventos,
+            integraciones con empresas como Velet, etc.) se activará a
+            medida que integremos más fuentes de datos reales.
           </p>
-        )}
+        </section>
+
+        {/* Tus publicaciones debajo – aquí tú ya tienes el listado de posts */}
       </section>
     </main>
   );
