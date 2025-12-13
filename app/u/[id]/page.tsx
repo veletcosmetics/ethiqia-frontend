@@ -9,7 +9,7 @@ import PostCard, { Post } from "@/components/PostCard";
 type ProfileRow = {
   id: string;
   full_name: string | null;
-  bio?: string | null;
+  bio: string | null;
 };
 
 export default function UserProfilePage() {
@@ -34,8 +34,14 @@ export default function UserProfilePage() {
   const [posts, setPosts] = useState<Post[]>([]);
   const [loadingPosts, setLoadingPosts] = useState(false);
 
-  const displayName = profile?.full_name ?? "Usuario Ethiqia";
+  // Edición perfil
+  const [isEditing, setIsEditing] = useState(false);
+  const [editFullName, setEditFullName] = useState("");
+  const [editBio, setEditBio] = useState("");
+  const [savingProfile, setSavingProfile] = useState(false);
+
   const isMine = Boolean(currentUserId && profileId && currentUserId === profileId);
+  const displayName = profile?.full_name ?? "Usuario Ethiqia";
 
   useEffect(() => {
     const loadAuth = async () => {
@@ -65,6 +71,7 @@ export default function UserProfilePage() {
   const loadCounts = async (targetId: string) => {
     setLoadingCounts(true);
     try {
+      // Seguidores: personas que siguen a targetId
       const { count: followers, error: e1 } = await supabaseBrowser
         .from("follows")
         .select("id", { count: "exact", head: true })
@@ -72,6 +79,7 @@ export default function UserProfilePage() {
 
       if (e1) console.error("Error followersCount:", e1);
 
+      // Siguiendo: personas a las que targetId sigue
       const { count: following, error: e2 } = await supabaseBrowser
         .from("follows")
         .select("id", { count: "exact", head: true })
@@ -107,28 +115,47 @@ export default function UserProfilePage() {
     }
   };
 
+  const loadPostsForProfile = async (targetId: string) => {
+    setLoadingPosts(true);
+    try {
+      const res = await fetch("/api/posts");
+      const json = await res.json();
+      const all = (json?.posts ?? []) as any[];
+      const mine = all.filter((p) => p.user_id === targetId);
+      setPosts(mine as Post[]);
+    } catch (e) {
+      console.error("Error cargando posts del perfil:", e);
+      setPosts([]);
+    } finally {
+      setLoadingPosts(false);
+    }
+  };
+
+  const loadProfile = async (targetId: string) => {
+    setLoadingProfile(true);
+    try {
+      const { data, error } = await supabaseBrowser
+        .from("profiles")
+        .select("id, full_name, bio")
+        .eq("id", targetId)
+        .maybeSingle();
+
+      if (error) {
+        console.error("Error cargando profile:", error);
+        setProfile(null);
+      } else {
+        setProfile((data as ProfileRow) ?? null);
+      }
+    } finally {
+      setLoadingProfile(false);
+    }
+  };
+
   useEffect(() => {
     const run = async () => {
       if (!profileId) return;
 
-      setLoadingProfile(true);
-      try {
-        const { data, error } = await supabaseBrowser
-          .from("profiles")
-          .select("id, full_name, bio")
-          .eq("id", profileId)
-          .maybeSingle();
-
-        if (error) {
-          console.error("Error cargando profile:", error);
-          setProfile(null);
-        } else {
-          setProfile((data as ProfileRow) ?? null);
-        }
-      } finally {
-        setLoadingProfile(false);
-      }
-
+      await loadProfile(profileId);
       await loadCounts(profileId);
 
       if (currentUserId && currentUserId !== profileId) {
@@ -137,20 +164,7 @@ export default function UserProfilePage() {
         setIsFollowing(false);
       }
 
-      // Posts: reutilizamos /api/posts y filtramos (simple para Beta)
-      setLoadingPosts(true);
-      try {
-        const res = await fetch("/api/posts");
-        const json = await res.json();
-        const all = (json?.posts ?? []) as any[];
-        const mine = all.filter((p) => p.user_id === profileId);
-        setPosts(mine as Post[]);
-      } catch (e) {
-        console.error("Error cargando posts del perfil:", e);
-        setPosts([]);
-      } finally {
-        setLoadingPosts(false);
-      }
+      await loadPostsForProfile(profileId);
     };
 
     run();
@@ -188,13 +202,63 @@ export default function UserProfilePage() {
       const next = Boolean(json?.following);
       setIsFollowing(next);
 
-      // Re-sincroniza contadores
+      // Re-sincroniza contadores del perfil visitado
       await loadCounts(profileId);
     } catch (e) {
       console.error("Error toggle follow:", e);
       alert("Error de red al seguir/dejar de seguir.");
     } finally {
       setTogglingFollow(false);
+    }
+  };
+
+  const handleStartEdit = () => {
+    if (!profile) return;
+    setEditFullName(profile.full_name ?? "");
+    setEditBio(profile.bio ?? "");
+    setIsEditing(true);
+  };
+
+  const handleCancelEdit = () => {
+    setIsEditing(false);
+    setSavingProfile(false);
+  };
+
+  const handleSaveProfile = async () => {
+    if (!isMine || !currentUserId) return;
+
+    const fullName = editFullName.trim();
+    const bio = editBio.trim();
+
+    setSavingProfile(true);
+    try {
+      const { error } = await supabaseBrowser
+        .from("profiles")
+        .update({
+          full_name: fullName.length > 0 ? fullName : null,
+          bio: bio.length > 0 ? bio : null,
+        })
+        .eq("id", currentUserId);
+
+      if (error) {
+        console.error("Error guardando perfil:", error);
+        alert("No se ha podido guardar el perfil.");
+        return;
+      }
+
+      setProfile((prev) =>
+        prev
+          ? {
+              ...prev,
+              full_name: fullName.length > 0 ? fullName : null,
+              bio: bio.length > 0 ? bio : null,
+            }
+          : prev
+      );
+
+      setIsEditing(false);
+    } finally {
+      setSavingProfile(false);
     }
   };
 
@@ -234,13 +298,23 @@ export default function UserProfilePage() {
           </Link>
 
           {isMine && (
-            <button
-              type="button"
-              onClick={handleLogout}
-              className="rounded-full border border-neutral-700 bg-black px-4 py-2 text-xs font-semibold text-white hover:border-neutral-500"
-            >
-              Cerrar sesión
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={handleStartEdit}
+                className="rounded-full border border-neutral-700 bg-black px-4 py-2 text-xs font-semibold text-white hover:border-neutral-500"
+              >
+                Editar perfil
+              </button>
+
+              <button
+                type="button"
+                onClick={handleLogout}
+                className="rounded-full border border-neutral-700 bg-black px-4 py-2 text-xs font-semibold text-white hover:border-neutral-500"
+              >
+                Cerrar sesión
+              </button>
+            </div>
           )}
         </div>
 
@@ -275,53 +349,3 @@ export default function UserProfilePage() {
                   ? "Dejar de seguir"
                   : "Seguir"}
               </button>
-            )}
-          </div>
-
-          <div className="mt-4 flex gap-6 text-sm">
-            <div>
-              <div className="text-white font-semibold">
-                {loadingCounts ? "…" : followersCount}
-              </div>
-              <div className="text-xs text-neutral-400">Seguidores</div>
-            </div>
-            <div>
-              <div className="text-white font-semibold">
-                {loadingCounts ? "…" : followingCount}
-              </div>
-              <div className="text-xs text-neutral-400">Siguiendo</div>
-            </div>
-          </div>
-
-          {profile.bio ? (
-            <p className="mt-4 text-sm text-neutral-200 whitespace-pre-line">
-              {profile.bio}
-            </p>
-          ) : (
-            <p className="mt-4 text-sm text-neutral-500">
-              Este usuario aún no ha añadido bio.
-            </p>
-          )}
-        </div>
-
-        <div className="mt-6">
-          <h2 className="text-base font-semibold mb-3">Publicaciones</h2>
-
-          {loadingPosts ? (
-            <p className="text-sm text-neutral-400">Cargando publicaciones…</p>
-          ) : posts.length === 0 ? (
-            <p className="text-sm text-neutral-500">
-              Este usuario todavía no tiene publicaciones.
-            </p>
-          ) : (
-            <div className="space-y-4">
-              {posts.map((p) => (
-                <PostCard key={p.id} post={p} authorName={displayName} />
-              ))}
-            </div>
-          )}
-        </div>
-      </section>
-    </main>
-  );
-}
