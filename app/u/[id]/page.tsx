@@ -15,12 +15,14 @@ type ProfileRow = {
 export default function UserProfilePage() {
   const params = useParams();
 
-  const profileId = useMemo(() => {
+  const profileIdFromUrl = useMemo(() => {
     const raw = (params as any)?.id;
-    return Array.isArray(raw) ? raw[0] : raw;
+    const val = Array.isArray(raw) ? raw[0] : raw;
+    return typeof val === "string" ? val : "";
   }, [params]);
 
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [authChecked, setAuthChecked] = useState(false);
 
   const [profile, setProfile] = useState<ProfileRow | null>(null);
   const [loadingProfile, setLoadingProfile] = useState(true);
@@ -41,8 +43,14 @@ export default function UserProfilePage() {
   const [editBio, setEditBio] = useState("");
   const [savingProfile, setSavingProfile] = useState(false);
 
-  const isMine = Boolean(currentUserId && profileId && currentUserId === profileId);
   const displayName = profile?.full_name ?? "Usuario Ethiqia";
+
+  // Comparación robusta: contra profile.id (no solo la URL)
+  const isMine = useMemo(() => {
+    const me = (currentUserId ?? "").trim().toLowerCase();
+    const pid = (profile?.id ?? "").trim().toLowerCase();
+    return Boolean(me && pid && me === pid);
+  }, [currentUserId, profile?.id]);
 
   useEffect(() => {
     const loadAuth = async () => {
@@ -50,12 +58,16 @@ export default function UserProfilePage() {
         const {
           data: { user },
         } = await supabaseBrowser.auth.getUser();
+
         setCurrentUserId(user?.id ?? null);
       } catch (e) {
         console.error("Error auth:", e);
         setCurrentUserId(null);
+      } finally {
+        setAuthChecked(true);
       }
     };
+
     loadAuth();
   }, []);
 
@@ -72,7 +84,6 @@ export default function UserProfilePage() {
   const loadCounts = async (targetId: string) => {
     setLoadingCounts(true);
     try {
-      // Seguidores = gente que sigue a targetId
       const { count: followers, error: e1 } = await supabaseBrowser
         .from("follows")
         .select("id", { count: "exact", head: true })
@@ -80,7 +91,6 @@ export default function UserProfilePage() {
 
       if (e1) console.error("Error followersCount:", e1);
 
-      // Siguiendo = a quién sigue targetId
       const { count: following, error: e2 } = await supabaseBrowser
         .from("follows")
         .select("id", { count: "exact", head: true })
@@ -155,30 +165,30 @@ export default function UserProfilePage() {
 
   useEffect(() => {
     const run = async () => {
-      if (!profileId) return;
+      if (!profileIdFromUrl) return;
 
-      await loadProfile(profileId);
-      await loadCounts(profileId);
+      await loadProfile(profileIdFromUrl);
+      await loadCounts(profileIdFromUrl);
 
-      if (currentUserId && currentUserId !== profileId) {
-        await loadIsFollowing(currentUserId, profileId);
+      if (currentUserId && currentUserId !== profileIdFromUrl) {
+        await loadIsFollowing(currentUserId, profileIdFromUrl);
       } else {
         setIsFollowing(false);
       }
 
-      await loadPostsForProfile(profileId);
+      await loadPostsForProfile(profileIdFromUrl);
     };
 
     run();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [profileId, currentUserId]);
+  }, [profileIdFromUrl, currentUserId]);
 
   const handleToggleFollow = async () => {
     if (!currentUserId) {
       alert("Debes iniciar sesión para seguir.");
       return;
     }
-    if (!profileId || currentUserId === profileId) return;
+    if (!profileIdFromUrl || currentUserId === profileIdFromUrl) return;
 
     if (togglingFollow) return;
     setTogglingFollow(true);
@@ -189,7 +199,7 @@ export default function UserProfilePage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           followerId: currentUserId,
-          followingId: profileId,
+          followingId: profileIdFromUrl,
         }),
       });
 
@@ -204,7 +214,7 @@ export default function UserProfilePage() {
       const next = Boolean(json?.following);
       setIsFollowing(next);
 
-      await loadCounts(profileId);
+      await loadCounts(profileIdFromUrl);
     } catch (e) {
       console.error("Error toggle follow:", e);
       alert("Error de red al seguir/dejar de seguir.");
@@ -271,7 +281,7 @@ export default function UserProfilePage() {
     );
   }
 
-  if (!profileId) {
+  if (!profileIdFromUrl) {
     return (
       <main className="min-h-screen bg-black text-white flex items-center justify-center">
         <p className="text-sm text-red-400">Perfil inválido.</p>
@@ -298,7 +308,7 @@ export default function UserProfilePage() {
             ← Volver al feed
           </Link>
 
-          {isMine && (
+          {authChecked && isMine && (
             <div className="flex items-center gap-2">
               <button
                 type="button"
