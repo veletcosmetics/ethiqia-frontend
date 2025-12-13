@@ -4,6 +4,7 @@ import React, { useEffect, useState, FormEvent } from "react";
 import PostCard, { Post } from "@/components/PostCard";
 import { supabaseBrowser } from "@/lib/supabaseBrowserClient";
 import type { User } from "@supabase/supabase-js";
+import Link from "next/link";
 
 type NewPostState = {
   caption: string;
@@ -88,15 +89,6 @@ export default function FeedPage() {
     setNewPost((prev) => ({ ...prev, caption: value }));
   };
 
-  const handleLogout = async () => {
-    try {
-      await supabaseBrowser.auth.signOut();
-      window.location.href = "/login";
-    } catch (err) {
-      console.error("Error cerrando sesión:", err);
-    }
-  };
-
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setMessage(null);
@@ -129,8 +121,6 @@ export default function FeedPage() {
       }
 
       const uploadJson = await uploadRes.json();
-
-      // Tu backend devuelve { url, path } — usamos url
       const imageUrl = (uploadJson.url ??
         uploadJson.publicUrl) as string | undefined;
 
@@ -167,7 +157,7 @@ export default function FeedPage() {
         Math.min(100, Math.round(100 - aiProbability))
       );
 
-      // 3) Guardar post REAL en /api/posts (incluyendo imageUrl)
+      // 3) Guardar post REAL en /api/posts
       const bodyToSend = {
         userId: currentUser.id,
         imageUrl,
@@ -234,13 +224,14 @@ export default function FeedPage() {
         <div className="flex items-center justify-between mb-2">
           <h1 className="text-3xl font-semibold">Feed Ethiqia</h1>
 
-          <button
-            type="button"
-            onClick={handleLogout}
-            className="rounded-full border border-neutral-700 bg-black px-4 py-2 text-xs font-semibold text-white hover:border-neutral-500"
-          >
-            Cerrar sesión
-          </button>
+          {currentUser?.id && (
+            <Link
+              href={`/u/${currentUser.id}`}
+              className="rounded-full border border-neutral-700 bg-black px-4 py-2 text-xs font-semibold text-white hover:border-neutral-500"
+            >
+              Mi perfil
+            </Link>
+          )}
         </div>
 
         <p className="text-gray-400 mb-6">
