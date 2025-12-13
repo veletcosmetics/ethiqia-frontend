@@ -22,7 +22,8 @@ export default function FeedPage() {
   const [message, setMessage] = useState<string | null>(null);
 
   const [currentUser, setCurrentUser] = useState<User | null>(null);
-  const [currentUserName, setCurrentUserName] = useState<string>("Usuario Ethiqia");
+  const [currentUserName, setCurrentUserName] =
+    useState<string>("Usuario Ethiqia");
   const [authChecked, setAuthChecked] = useState(false);
 
   // 1) Cargar usuario actual + perfil (full_name en profiles)
@@ -87,6 +88,15 @@ export default function FeedPage() {
     setNewPost((prev) => ({ ...prev, caption: value }));
   };
 
+  const handleLogout = async () => {
+    try {
+      await supabaseBrowser.auth.signOut();
+      window.location.href = "/login";
+    } catch (err) {
+      console.error("Error cerrando sesión:", err);
+    }
+  };
+
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setMessage(null);
@@ -122,7 +132,8 @@ export default function FeedPage() {
       console.log("Respuesta de /api/upload:", uploadJson);
 
       // Tu backend devuelve { url, path } — usamos url
-      const imageUrl = (uploadJson.url ?? uploadJson.publicUrl) as string | undefined;
+      const imageUrl = (uploadJson.url ??
+        uploadJson.publicUrl) as string | undefined;
 
       if (!imageUrl) {
         throw new Error("No se ha recibido la URL pública de la imagen");
@@ -139,7 +150,10 @@ export default function FeedPage() {
       });
 
       if (!moderationRes.ok) {
-        console.error("Error en /api/moderate-post:", await moderationRes.text());
+        console.error(
+          "Error en /api/moderate-post:",
+          await moderationRes.text()
+        );
         throw new Error("Error moderando el contenido");
       }
 
@@ -221,11 +235,22 @@ export default function FeedPage() {
   return (
     <main className="min-h-screen bg-black text-white">
       <section className="max-w-3xl mx-auto px-4 py-8">
-        <h1 className="text-3xl font-semibold mb-2">Feed Ethiqia</h1>
+        <div className="flex items-center justify-between mb-2">
+          <h1 className="text-3xl font-semibold">Feed Ethiqia</h1>
+
+          <button
+            type="button"
+            onClick={handleLogout}
+            className="rounded-full border border-neutral-700 bg-black px-4 py-2 text-xs font-semibold text-white hover:border-neutral-500"
+          >
+            Cerrar sesión
+          </button>
+        </div>
+
         <p className="text-gray-400 mb-6">
           Sube contenido auténtico. Cada publicación se analiza con IA para
-          estimar la probabilidad de que la imagen sea generada por IA y
-          calcular tu Ethiqia Score.
+          estimar la probabilidad de que la imagen sea generada por IA y calcular
+          tu Ethiqia Score.
         </p>
 
         {/* Formulario de nueva publicación */}
@@ -283,13 +308,7 @@ export default function FeedPage() {
               currentUser && post.user_id && post.user_id === currentUser.id;
             const authorName = isMine ? currentUserName : "Usuario Ethiqia";
 
-            return (
-              <PostCard
-                key={post.id}
-                post={post}
-                authorName={authorName}
-              />
-            );
+            return <PostCard key={post.id} post={post} authorName={authorName} />;
           })}
         </div>
       </section>
