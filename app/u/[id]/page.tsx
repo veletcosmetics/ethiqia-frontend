@@ -2,6 +2,7 @@
 
 import React, { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
+import Link from "next/link";
 import { supabaseBrowser } from "@/lib/supabaseBrowserClient";
 import PostCard, { Post } from "@/components/PostCard";
 
@@ -34,7 +35,7 @@ export default function UserProfilePage() {
   const [loadingPosts, setLoadingPosts] = useState(false);
 
   const displayName = profile?.full_name ?? "Usuario Ethiqia";
-  const isMine = currentUserId && profileId && currentUserId === profileId;
+  const isMine = Boolean(currentUserId && profileId && currentUserId === profileId);
 
   useEffect(() => {
     const loadAuth = async () => {
@@ -50,6 +51,16 @@ export default function UserProfilePage() {
     };
     loadAuth();
   }, []);
+
+  const handleLogout = async () => {
+    try {
+      await supabaseBrowser.auth.signOut();
+      window.location.href = "/login";
+    } catch (err) {
+      console.error("Error cerrando sesión:", err);
+      alert("No se ha podido cerrar sesión.");
+    }
+  };
 
   const loadCounts = async (targetId: string) => {
     setLoadingCounts(true);
@@ -214,6 +225,25 @@ export default function UserProfilePage() {
   return (
     <main className="min-h-screen bg-black text-white">
       <section className="max-w-3xl mx-auto px-4 py-8">
+        <div className="flex items-center justify-between mb-4">
+          <Link
+            href="/feed"
+            className="text-xs text-neutral-300 hover:text-emerald-400 transition-colors"
+          >
+            ← Volver al feed
+          </Link>
+
+          {isMine && (
+            <button
+              type="button"
+              onClick={handleLogout}
+              className="rounded-full border border-neutral-700 bg-black px-4 py-2 text-xs font-semibold text-white hover:border-neutral-500"
+            >
+              Cerrar sesión
+            </button>
+          )}
+        </div>
+
         <div className="bg-neutral-900 border border-neutral-800 rounded-2xl p-5">
           <div className="flex items-start justify-between gap-4">
             <div className="flex items-center gap-3">
