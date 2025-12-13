@@ -14,6 +14,7 @@ type ProfileRow = {
 
 export default function UserProfilePage() {
   const params = useParams();
+
   const profileId = useMemo(() => {
     const raw = (params as any)?.id;
     return Array.isArray(raw) ? raw[0] : raw;
@@ -71,7 +72,7 @@ export default function UserProfilePage() {
   const loadCounts = async (targetId: string) => {
     setLoadingCounts(true);
     try {
-      // Seguidores: personas que siguen a targetId
+      // Seguidores = gente que sigue a targetId
       const { count: followers, error: e1 } = await supabaseBrowser
         .from("follows")
         .select("id", { count: "exact", head: true })
@@ -79,7 +80,7 @@ export default function UserProfilePage() {
 
       if (e1) console.error("Error followersCount:", e1);
 
-      // Siguiendo: personas a las que targetId sigue
+      // Siguiendo = a quién sigue targetId
       const { count: following, error: e2 } = await supabaseBrowser
         .from("follows")
         .select("id", { count: "exact", head: true })
@@ -115,6 +116,27 @@ export default function UserProfilePage() {
     }
   };
 
+  const loadProfile = async (targetId: string) => {
+    setLoadingProfile(true);
+    try {
+      const { data, error } = await supabaseBrowser
+        .from("profiles")
+        .select("id, full_name, bio")
+        .eq("id", targetId)
+        .maybeSingle();
+
+      if (error) {
+        console.error("Error cargando profile:", error);
+        setProfile(null);
+        return;
+      }
+
+      setProfile((data as ProfileRow) ?? null);
+    } finally {
+      setLoadingProfile(false);
+    }
+  };
+
   const loadPostsForProfile = async (targetId: string) => {
     setLoadingPosts(true);
     try {
@@ -128,26 +150,6 @@ export default function UserProfilePage() {
       setPosts([]);
     } finally {
       setLoadingPosts(false);
-    }
-  };
-
-  const loadProfile = async (targetId: string) => {
-    setLoadingProfile(true);
-    try {
-      const { data, error } = await supabaseBrowser
-        .from("profiles")
-        .select("id, full_name, bio")
-        .eq("id", targetId)
-        .maybeSingle();
-
-      if (error) {
-        console.error("Error cargando profile:", error);
-        setProfile(null);
-      } else {
-        setProfile((data as ProfileRow) ?? null);
-      }
-    } finally {
-      setLoadingProfile(false);
     }
   };
 
@@ -202,7 +204,6 @@ export default function UserProfilePage() {
       const next = Boolean(json?.following);
       setIsFollowing(next);
 
-      // Re-sincroniza contadores del perfil visitado
       await loadCounts(profileId);
     } catch (e) {
       console.error("Error toggle follow:", e);
@@ -349,3 +350,117 @@ export default function UserProfilePage() {
                   ? "Dejar de seguir"
                   : "Seguir"}
               </button>
+            )}
+          </div>
+
+          <div className="mt-4 flex gap-6 text-sm">
+            <div>
+              <div className="text-white font-semibold">
+                {loadingCounts ? "…" : followersCount}
+              </div>
+              <div className="text-xs text-neutral-400">Seguidores</div>
+            </div>
+            <div>
+              <div className="text-white font-semibold">
+                {loadingCounts ? "…" : followingCount}
+              </div>
+              <div className="text-xs text-neutral-400">Siguiendo</div>
+            </div>
+          </div>
+
+          {profile.bio ? (
+            <p className="mt-4 text-sm text-neutral-200 whitespace-pre-line">
+              {profile.bio}
+            </p>
+          ) : (
+            <p className="mt-4 text-sm text-neutral-500">
+              Este usuario aún no ha añadido bio.
+            </p>
+          )}
+        </div>
+
+        {isMine && isEditing && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4">
+            <div className="w-full max-w-lg rounded-2xl border border-neutral-800 bg-neutral-950 p-5">
+              <div className="flex items-center justify-between">
+                <h3 className="text-sm font-semibold">Editar perfil</h3>
+                <button
+                  type="button"
+                  onClick={handleCancelEdit}
+                  className="text-xs text-neutral-400 hover:text-neutral-200"
+                >
+                  Cerrar
+                </button>
+              </div>
+
+              <div className="mt-4 space-y-3">
+                <div>
+                  <label className="block text-xs text-neutral-400 mb-1">
+                    Nombre
+                  </label>
+                  <input
+                    value={editFullName}
+                    onChange={(e) => setEditFullName(e.target.value)}
+                    placeholder="Tu nombre visible"
+                    className="w-full rounded-lg bg-black border border-neutral-700 px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs text-neutral-400 mb-1">
+                    Bio
+                  </label>
+                  <textarea
+                    value={editBio}
+                    onChange={(e) => setEditBio(e.target.value)}
+                    rows={4}
+                    placeholder="Cuéntanos quién eres…"
+                    className="w-full rounded-lg bg-black border border-neutral-700 px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                  />
+                </div>
+
+                <div className="flex items-center justify-end gap-2 pt-2">
+                  <button
+                    type="button"
+                    onClick={handleCancelEdit}
+                    disabled={savingProfile}
+                    className="rounded-full border border-neutral-700 bg-black px-4 py-2 text-xs font-semibold text-white hover:border-neutral-500 disabled:opacity-60"
+                  >
+                    Cancelar
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleSaveProfile}
+                    disabled={savingProfile}
+                    className="rounded-full bg-emerald-500 hover:bg-emerald-600 px-4 py-2 text-xs font-semibold text-black disabled:opacity-60"
+                  >
+                    {savingProfile ? "Guardando…" : "Guardar"}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        <div className="mt-6">
+          <h2 className="text-base font-semibold mb-3">Publicaciones</h2>
+
+          {loadingPosts ? (
+            <p className="text-sm text-neutral-400">Cargando publicaciones…</p>
+          ) : posts.length === 0 ? (
+            <p className="text-sm text-neutral-500">
+              Este usuario todavía no tiene publicaciones.
+            </p>
+          ) : (
+            <div className="space-y-4">
+              {posts.map((p) => (
+                <PostCard key={p.id} post={p} authorName={displayName} />
+              ))}
+            </div>
+          )}
+        </div>
+      </section>
+    </main>
+  );
+}
