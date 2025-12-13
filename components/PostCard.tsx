@@ -39,6 +39,13 @@ export default function PostCard({ post, authorName }: Props) {
   const [loadingComments, setLoadingComments] = useState(false);
   const [sendingComment, setSendingComment] = useState(false);
 
+  // Likes
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [likeCount, setLikeCount] = useState<number>(0);
+  const [likedByMe, setLikedByMe] = useState<boolean>(false);
+  const [loadingLikes, setLoadingLikes] = useState<boolean>(false);
+  const [togglingLike, setTogglingLike] = useState<boolean>(false);
+
   // ---------- Utilidades ----------
 
   const createdAt = post.created_at ? new Date(post.created_at) : new Date();
@@ -64,6 +71,115 @@ export default function PostCard({ post, authorName }: Props) {
     aiLabel = "Prob. IA: media";
     aiColor = "bg-yellow-500";
   }
+
+  // ---------- Likes ----------
+
+  useEffect(() => {
+    const loadUser = async () => {
+      try {
+        const {
+          data: { user },
+        } = await supabase.auth.getUser();
+        setCurrentUserId(user?.id ?? null);
+      } catch (err) {
+        console.error("Error obteniendo usuario (likes):", err);
+        setCurrentUserId(null);
+      }
+    };
+
+    loadUser();
+  }, []);
+
+  const fetchLikes = async (userId: string | null) => {
+    setLoadingLikes(true);
+    try {
+      // 1) Count total likes del post
+      const { count, error: countErr } = await supabase
+        .from("post_likes")
+        .select("id", { count: "exact", head: true })
+        .eq("post_id", post.id);
+
+      if (countErr) {
+        console.error("Error cargando contador de likes:", countErr);
+      } else {
+        setLikeCount(count ?? 0);
+      }
+
+      // 2) Saber si el usuario actual ya dio like
+      if (userId) {
+        const { data: mine, error: mineErr } = await supabase
+          .from("post_likes")
+          .select("id")
+          .eq("post_id", post.id)
+          .eq("user_id", userId)
+          .maybeSingle();
+
+        if (mineErr) {
+          console.error("Error comprobando like del usuario:", mineErr);
+          setLikedByMe(false);
+        } else {
+          setLikedByMe(Boolean(mine?.id));
+        }
+      } else {
+        setLikedByMe(false);
+      }
+    } finally {
+      setLoadingLikes(false);
+    }
+  };
+
+  // Cargar likes cuando ya sabemos usuario o cambia el post
+  useEffect(() => {
+    fetchLikes(currentUserId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentUserId, post.id]);
+
+  const handleToggleLike = async () => {
+    if (!currentUserId) {
+      alert("Debes iniciar sesión para dar Me gusta.");
+      return;
+    }
+
+    if (togglingLike) return;
+    setTogglingLike(true);
+
+    try {
+      const prevLiked = likedByMe;
+
+      const res = await fetch("/api/likes", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          postId: post.id,
+          userId: currentUserId,
+        }),
+      });
+
+      const json = await res.json();
+
+      if (!res.ok) {
+        console.error("Error en /api/likes:", json);
+        alert("No se ha podido actualizar el Me gusta.");
+        return;
+      }
+
+      const nextLiked = Boolean(json?.liked);
+
+      setLikedByMe(nextLiked);
+
+      // Ajuste del contador según cambio real
+      if (!prevLiked && nextLiked) {
+        setLikeCount((c) => c + 1);
+      } else if (prevLiked && !nextLiked) {
+        setLikeCount((c) => Math.max(0, c - 1));
+      }
+    } catch (err) {
+      console.error("Error toggle like:", err);
+      alert("Error de red al actualizar Me gusta.");
+    } finally {
+      setTogglingLike(false);
+    }
+  };
 
   // ---------- Comentarios ----------
 
@@ -206,6 +322,21 @@ export default function PostCard({ post, authorName }: Props) {
 
       {/* Botones de interacción */}
       <div className="mt-4 flex items-center gap-4 text-xs text-neutral-400">
+        <button
+          type="button"
+          onClick={handleToggleLike}
+          disabled={loadingLikes || togglingLike}
+          className={`flex items-center gap-1 transition-colors ${
+            likedByMe ? "text-emerald-400" : "hover:text-emerald-400"
+          } disabled:opacity-60`}
+          title={likedByMe ? "Quitar Me gusta" : "Dar Me gusta"}
+        >
+          <span>{likedByMe ? "❤️" : "🤍"}</span>
+          <span>
+            Me gusta{likeCount > 0 ? ` (${likeCount})` : ""}
+          </span>
+        </button>
+
         <button
           type="button"
           onClick={handleToggleComments}
