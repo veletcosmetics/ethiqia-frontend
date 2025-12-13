@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState } from "react";
 import Image from "next/image";
+import Link from "next/link";
 import { supabaseBrowser } from "@/lib/supabaseBrowserClient";
 
 export type Post = {
@@ -93,7 +94,7 @@ export default function PostCard({ post, authorName }: Props) {
   const fetchLikes = async (userId: string | null) => {
     setLoadingLikes(true);
     try {
-      // 1) Count total likes del post
+      // Count total likes del post
       const { count, error: countErr } = await supabase
         .from("post_likes")
         .select("id", { count: "exact", head: true })
@@ -105,7 +106,7 @@ export default function PostCard({ post, authorName }: Props) {
         setLikeCount(count ?? 0);
       }
 
-      // 2) Saber si el usuario actual ya dio like
+      // Saber si el usuario actual ya dio like
       if (userId) {
         const { data: mine, error: mineErr } = await supabase
           .from("post_likes")
@@ -128,7 +129,6 @@ export default function PostCard({ post, authorName }: Props) {
     }
   };
 
-  // Cargar likes cuando ya sabemos usuario o cambia el post
   useEffect(() => {
     fetchLikes(currentUserId);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -164,7 +164,7 @@ export default function PostCard({ post, authorName }: Props) {
       const nextLiked = Boolean(json?.liked);
       setLikedByMe(nextLiked);
 
-      // Re-sincroniza desde la base de datos (evita desajustes)
+      // Re-sincroniza desde BD
       await fetchLikes(currentUserId);
     } catch (err) {
       console.error("Error toggle like:", err);
@@ -259,11 +259,22 @@ export default function PostCard({ post, authorName }: Props) {
       {/* Cabecera */}
       <header className="flex justify-between items-start gap-3">
         <div className="flex items-center gap-3">
-          <div className="h-10 w-10 rounded-full bg-emerald-600 flex items-center justify-center text-sm font-semibold">
+          <Link
+            href={`/u/${post.user_id}`}
+            className="h-10 w-10 rounded-full bg-emerald-600 flex items-center justify-center text-sm font-semibold"
+            title="Ver perfil"
+          >
             {authorName?.[0]?.toUpperCase() ?? "U"}
-          </div>
+          </Link>
+
           <div>
-            <div className="text-sm font-semibold">{authorName}</div>
+            <Link
+              href={`/u/${post.user_id}`}
+              className="text-sm font-semibold hover:text-emerald-400 transition-colors"
+              title="Ver perfil"
+            >
+              {authorName}
+            </Link>
             <div className="text-xs text-neutral-400">{formattedDate}</div>
           </div>
         </div>
