@@ -144,8 +144,6 @@ export default function PostCard({ post, authorName }: Props) {
     setTogglingLike(true);
 
     try {
-      const prevLiked = likedByMe;
-
       const res = await fetch("/api/likes", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -164,15 +162,10 @@ export default function PostCard({ post, authorName }: Props) {
       }
 
       const nextLiked = Boolean(json?.liked);
-
       setLikedByMe(nextLiked);
 
-      // Ajuste del contador según cambio real
-      if (!prevLiked && nextLiked) {
-        setLikeCount((c) => c + 1);
-      } else if (prevLiked && !nextLiked) {
-        setLikeCount((c) => Math.max(0, c - 1));
-      }
+      // Re-sincroniza desde la base de datos (evita desajustes)
+      await fetchLikes(currentUserId);
     } catch (err) {
       console.error("Error toggle like:", err);
       alert("Error de red al actualizar Me gusta.");
@@ -332,9 +325,7 @@ export default function PostCard({ post, authorName }: Props) {
           title={likedByMe ? "Quitar Me gusta" : "Dar Me gusta"}
         >
           <span>{likedByMe ? "❤️" : "🤍"}</span>
-          <span>
-            Me gusta{likeCount > 0 ? ` (${likeCount})` : ""}
-          </span>
+          <span>Me gusta{likeCount > 0 ? ` (${likeCount})` : ""}</span>
         </button>
 
         <button
@@ -353,9 +344,7 @@ export default function PostCard({ post, authorName }: Props) {
       {showComments && (
         <div className="mt-4 border-t border-neutral-800 pt-3 space-y-3">
           {loadingComments ? (
-            <p className="text-xs text-neutral-400">
-              Cargando comentarios...
-            </p>
+            <p className="text-xs text-neutral-400">Cargando comentarios...</p>
           ) : comments.length === 0 ? (
             <p className="text-xs text-neutral-500">
               Todavía no hay comentarios. Sé el primero en comentar.
@@ -391,9 +380,7 @@ export default function PostCard({ post, authorName }: Props) {
                         </span>
                       )}
                     </div>
-                    <p className="mt-1 text-neutral-100">
-                      {comment.content}
-                    </p>
+                    <p className="mt-1 text-neutral-100">{comment.content}</p>
                   </li>
                 );
               })}
