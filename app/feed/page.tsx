@@ -26,11 +26,6 @@ export default function FeedPage() {
     useState<string>("Usuario Ethiqia");
   const [authChecked, setAuthChecked] = useState(false);
 
-  // Contadores follow
-  const [followersCount, setFollowersCount] = useState<number>(0);
-  const [followingCount, setFollowingCount] = useState<number>(0);
-  const [loadingCounts, setLoadingCounts] = useState<boolean>(false);
-
   // 1) Cargar usuario actual + perfil (full_name en profiles)
   useEffect(() => {
     const initAuthAndProfile = async () => {
@@ -82,37 +77,6 @@ export default function FeedPage() {
 
     loadPosts();
   }, []);
-
-  // 3) Cargar contadores de followers/following del usuario actual
-  useEffect(() => {
-    const loadCounts = async () => {
-      if (!currentUser?.id) return;
-
-      setLoadingCounts(true);
-      try {
-        const { count: followers, error: e1 } = await supabaseBrowser
-          .from("follows")
-          .select("id", { count: "exact", head: true })
-          .eq("following_id", currentUser.id);
-
-        if (e1) console.error("Error followersCount:", e1);
-
-        const { count: following, error: e2 } = await supabaseBrowser
-          .from("follows")
-          .select("id", { count: "exact", head: true })
-          .eq("follower_id", currentUser.id);
-
-        if (e2) console.error("Error followingCount:", e2);
-
-        setFollowersCount(followers ?? 0);
-        setFollowingCount(following ?? 0);
-      } finally {
-        setLoadingCounts(false);
-      }
-    };
-
-    loadCounts();
-  }, [currentUser?.id]);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0] ?? null;
@@ -166,6 +130,7 @@ export default function FeedPage() {
 
       const uploadJson = await uploadRes.json();
 
+      // Tu backend devuelve { url, path } — usamos url
       const imageUrl = (uploadJson.url ??
         uploadJson.publicUrl) as string | undefined;
 
@@ -202,7 +167,7 @@ export default function FeedPage() {
         Math.min(100, Math.round(100 - aiProbability))
       );
 
-      // 3) Guardar post REAL en /api/posts
+      // 3) Guardar post REAL en /api/posts (incluyendo imageUrl)
       const bodyToSend = {
         userId: currentUser.id,
         imageUrl,
@@ -266,38 +231,16 @@ export default function FeedPage() {
   return (
     <main className="min-h-screen bg-black text-white">
       <section className="max-w-3xl mx-auto px-4 py-8">
-        <div className="flex items-start justify-between gap-4 mb-2">
-          <div>
-            <h1 className="text-3xl font-semibold">Feed Ethiqia</h1>
-            <div className="mt-1 text-xs text-neutral-400">
-              Hola, <span className="text-neutral-200">{currentUserName}</span>
-            </div>
-          </div>
+        <div className="flex items-center justify-between mb-2">
+          <h1 className="text-3xl font-semibold">Feed Ethiqia</h1>
 
-          <div className="flex items-center gap-3">
-            <div className="hidden sm:flex items-center gap-4 text-xs">
-              <div className="text-right">
-                <div className="text-neutral-200 font-semibold">
-                  {loadingCounts ? "…" : followersCount}
-                </div>
-                <div className="text-neutral-500">Seguidores</div>
-              </div>
-              <div className="text-right">
-                <div className="text-neutral-200 font-semibold">
-                  {loadingCounts ? "…" : followingCount}
-                </div>
-                <div className="text-neutral-500">Siguiendo</div>
-              </div>
-            </div>
-
-            <button
-              type="button"
-              onClick={handleLogout}
-              className="rounded-full border border-neutral-700 bg-black px-4 py-2 text-xs font-semibold text-white hover:border-neutral-500"
-            >
-              Cerrar sesión
-            </button>
-          </div>
+          <button
+            type="button"
+            onClick={handleLogout}
+            className="rounded-full border border-neutral-700 bg-black px-4 py-2 text-xs font-semibold text-white hover:border-neutral-500"
+          >
+            Cerrar sesión
+          </button>
         </div>
 
         <p className="text-gray-400 mb-6">
