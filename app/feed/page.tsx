@@ -129,7 +129,6 @@ export default function FeedPage() {
       }
 
       const uploadJson = await uploadRes.json();
-      console.log("Respuesta de /api/upload:", uploadJson);
 
       // Tu backend devuelve { url, path } — usamos url
       const imageUrl = (uploadJson.url ??
@@ -158,7 +157,6 @@ export default function FeedPage() {
       }
 
       const moderation = await moderationRes.json();
-      console.log("Respuesta moderación:", moderation);
 
       const aiProbability = moderation.aiProbability ?? 0;
       const blocked = moderation.blocked ?? false;
@@ -169,10 +167,10 @@ export default function FeedPage() {
         Math.min(100, Math.round(100 - aiProbability))
       );
 
-      // 3) Guardar post REAL en /api/posts (incluyendo imageUrl)
+      // 3) Guardar post REAL en /api/posts
       const bodyToSend = {
         userId: currentUser.id,
-        imageUrl, // ← CLAVE: URL pública de la imagen
+        imageUrl,
         caption: newPost.caption,
         aiProbability,
         globalScore,
@@ -180,8 +178,6 @@ export default function FeedPage() {
         blocked,
         reason,
       };
-
-      console.log("Enviando a /api/posts:", bodyToSend);
 
       const saveRes = await fetch("/api/posts", {
         method: "POST",
@@ -212,7 +208,6 @@ export default function FeedPage() {
     }
   };
 
-  // Si ya hemos comprobado auth y no hay usuario, mensaje claro
   if (authChecked && !currentUser) {
     return (
       <main className="min-h-screen bg-black text-white flex items-center justify-center">
@@ -249,11 +244,10 @@ export default function FeedPage() {
 
         <p className="text-gray-400 mb-6">
           Sube contenido auténtico. Cada publicación se analiza con IA para
-          estimar la probabilidad de que la imagen sea generada por IA y calcular
-          tu Ethiqia Score.
+          estimar la probabilidad de que la imagen sea generada por IA y
+          calcular tu Ethiqia Score.
         </p>
 
-        {/* Formulario de nueva publicación */}
         <form
           onSubmit={handleSubmit}
           className="bg-neutral-900 rounded-xl p-6 mb-8 space-y-4"
@@ -306,7 +300,10 @@ export default function FeedPage() {
           {posts.map((post) => {
             const isMine =
               currentUser && post.user_id && post.user_id === currentUser.id;
-            const authorName = isMine ? currentUserName : "Usuario Ethiqia";
+
+            const authorName = isMine
+              ? currentUserName
+              : ((post as any).author_name ?? "Usuario Ethiqia");
 
             return <PostCard key={post.id} post={post} authorName={authorName} />;
           })}
