@@ -11,6 +11,11 @@ type ProfileRow = {
   bio: string | null;
 };
 
+type FollowUser = {
+  id: string;
+  full_name: string;
+};
+
 export default function ProfilePage() {
   const [authChecked, setAuthChecked] = useState(false);
   const [userId, setUserId] = useState<string | null>(null);
@@ -25,6 +30,11 @@ export default function ProfilePage() {
 
   const [posts, setPosts] = useState<Post[]>([]);
   const [loadingPosts, setLoadingPosts] = useState(false);
+
+  // Modal listas
+  const [listOpen, setListOpen] = useState<null | "followers" | "following">(null);
+  const [listLoading, setListLoading] = useState(false);
+  const [listUsers, setListUsers] = useState<FollowUser[]>([]);
 
   const displayName = useMemo(() => {
     return profile?.full_name?.trim() || userEmail || "Usuario Ethiqia";
@@ -97,6 +107,28 @@ export default function ProfilePage() {
       setFollowingCount(Number(json.following ?? 0));
     } finally {
       setLoadingCounts(false);
+    }
+  };
+
+  const openList = async (kind: "followers" | "following") => {
+    if (!userId) return;
+    setListOpen(kind);
+    setListLoading(true);
+    setListUsers([]);
+
+    try {
+      const res = await fetch(
+        `/api/follow-list?userId=${encodeURIComponent(userId)}&kind=${kind}`
+      );
+      const json = await res.json();
+      if (!res.ok) {
+        console.error("Error follow-list:", json);
+        setListUsers([]);
+        return;
+      }
+      setListUsers((json.users ?? []) as FollowUser[]);
+    } finally {
+      setListLoading(false);
     }
   };
 
@@ -181,19 +213,29 @@ export default function ProfilePage() {
                     <div className="text-xs text-neutral-400">publicaciones</div>
                   </div>
 
-                  <div>
+                  <button
+                    type="button"
+                    onClick={() => openList("followers")}
+                    className="text-left hover:text-emerald-400 transition-colors"
+                    disabled={loadingCounts}
+                  >
                     <div className="text-white font-semibold">
                       {loadingCounts ? "…" : followersCount}
                     </div>
                     <div className="text-xs text-neutral-400">seguidores</div>
-                  </div>
+                  </button>
 
-                  <div>
+                  <button
+                    type="button"
+                    onClick={() => openList("following")}
+                    className="text-left hover:text-emerald-400 transition-colors"
+                    disabled={loadingCounts}
+                  >
                     <div className="text-white font-semibold">
                       {loadingCounts ? "…" : followingCount}
                     </div>
                     <div className="text-xs text-neutral-400">siguiendo</div>
-                  </div>
+                  </button>
                 </div>
               </div>
             </div>
@@ -228,6 +270,50 @@ export default function ProfilePage() {
           )}
         </div>
       </section>
+
+      {/* Modal listas */}
+      {listOpen && (
+        <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center px-4">
+          <div className="w-full max-w-md rounded-2xl border border-neutral-800 bg-neutral-950 p-5">
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-semibold">
+                {listOpen === "followers" ? "Seguidores" : "Siguiendo"}
+              </h3>
+              <button
+                type="button"
+                onClick={() => setListOpen(null)}
+                className="text-xs text-neutral-400 hover:text-neutral-200"
+              >
+                Cerrar
+              </button>
+            </div>
+
+            <div className="mt-4">
+              {listLoading ? (
+                <p className="text-sm text-neutral-400">Cargando…</p>
+              ) : listUsers.length === 0 ? (
+                <p className="text-sm text-neutral-500">No hay usuarios todavía.</p>
+              ) : (
+                <ul className="space-y-2">
+                  {listUsers.map((u) => (
+                    <li key={u.id}>
+                      <Link
+                        href={`/u/${u.id}`}
+                        className="block rounded-xl border border-neutral-800 bg-black px-3 py-3 hover:border-neutral-600"
+                      >
+                        <div className="text-sm font-semibold">{u.full_name}</div>
+                        <div className="text-[10px] text-neutral-500 break-all">
+                          {u.id}
+                        </div>
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   );
 }
