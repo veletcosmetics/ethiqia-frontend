@@ -12,17 +12,21 @@ type ProfileRow = {
   bio: string | null;
 };
 
+type FollowUser = {
+  id: string;
+  full_name: string;
+};
+
 export default function UserProfilePage() {
   const params = useParams();
 
-  const profileIdFromUrl = useMemo(() => {
+  const profileId = useMemo(() => {
     const raw = (params as any)?.id;
     const val = Array.isArray(raw) ? raw[0] : raw;
     return typeof val === "string" ? val : "";
   }, [params]);
 
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
-  const [authChecked, setAuthChecked] = useState(false);
 
   const [profile, setProfile] = useState<ProfileRow | null>(null);
   const [loadingProfile, setLoadingProfile] = useState(true);
@@ -37,37 +41,26 @@ export default function UserProfilePage() {
   const [posts, setPosts] = useState<Post[]>([]);
   const [loadingPosts, setLoadingPosts] = useState(false);
 
-  // Edición perfil
-  const [isEditing, setIsEditing] = useState(false);
-  const [editFullName, setEditFullName] = useState("");
-  const [editBio, setEditBio] = useState("");
-  const [savingProfile, setSavingProfile] = useState(false);
+  // Modal listas
+  const [listOpen, setListOpen] = useState<null | "followers" | "following">(null);
+  const [listLoading, setListLoading] = useState(false);
+  const [listUsers, setListUsers] = useState<FollowUser[]>([]);
+
+  const isMine = useMemo(() => {
+    const me = (currentUserId ?? "").toLowerCase();
+    const pid = (profileId ?? "").toLowerCase();
+    return Boolean(me && pid && me === pid);
+  }, [currentUserId, profileId]);
 
   const displayName = profile?.full_name ?? "Usuario Ethiqia";
 
-  // Comparación robusta: contra profile.id (no solo la URL)
-  const isMine = useMemo(() => {
-    const me = (currentUserId ?? "").trim().toLowerCase();
-    const pid = (profile?.id ?? "").trim().toLowerCase();
-    return Boolean(me && pid && me === pid);
-  }, [currentUserId, profile?.id]);
-
   useEffect(() => {
     const loadAuth = async () => {
-      try {
-        const {
-          data: { user },
-        } = await supabaseBrowser.auth.getUser();
-
-        setCurrentUserId(user?.id ?? null);
-      } catch (e) {
-        console.error("Error auth:", e);
-        setCurrentUserId(null);
-      } finally {
-        setAuthChecked(true);
-      }
+      const {
+        data: { user },
+      } = await supabaseBrowser.auth.getUser();
+      setCurrentUserId(user?.id ?? null);
     };
-
     loadAuth();
   }, []);
 
@@ -81,27 +74,44 @@ export default function UserProfilePage() {
     }
   };
 
-  const loadCounts = async (targetId: string) => {
+  const loadCountsServer = async (targetId: string) => {
     setLoadingCounts(true);
     try {
-      const { count: followers, error: e1 } = await supabaseBrowser
-        .from("follows")
-        .select("id", { count: "exact", head: true })
-        .eq("following_id", targetId);
-
-      if (e1) console.error("Error followersCount:", e1);
-
-      const { count: following, error: e2 } = await supabaseBrowser
-        .from("follows")
-        .select("id", { count: "exact", head: true })
-        .eq("follower_id", targetId);
-
-      if (e2) console.error("Error followingCount:", e2);
-
-      setFollowersCount(followers ?? 0);
-      setFollowingCount(following ?? 0);
+      const res = await fetch(`/api/follow-stats?userId=${encodeURIComponent(targetId)}`);
+      const json = await res.json();
+      if (!res.ok) {
+        console.error("Error follow-stats:", json);
+        setFollowersCount(0);
+        setFollowingCount(0);
+        return;
+      }
+      setFollowersCount(Number(json.followers ?? 0));
+      setFollowingCount(Number(json.following ?? 0));
     } finally {
       setLoadingCounts(false);
+    }
+  };
+
+  const openList = async (kind: "followers" | "following") => {
+    if (!profileId) return;
+
+    setListOpen(kind);
+    setListLoading(true);
+    setListUsers([]);
+
+    try {
+      const res = await fetch(
+        `/api/follow-list?userId=${encodeURIComponent(profileId)}&kind=${kind}`
+      );
+      const json = await res.json();
+      if (!res.ok) {
+        console.error("Error follow-list:", json);
+        setListUsers([]);
+        return;
+      }
+      setListUsers((json.users ?? []) as FollowUser[]);
+    } finally {
+      setListLoading(false);
     }
   };
 
@@ -126,27 +136,6 @@ export default function UserProfilePage() {
     }
   };
 
-  const loadProfile = async (targetId: string) => {
-    setLoadingProfile(true);
-    try {
-      const { data, error } = await supabaseBrowser
-        .from("profiles")
-        .select("id, full_name, bio")
-        .eq("id", targetId)
-        .maybeSingle();
-
-      if (error) {
-        console.error("Error cargando profile:", error);
-        setProfile(null);
-        return;
-      }
-
-      setProfile((data as ProfileRow) ?? null);
-    } finally {
-      setLoadingProfile(false);
-    }
-  };
-
   const loadPostsForProfile = async (targetId: string) => {
     setLoadingPosts(true);
     try {
@@ -163,32 +152,52 @@ export default function UserProfilePage() {
     }
   };
 
+  const loadProfile = async (targetId: string) => {
+    setLoadingProfile(true);
+    try {
+      const { data, error } = await supabaseBrowser
+        .from("profiles")
+        .select("id, full_name, bio")
+        .eq("id", targetId)
+        .maybeSingle();
+
+      if (error) {
+        console.error("Error cargando profile:", error);
+        setProfile(null);
+      } else {
+        setProfile((data as ProfileRow) ?? null);
+      }
+    } finally {
+      setLoadingProfile(false);
+    }
+  };
+
   useEffect(() => {
     const run = async () => {
-      if (!profileIdFromUrl) return;
+      if (!profileId) return;
 
-      await loadProfile(profileIdFromUrl);
-      await loadCounts(profileIdFromUrl);
+      await loadProfile(profileId);
+      await loadCountsServer(profileId);
 
-      if (currentUserId && currentUserId !== profileIdFromUrl) {
-        await loadIsFollowing(currentUserId, profileIdFromUrl);
+      if (currentUserId && currentUserId !== profileId) {
+        await loadIsFollowing(currentUserId, profileId);
       } else {
         setIsFollowing(false);
       }
 
-      await loadPostsForProfile(profileIdFromUrl);
+      await loadPostsForProfile(profileId);
     };
 
     run();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [profileIdFromUrl, currentUserId]);
+  }, [profileId, currentUserId]);
 
   const handleToggleFollow = async () => {
     if (!currentUserId) {
       alert("Debes iniciar sesión para seguir.");
       return;
     }
-    if (!profileIdFromUrl || currentUserId === profileIdFromUrl) return;
+    if (!profileId || currentUserId === profileId) return;
 
     if (togglingFollow) return;
     setTogglingFollow(true);
@@ -199,7 +208,7 @@ export default function UserProfilePage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           followerId: currentUserId,
-          followingId: profileIdFromUrl,
+          followingId: profileId,
         }),
       });
 
@@ -211,65 +220,13 @@ export default function UserProfilePage() {
         return;
       }
 
-      const next = Boolean(json?.following);
-      setIsFollowing(next);
-
-      await loadCounts(profileIdFromUrl);
+      setIsFollowing(Boolean(json?.following));
+      await loadCountsServer(profileId);
     } catch (e) {
       console.error("Error toggle follow:", e);
       alert("Error de red al seguir/dejar de seguir.");
     } finally {
       setTogglingFollow(false);
-    }
-  };
-
-  const handleStartEdit = () => {
-    if (!profile) return;
-    setEditFullName(profile.full_name ?? "");
-    setEditBio(profile.bio ?? "");
-    setIsEditing(true);
-  };
-
-  const handleCancelEdit = () => {
-    setIsEditing(false);
-    setSavingProfile(false);
-  };
-
-  const handleSaveProfile = async () => {
-    if (!isMine || !currentUserId) return;
-
-    const fullName = editFullName.trim();
-    const bio = editBio.trim();
-
-    setSavingProfile(true);
-    try {
-      const { error } = await supabaseBrowser
-        .from("profiles")
-        .update({
-          full_name: fullName.length > 0 ? fullName : null,
-          bio: bio.length > 0 ? bio : null,
-        })
-        .eq("id", currentUserId);
-
-      if (error) {
-        console.error("Error guardando perfil:", error);
-        alert("No se ha podido guardar el perfil.");
-        return;
-      }
-
-      setProfile((prev) =>
-        prev
-          ? {
-              ...prev,
-              full_name: fullName.length > 0 ? fullName : null,
-              bio: bio.length > 0 ? bio : null,
-            }
-          : prev
-      );
-
-      setIsEditing(false);
-    } finally {
-      setSavingProfile(false);
     }
   };
 
@@ -281,7 +238,7 @@ export default function UserProfilePage() {
     );
   }
 
-  if (!profileIdFromUrl) {
+  if (!profileId) {
     return (
       <main className="min-h-screen bg-black text-white flex items-center justify-center">
         <p className="text-sm text-red-400">Perfil inválido.</p>
@@ -308,24 +265,14 @@ export default function UserProfilePage() {
             ← Volver al feed
           </Link>
 
-          {authChecked && isMine && (
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={handleStartEdit}
-                className="rounded-full border border-neutral-700 bg-black px-4 py-2 text-xs font-semibold text-white hover:border-neutral-500"
-              >
-                Editar perfil
-              </button>
-
-              <button
-                type="button"
-                onClick={handleLogout}
-                className="rounded-full border border-neutral-700 bg-black px-4 py-2 text-xs font-semibold text-white hover:border-neutral-500"
-              >
-                Cerrar sesión
-              </button>
-            </div>
+          {isMine && (
+            <button
+              type="button"
+              onClick={handleLogout}
+              className="rounded-full border border-neutral-700 bg-black px-4 py-2 text-xs font-semibold text-white hover:border-neutral-500"
+            >
+              Cerrar sesión
+            </button>
           )}
         </div>
 
@@ -333,13 +280,11 @@ export default function UserProfilePage() {
           <div className="flex items-start justify-between gap-4">
             <div className="flex items-center gap-3">
               <div className="h-12 w-12 rounded-full bg-emerald-600 flex items-center justify-center text-base font-semibold">
-                {displayName?.[0]?.toUpperCase() ?? "U"}
+                {(displayName?.[0]?.toUpperCase() ?? "U")}
               </div>
               <div>
                 <div className="text-lg font-semibold">{displayName}</div>
-                <div className="text-xs text-neutral-400 break-all">
-                  {profile.id}
-                </div>
+                <div className="text-xs text-neutral-400 break-all">{profile.id}</div>
               </div>
             </div>
 
@@ -354,104 +299,39 @@ export default function UserProfilePage() {
                     : "border-emerald-600 bg-emerald-500 text-black hover:bg-emerald-400"
                 }`}
               >
-                {togglingFollow
-                  ? "Procesando…"
-                  : isFollowing
-                  ? "Dejar de seguir"
-                  : "Seguir"}
+                {togglingFollow ? "Procesando…" : isFollowing ? "Dejar de seguir" : "Seguir"}
               </button>
             )}
           </div>
 
           <div className="mt-4 flex gap-6 text-sm">
-            <div>
-              <div className="text-white font-semibold">
-                {loadingCounts ? "…" : followersCount}
-              </div>
+            <button
+              type="button"
+              onClick={() => openList("followers")}
+              className="text-left hover:text-emerald-400 transition-colors"
+              disabled={loadingCounts}
+            >
+              <div className="text-white font-semibold">{loadingCounts ? "…" : followersCount}</div>
               <div className="text-xs text-neutral-400">Seguidores</div>
-            </div>
-            <div>
-              <div className="text-white font-semibold">
-                {loadingCounts ? "…" : followingCount}
-              </div>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => openList("following")}
+              className="text-left hover:text-emerald-400 transition-colors"
+              disabled={loadingCounts}
+            >
+              <div className="text-white font-semibold">{loadingCounts ? "…" : followingCount}</div>
               <div className="text-xs text-neutral-400">Siguiendo</div>
-            </div>
+            </button>
           </div>
 
           {profile.bio ? (
-            <p className="mt-4 text-sm text-neutral-200 whitespace-pre-line">
-              {profile.bio}
-            </p>
+            <p className="mt-4 text-sm text-neutral-200 whitespace-pre-line">{profile.bio}</p>
           ) : (
-            <p className="mt-4 text-sm text-neutral-500">
-              Este usuario aún no ha añadido bio.
-            </p>
+            <p className="mt-4 text-sm text-neutral-500">Este usuario aún no ha añadido bio.</p>
           )}
         </div>
-
-        {isMine && isEditing && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4">
-            <div className="w-full max-w-lg rounded-2xl border border-neutral-800 bg-neutral-950 p-5">
-              <div className="flex items-center justify-between">
-                <h3 className="text-sm font-semibold">Editar perfil</h3>
-                <button
-                  type="button"
-                  onClick={handleCancelEdit}
-                  className="text-xs text-neutral-400 hover:text-neutral-200"
-                >
-                  Cerrar
-                </button>
-              </div>
-
-              <div className="mt-4 space-y-3">
-                <div>
-                  <label className="block text-xs text-neutral-400 mb-1">
-                    Nombre
-                  </label>
-                  <input
-                    value={editFullName}
-                    onChange={(e) => setEditFullName(e.target.value)}
-                    placeholder="Tu nombre visible"
-                    className="w-full rounded-lg bg-black border border-neutral-700 px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-emerald-500"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs text-neutral-400 mb-1">
-                    Bio
-                  </label>
-                  <textarea
-                    value={editBio}
-                    onChange={(e) => setEditBio(e.target.value)}
-                    rows={4}
-                    placeholder="Cuéntanos quién eres…"
-                    className="w-full rounded-lg bg-black border border-neutral-700 px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-emerald-500"
-                  />
-                </div>
-
-                <div className="flex items-center justify-end gap-2 pt-2">
-                  <button
-                    type="button"
-                    onClick={handleCancelEdit}
-                    disabled={savingProfile}
-                    className="rounded-full border border-neutral-700 bg-black px-4 py-2 text-xs font-semibold text-white hover:border-neutral-500 disabled:opacity-60"
-                  >
-                    Cancelar
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={handleSaveProfile}
-                    disabled={savingProfile}
-                    className="rounded-full bg-emerald-500 hover:bg-emerald-600 px-4 py-2 text-xs font-semibold text-black disabled:opacity-60"
-                  >
-                    {savingProfile ? "Guardando…" : "Guardar"}
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
 
         <div className="mt-6">
           <h2 className="text-base font-semibold mb-3">Publicaciones</h2>
@@ -459,9 +339,7 @@ export default function UserProfilePage() {
           {loadingPosts ? (
             <p className="text-sm text-neutral-400">Cargando publicaciones…</p>
           ) : posts.length === 0 ? (
-            <p className="text-sm text-neutral-500">
-              Este usuario todavía no tiene publicaciones.
-            </p>
+            <p className="text-sm text-neutral-500">Este usuario todavía no tiene publicaciones.</p>
           ) : (
             <div className="space-y-4">
               {posts.map((p) => (
@@ -471,6 +349,48 @@ export default function UserProfilePage() {
           )}
         </div>
       </section>
+
+      {/* Modal listas */}
+      {listOpen && (
+        <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center px-4">
+          <div className="w-full max-w-md rounded-2xl border border-neutral-800 bg-neutral-950 p-5">
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-semibold">
+                {listOpen === "followers" ? "Seguidores" : "Siguiendo"}
+              </h3>
+              <button
+                type="button"
+                onClick={() => setListOpen(null)}
+                className="text-xs text-neutral-400 hover:text-neutral-200"
+              >
+                Cerrar
+              </button>
+            </div>
+
+            <div className="mt-4">
+              {listLoading ? (
+                <p className="text-sm text-neutral-400">Cargando…</p>
+              ) : listUsers.length === 0 ? (
+                <p className="text-sm text-neutral-500">No hay usuarios todavía.</p>
+              ) : (
+                <ul className="space-y-2">
+                  {listUsers.map((u) => (
+                    <li key={u.id}>
+                      <Link
+                        href={`/u/${u.id}`}
+                        className="block rounded-xl border border-neutral-800 bg-black px-3 py-3 hover:border-neutral-600"
+                      >
+                        <div className="text-sm font-semibold">{u.full_name}</div>
+                        <div className="text-[10px] text-neutral-500 break-all">{u.id}</div>
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   );
 }
