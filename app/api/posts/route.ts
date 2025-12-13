@@ -3,13 +3,20 @@ import { createClient } from "@supabase/supabase-js";
 
 const supabaseUrl = process.env.SUPABASE_URL!;
 const supabaseAnonKey = process.env.SUPABASE_ANON_KEY!;
+const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
-const supabase = createClient(supabaseUrl, supabaseAnonKey);
+// Usamos Service Role si existe (mejor para leer profiles con RLS).
+// Si no, caemos a anon (por compatibilidad).
+const supabase = createClient(
+  supabaseUrl,
+  supabaseServiceRoleKey || supabaseAnonKey
+);
 
 // GET /api/posts  → devuelve todos los posts ordenados del más nuevo al más antiguo
+// + añade author_name desde profiles
 export async function GET() {
   try {
-    const { data, error } = await supabase
+    const { data: posts, error } = await supabase
       .from("posts")
       .select("*")
       .order("created_at", { ascending: false });
@@ -22,7 +29,38 @@ export async function GET() {
       );
     }
 
-    return NextResponse.json({ posts: data ?? [] }, { status: 200 });
+    const list = (posts ?? []) as any[];
+
+    // Cargar nombres de autores desde profiles
+    const userIds = Array.from(
+      new Set(list.map((p) => p.user_id).filter(Boolean))
+    );
+
+    let nameById: Record<string, string> = {};
+
+    if (userIds.length > 0) {
+      const { data: profiles, error: профErr } = await supabase
+        .from("profiles")
+        .select("id, full_name")
+        .in("id", userIds);
+
+      if (профErr) {
+        console.error("Error cargando profiles para author_name:", профErr);
+      } else {
+        for (const pr of profiles ?? []) {
+          if (pr?.id) {
+            nameById[pr.id] = pr.full_name ?? "Usuario Ethiqia";
+          }
+        }
+      }
+    }
+
+    const postsWithAuthor = list.map((p) => ({
+      ...p,
+      author_name: nameById[p.user_id] ?? "Usuario Ethiqia",
+    }));
+
+    return NextResponse.json({ posts: postsWithAuthor }, { status: 200 });
   } catch (err) {
     console.error("Error inesperado en GET /api/posts:", err);
     return NextResponse.json(
@@ -81,11 +119,9 @@ export async function POST(req: NextRequest) {
         blocked: isBlocked,
         reason: reason ?? null,
 
-        // Campos de moderación según tu esquema actual
         moderation_status: moderationStatus,
         moderation_decided_at: new Date().toISOString(),
         moderation_decided_by: "ai-v1",
-        // moderation_labels lo dejamos a null por ahora
         moderation_labels: null,
       })
       .select("*")
