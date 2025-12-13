@@ -4,7 +4,6 @@ import React, { useEffect, useState, FormEvent } from "react";
 import PostCard, { Post } from "@/components/PostCard";
 import { supabaseBrowser } from "@/lib/supabaseBrowserClient";
 import type { User } from "@supabase/supabase-js";
-import Link from "next/link";
 
 type NewPostState = {
   caption: string;
@@ -23,8 +22,7 @@ export default function FeedPage() {
   const [message, setMessage] = useState<string | null>(null);
 
   const [currentUser, setCurrentUser] = useState<User | null>(null);
-  const [currentUserName, setCurrentUserName] =
-    useState<string>("Usuario Ethiqia");
+  const [currentUserName, setCurrentUserName] = useState<string>("Usuario Ethiqia");
   const [authChecked, setAuthChecked] = useState(false);
 
   // 1) Cargar usuario actual + perfil (full_name en profiles)
@@ -121,8 +119,9 @@ export default function FeedPage() {
       }
 
       const uploadJson = await uploadRes.json();
-      const imageUrl = (uploadJson.url ??
-        uploadJson.publicUrl) as string | undefined;
+      const imageUrl = (uploadJson.url ?? uploadJson.publicUrl) as
+        | string
+        | undefined;
 
       if (!imageUrl) {
         throw new Error("No se ha recibido la URL pública de la imagen");
@@ -139,10 +138,7 @@ export default function FeedPage() {
       });
 
       if (!moderationRes.ok) {
-        console.error(
-          "Error en /api/moderate-post:",
-          await moderationRes.text()
-        );
+        console.error("Error en /api/moderate-post:", await moderationRes.text());
         throw new Error("Error moderando el contenido");
       }
 
@@ -182,7 +178,6 @@ export default function FeedPage() {
 
       const { post } = await saveRes.json();
 
-      // 4) Añadir al estado sin recargar
       setPosts((prev) => [post as Post, ...prev]);
       setNewPost({ caption: "", file: null });
       setMessage(
@@ -198,7 +193,6 @@ export default function FeedPage() {
     }
   };
 
-  // Si ya hemos comprobado auth y no hay usuario, mensaje claro
   if (authChecked && !currentUser) {
     return (
       <main className="min-h-screen bg-black text-white flex items-center justify-center">
@@ -221,26 +215,14 @@ export default function FeedPage() {
   return (
     <main className="min-h-screen bg-black text-white">
       <section className="max-w-3xl mx-auto px-4 py-8">
-        <div className="flex items-center justify-between mb-2">
-          <h1 className="text-3xl font-semibold">Feed Ethiqia</h1>
-
-          {currentUser?.id && (
-            <Link
-              href={`/u/${currentUser.id}`}
-              className="rounded-full border border-neutral-700 bg-black px-4 py-2 text-xs font-semibold text-white hover:border-neutral-500"
-            >
-              Mi perfil
-            </Link>
-          )}
-        </div>
+        <h1 className="text-3xl font-semibold mb-2">Feed Ethiqia</h1>
 
         <p className="text-gray-400 mb-6">
-          Sube contenido auténtico. Cada publicación se analiza con IA para
-          estimar la probabilidad de que la imagen sea generada por IA y calcular
-          tu Ethiqia Score.
+          Sube contenido auténtico. Cada publicación se analiza con IA para estimar
+          la probabilidad de que la imagen sea generada por IA y calcular tu Ethiqia
+          Score.
         </p>
 
-        {/* Formulario de nueva publicación */}
         <form
           onSubmit={handleSubmit}
           className="bg-neutral-900 rounded-xl p-6 mb-8 space-y-4"
@@ -265,9 +247,7 @@ export default function FeedPage() {
           </div>
 
           {message && (
-            <p className="text-sm text-emerald-400 whitespace-pre-line">
-              {message}
-            </p>
+            <p className="text-sm text-emerald-400 whitespace-pre-line">{message}</p>
           )}
 
           <button
@@ -291,16 +271,10 @@ export default function FeedPage() {
 
         <div className="space-y-4 mt-4">
           {posts.map((post) => {
-            const isMine =
-              currentUser && post.user_id && post.user_id === currentUser.id;
+            const isMine = currentUser && post.user_id === currentUser.id;
+            const authorName = isMine ? currentUserName : "Usuario Ethiqia";
 
-            const authorName = isMine
-              ? currentUserName
-              : ((post as any).author_name ?? "Usuario Ethiqia");
-
-            return (
-              <PostCard key={post.id} post={post} authorName={authorName} />
-            );
+            return <PostCard key={post.id} post={post} authorName={authorName} />;
           })}
         </div>
       </section>
