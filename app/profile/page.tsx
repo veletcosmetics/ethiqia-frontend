@@ -45,32 +45,6 @@ export default function ProfilePage() {
     }
   };
 
-  const loadCounts = async (targetId: string) => {
-    setLoadingCounts(true);
-    try {
-      // Seguidores = gente que sigue a targetId
-      const { count: followers, error: e1 } = await supabaseBrowser
-        .from("follows")
-        .select("id", { count: "exact", head: true })
-        .eq("following_id", targetId);
-
-      if (e1) console.error("followersCount error:", e1);
-
-      // Siguiendo = a quién sigue targetId
-      const { count: following, error: e2 } = await supabaseBrowser
-        .from("follows")
-        .select("id", { count: "exact", head: true })
-        .eq("follower_id", targetId);
-
-      if (e2) console.error("followingCount error:", e2);
-
-      setFollowersCount(followers ?? 0);
-      setFollowingCount(following ?? 0);
-    } finally {
-      setLoadingCounts(false);
-    }
-  };
-
   const loadProfile = async (targetId: string) => {
     setLoadingProfile(true);
     try {
@@ -108,6 +82,24 @@ export default function ProfilePage() {
     }
   };
 
+  const loadCountsServer = async (targetId: string) => {
+    setLoadingCounts(true);
+    try {
+      const res = await fetch(`/api/follow-stats?userId=${encodeURIComponent(targetId)}`);
+      const json = await res.json();
+      if (!res.ok) {
+        console.error("Error follow-stats:", json);
+        setFollowersCount(0);
+        setFollowingCount(0);
+        return;
+      }
+      setFollowersCount(Number(json.followers ?? 0));
+      setFollowingCount(Number(json.following ?? 0));
+    } finally {
+      setLoadingCounts(false);
+    }
+  };
+
   useEffect(() => {
     const init = async () => {
       try {
@@ -125,7 +117,7 @@ export default function ProfilePage() {
         setUserEmail(user.email ?? null);
 
         await loadProfile(user.id);
-        await loadCounts(user.id);
+        await loadCountsServer(user.id);
         await loadMyPosts(user.id);
       } catch (e) {
         console.error("Error init profile:", e);
@@ -150,14 +142,12 @@ export default function ProfilePage() {
     <main className="min-h-screen bg-black text-white">
       <section className="max-w-4xl mx-auto px-4 py-8">
         <div className="flex items-center justify-between mb-6">
-          <div className="flex items-center gap-3">
-            <Link
-              href="/feed"
-              className="text-xs text-neutral-300 hover:text-emerald-400 transition-colors"
-            >
-              ← Volver al feed
-            </Link>
-          </div>
+          <Link
+            href="/feed"
+            className="text-xs text-neutral-300 hover:text-emerald-400 transition-colors"
+          >
+            ← Volver al feed
+          </Link>
 
           <button
             type="button"
