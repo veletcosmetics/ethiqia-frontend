@@ -16,13 +16,20 @@ export type Post = {
   text: string | null;
   blocked: boolean | null;
   reason: string | null;
+
+  // Enriquecidos por /api/posts (opcionales)
+  author_name?: string | null;
+  author_username?: string | null;
+  author_avatar_url?: string | null;
 };
 
 type Props = {
   post: Post;
   authorName: string;
-  authorId?: string; // para link a /u/[id]
-  authorAvatarUrl?: string | null; // avatar de Supabase Storage (url pública)
+
+  // Opcionales (si no los pasas, se usan los del post o post.user_id)
+  authorId?: string;
+  authorAvatarUrl?: string | null;
 };
 
 type Comment = {
@@ -35,20 +42,19 @@ type Comment = {
 
 const supabase = supabaseBrowser;
 
-export default function PostCard({ post, authorName, authorId, authorAvatarUrl }: Props) {
+export default function PostCard({
+  post,
+  authorName,
+  authorId,
+  authorAvatarUrl,
+}: Props) {
   const [comments, setComments] = useState<Comment[]>([]);
   const [showComments, setShowComments] = useState(false);
   const [newComment, setNewComment] = useState("");
   const [loadingComments, setLoadingComments] = useState(false);
   const [sendingComment, setSendingComment] = useState(false);
 
-  // Likes
-  const [likesCount, setLikesCount] = useState<number>(0);
-  const [likedByMe, setLikedByMe] = useState<boolean>(false);
-  const [togglingLike, setTogglingLike] = useState<boolean>(false);
-
   const createdAt = post.created_at ? new Date(post.created_at) : new Date();
-
   const formattedDate = createdAt.toLocaleString("es-ES", {
     day: "2-digit",
     month: "2-digit",
@@ -62,7 +68,6 @@ export default function PostCard({ post, authorName, authorId, authorAvatarUrl }
 
   let aiLabel = "Prob. IA: baja";
   let aiColor = "bg-emerald-600";
-
   if (aiProb >= 70) {
     aiLabel = "Prob. IA: muy alta";
     aiColor = "bg-red-600";
@@ -71,12 +76,23 @@ export default function PostCard({ post, authorName, authorId, authorAvatarUrl }
     aiColor = "bg-yellow-500";
   }
 
+  const profileHref = useMemo(() => {
+    const id = authorId ?? post.user_id;
+    return `/u/${id}`;
+  }, [authorId, post.user_id]);
+
+  const avatarUrl = useMemo(() => {
+    return (
+      authorAvatarUrl ??
+      post.author_avatar_url ??
+      null
+    );
+  }, [authorAvatarUrl, post.author_avatar_url]);
+
   const initial = useMemo(() => {
     const s = (authorName || "U").trim();
     return (s[0] || "U").toUpperCase();
   }, [authorName]);
-
-  const authorHref = authorId ? `/u/${authorId}` : undefined;
 
   // ---------- Comentarios ----------
   const fetchComments = async () => {
@@ -155,126 +171,42 @@ export default function PostCard({ post, authorName, authorId, authorAvatarUrl }
     }
   };
 
-  // ---------- Likes ----------
-  const loadLikes = async () => {
-    try {
-      // total likes
-      const { count, error: countErr } = await supabase
-        .from("post_likes")
-        .select("id", { count: "exact", head: true })
-        .eq("post_id", post.id);
-
-      if (!countErr) setLikesCount(count ?? 0);
-
-      // liked by me
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-
-      if (!user) {
-        setLikedByMe(false);
-        return;
-      }
-
-      const { data: mine, error: mineErr } = await supabase
-        .from("post_likes")
-        .select("id")
-        .eq("post_id", post.id)
-        .eq("user_id", user.id)
-        .maybeSingle();
-
-      if (!mineErr) setLikedByMe(!!mine?.id);
-    } catch (e) {
-      console.error("Error cargando likes:", e);
-    }
-  };
-
-  const toggleLike = async () => {
-    if (togglingLike) return;
-    setTogglingLike(true);
-
-    try {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-
-      if (!user) {
-        alert("Debes iniciar sesión para dar me gusta.");
-        return;
-      }
-
-      if (likedByMe) {
-        const { error } = await supabase
-          .from("post_likes")
-          .delete()
-          .eq("post_id", post.id)
-          .eq("user_id", user.id);
-
-        if (error) {
-          console.error("Error quitando like:", error);
-          return;
-        }
-
-        setLikedByMe(false);
-        setLikesCount((c) => Math.max(0, c - 1));
-      } else {
-        const { error } = await supabase.from("post_likes").insert({
-          post_id: post.id,
-          user_id: user.id,
-        });
-
-        if (error) {
-          console.error("Error dando like:", error);
-          return;
-        }
-
-        setLikedByMe(true);
-        setLikesCount((c) => c + 1);
-      }
-    } finally {
-      setTogglingLike(false);
-    }
-  };
-
-  useEffect(() => {
-    loadLikes();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [post.id]);
-
-  // ---------- Render ----------
-  const HeaderInner = (
-    <div className="flex items-center gap-3">
-      <div className="h-10 w-10 rounded-full bg-neutral-800 border border-neutral-700 overflow-hidden flex items-center justify-center">
-        {authorAvatarUrl ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={authorAvatarUrl}
-            alt={authorName}
-            className="h-full w-full object-cover"
-          />
-        ) : (
-          <span className="text-sm font-semibold text-white">{initial}</span>
-        )}
-      </div>
-
-      <div>
-        <div className="text-sm font-semibold">{authorName}</div>
-        <div className="text-xs text-neutral-400">{formattedDate}</div>
-      </div>
-    </div>
-  );
-
   return (
     <article className="bg-neutral-900 rounded-2xl p-4 sm:p-5 mb-4 border border-neutral-800">
       {/* Cabecera */}
       <header className="flex justify-between items-start gap-3">
-        {authorHref ? (
-          <Link href={authorHref} className="hover:opacity-90 transition-opacity">
-            {HeaderInner}
+        <div className="flex items-center gap-3">
+          <Link
+            href={profileHref}
+            className="block"
+            title="Ver perfil"
+          >
+            <div className="relative h-10 w-10 rounded-full overflow-hidden bg-neutral-800 border border-neutral-700 flex items-center justify-center text-sm font-semibold">
+              {avatarUrl ? (
+                <Image
+                  src={avatarUrl}
+                  alt={authorName}
+                  fill
+                  className="object-cover"
+                  unoptimized
+                />
+              ) : (
+                initial
+              )}
+            </div>
           </Link>
-        ) : (
-          HeaderInner
-        )}
+
+          <div>
+            <Link
+              href={profileHref}
+              className="text-sm font-semibold hover:text-emerald-400 transition-colors"
+              title="Ver perfil"
+            >
+              {authorName}
+            </Link>
+            <div className="text-xs text-neutral-400">{formattedDate}</div>
+          </div>
+        </div>
 
         <div className="text-right">
           <div className="text-[10px] uppercase tracking-wide text-neutral-400">
@@ -321,21 +253,8 @@ export default function PostCard({ post, authorName, authorId, authorAvatarUrl }
         )}
       </div>
 
-      {/* Botones de interacción */}
+      {/* Botones */}
       <div className="mt-4 flex items-center gap-4 text-xs text-neutral-400">
-        <button
-          type="button"
-          onClick={toggleLike}
-          disabled={togglingLike}
-          className={`flex items-center gap-1 transition-colors ${
-            likedByMe ? "text-emerald-400" : "hover:text-emerald-400"
-          }`}
-          title={likedByMe ? "Quitar me gusta" : "Dar me gusta"}
-        >
-          <span>{likedByMe ? "❤️" : "🤍"}</span>
-          <span>{likesCount}</span>
-        </button>
-
         <button
           type="button"
           onClick={handleToggleComments}
@@ -348,7 +267,7 @@ export default function PostCard({ post, authorName, authorId, authorAvatarUrl }
         </button>
       </div>
 
-      {/* Sección de comentarios */}
+      {/* Comentarios */}
       {showComments && (
         <div className="mt-4 border-t border-neutral-800 pt-3 space-y-3">
           {loadingComments ? (
@@ -360,7 +279,9 @@ export default function PostCard({ post, authorName, authorId, authorAvatarUrl }
           ) : (
             <ul className="space-y-2">
               {comments.map((comment) => {
-                const created = comment.created_at ? new Date(comment.created_at) : null;
+                const created = comment.created_at
+                  ? new Date(comment.created_at)
+                  : null;
                 const createdLabel = created
                   ? created.toLocaleString("es-ES", {
                       day: "2-digit",
@@ -393,7 +314,6 @@ export default function PostCard({ post, authorName, authorId, authorAvatarUrl }
             </ul>
           )}
 
-          {/* Formulario nuevo comentario */}
           <div className="flex items-center gap-2">
             <input
               type="text"
