@@ -16,18 +16,11 @@ export type Post = {
   text: string | null;
   blocked: boolean | null;
   reason: string | null;
-
-  // Enriquecidos por /api/posts (opcionales)
-  author_name?: string | null;
-  author_username?: string | null;
-  author_avatar_url?: string | null;
 };
 
 type Props = {
   post: Post;
   authorName: string;
-
-  // Opcionales (si no los pasas, se usan los del post o post.user_id)
   authorId?: string;
   authorAvatarUrl?: string | null;
 };
@@ -40,19 +33,17 @@ type Comment = {
   created_at: string;
 };
 
-const supabase = supabaseBrowser;
-
-export default function PostCard({
-  post,
-  authorName,
-  authorId,
-  authorAvatarUrl,
-}: Props) {
+export default function PostCard({ post, authorName, authorId, authorAvatarUrl }: Props) {
   const [comments, setComments] = useState<Comment[]>([]);
   const [showComments, setShowComments] = useState(false);
   const [newComment, setNewComment] = useState("");
   const [loadingComments, setLoadingComments] = useState(false);
   const [sendingComment, setSendingComment] = useState(false);
+
+  // Likes
+  const [likesCount, setLikesCount] = useState(0);
+  const [liked, setLiked] = useState(false);
+  const [liking, setLiking] = useState(false);
 
   const createdAt = post.created_at ? new Date(post.created_at) : new Date();
   const formattedDate = createdAt.toLocaleString("es-ES", {
@@ -66,39 +57,109 @@ export default function PostCard({
   const aiProb = post.ai_probability ?? 0;
   const score = post.global_score ?? 0;
 
-  let aiLabel = "Prob. IA: baja";
-  let aiColor = "bg-emerald-600";
-  if (aiProb >= 70) {
-    aiLabel = "Prob. IA: muy alta";
-    aiColor = "bg-red-600";
-  } else if (aiProb >= 40) {
-    aiLabel = "Prob. IA: media";
-    aiColor = "bg-yellow-500";
-  }
+  const { aiLabel, aiColor } = useMemo(() => {
+    let label = "Prob. IA: baja";
+    let color = "bg-emerald-600";
+    if (aiProb >= 70) {
+      label = "Prob. IA: muy alta";
+      color = "bg-red-600";
+    } else if (aiProb >= 40) {
+      label = "Prob. IA: media";
+      color = "bg-yellow-500";
+    }
+    return { aiLabel: label, aiColor: color };
+  }, [aiProb]);
 
-  const profileHref = useMemo(() => {
-    const id = authorId ?? post.user_id;
-    return `/u/${id}`;
-  }, [authorId, post.user_id]);
+  // ---------- Likes: cargar estado inicial ----------
+  useEffect(() => {
+    const loadLikes = async () => {
+      try {
+        const {
+          data: { user },
+        } = await supabaseBrowser.auth.getUser();
 
-  const avatarUrl = useMemo(() => {
-    return (
-      authorAvatarUrl ??
-      post.author_avatar_url ??
-      null
-    );
-  }, [authorAvatarUrl, post.author_avatar_url]);
+        // count
+        const { count, error: countErr } = await supabaseBrowser
+          .from("post_likes")
+          .select("id", { count: "exact", head: true })
+          .eq("post_id", post.id);
 
-  const initial = useMemo(() => {
-    const s = (authorName || "U").trim();
-    return (s[0] || "U").toUpperCase();
-  }, [authorName]);
+        if (!countErr) setLikesCount(Number(count ?? 0));
+
+        // liked by me
+        if (user) {
+          const { data: mine, error: mineErr } = await supabaseBrowser
+            .from("post_likes")
+            .select("id")
+            .eq("post_id", post.id)
+            .eq("user_id", user.id)
+            .maybeSingle();
+
+          if (!mineErr) setLiked(Boolean(mine?.id));
+        } else {
+          setLiked(false);
+        }
+      } catch (e) {
+        console.warn("Likes init error:", e);
+      }
+    };
+
+    loadLikes();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [post.id]);
+
+  const toggleLike = async () => {
+    if (liking) return;
+    setLiking(true);
+
+    try {
+      const {
+        data: { user },
+      } = await supabaseBrowser.auth.getUser();
+
+      if (!user) {
+        alert("Debes iniciar sesión para dar Me gusta.");
+        return;
+      }
+
+      if (liked) {
+        const { error } = await supabaseBrowser
+          .from("post_likes")
+          .delete()
+          .eq("post_id", post.id)
+          .eq("user_id", user.id);
+
+        if (error) {
+          console.error("Error quitando like:", error);
+          return;
+        }
+
+        setLiked(false);
+        setLikesCount((c) => Math.max(0, c - 1));
+      } else {
+        const { error } = await supabaseBrowser.from("post_likes").insert({
+          post_id: post.id,
+          user_id: user.id,
+        });
+
+        if (error) {
+          console.error("Error dando like:", error);
+          return;
+        }
+
+        setLiked(true);
+        setLikesCount((c) => c + 1);
+      }
+    } finally {
+      setLiking(false);
+    }
+  };
 
   // ---------- Comentarios ----------
   const fetchComments = async () => {
     setLoadingComments(true);
     try {
-      const { data, error } = await supabase
+      const { data, error } = await supabaseBrowser
         .from("comments")
         .select("id, post_id, user_id, content, created_at")
         .eq("post_id", post.id)
@@ -108,7 +169,6 @@ export default function PostCard({
         console.error("Error cargando comentarios", error);
         return;
       }
-
       setComments((data ?? []) as Comment[]);
     } finally {
       setLoadingComments(false);
@@ -118,10 +178,7 @@ export default function PostCard({
   const handleToggleComments = async () => {
     const next = !showComments;
     setShowComments(next);
-
-    if (next && comments.length === 0) {
-      await fetchComments();
-    }
+    if (next && comments.length === 0) await fetchComments();
   };
 
   const handleSendComment = async () => {
@@ -132,21 +189,14 @@ export default function PostCard({
     try {
       const {
         data: { user },
-        error: authError,
-      } = await supabase.auth.getUser();
-
-      if (authError) {
-        console.error("Error obteniendo usuario", authError);
-        alert("Error de sesión, vuelve a iniciar sesión.");
-        return;
-      }
+      } = await supabaseBrowser.auth.getUser();
 
       if (!user) {
         alert("Debes iniciar sesión para comentar.");
         return;
       }
 
-      const { data, error } = await supabase
+      const { data, error } = await supabaseBrowser
         .from("comments")
         .insert({
           post_id: post.id,
@@ -171,54 +221,43 @@ export default function PostCard({
     }
   };
 
+  // ---------- Render ----------
   return (
     <article className="bg-neutral-900 rounded-2xl p-4 sm:p-5 mb-4 border border-neutral-800">
-      {/* Cabecera */}
       <header className="flex justify-between items-start gap-3">
         <div className="flex items-center gap-3">
-          <Link
-            href={profileHref}
-            className="block"
-            title="Ver perfil"
-          >
-            <div className="relative h-10 w-10 rounded-full overflow-hidden bg-neutral-800 border border-neutral-700 flex items-center justify-center text-sm font-semibold">
-              {avatarUrl ? (
-                <Image
-                  src={avatarUrl}
-                  alt={authorName}
-                  fill
-                  className="object-cover"
-                  unoptimized
-                />
-              ) : (
-                initial
-              )}
+          {/* Avatar */}
+          {authorAvatarUrl ? (
+            // <img> para evitar config de next/image con dominios remotos
+            <img
+              src={authorAvatarUrl}
+              alt={authorName}
+              className="h-10 w-10 rounded-full object-cover border border-neutral-700"
+            />
+          ) : (
+            <div className="h-10 w-10 rounded-full bg-emerald-600 flex items-center justify-center text-sm font-semibold">
+              {(authorName?.[0] ?? "U").toUpperCase()}
             </div>
-          </Link>
+          )}
 
           <div>
-            <Link
-              href={profileHref}
-              className="text-sm font-semibold hover:text-emerald-400 transition-colors"
-              title="Ver perfil"
-            >
-              {authorName}
-            </Link>
+            {authorId ? (
+              <Link href={`/u/${authorId}`} className="text-sm font-semibold hover:text-emerald-400">
+                {authorName}
+              </Link>
+            ) : (
+              <div className="text-sm font-semibold">{authorName}</div>
+            )}
             <div className="text-xs text-neutral-400">{formattedDate}</div>
           </div>
         </div>
 
         <div className="text-right">
-          <div className="text-[10px] uppercase tracking-wide text-neutral-400">
-            Ethiqia Score
-          </div>
-          <div className="text-emerald-400 text-sm font-semibold">
-            {score}/100
-          </div>
+          <div className="text-[10px] uppercase tracking-wide text-neutral-400">Ethiqia Score</div>
+          <div className="text-emerald-400 text-sm font-semibold">{score}/100</div>
         </div>
       </header>
 
-      {/* Imagen */}
       {post.image_url && (
         <div className="mt-4 relative overflow-hidden rounded-xl border border-neutral-800 bg-black">
           <Image
@@ -231,14 +270,10 @@ export default function PostCard({
         </div>
       )}
 
-      {/* Texto */}
       {post.caption && (
-        <p className="mt-3 text-sm text-neutral-100 whitespace-pre-line">
-          {post.caption}
-        </p>
+        <p className="mt-3 text-sm text-neutral-100 whitespace-pre-line">{post.caption}</p>
       )}
 
-      {/* Badges IA y estado */}
       <div className="mt-3 flex flex-wrap gap-2 items-center">
         <span
           className={`inline-flex items-center rounded-full px-3 py-1 text-[11px] font-medium ${aiColor} text-white`}
@@ -254,20 +289,29 @@ export default function PostCard({
       </div>
 
       {/* Botones */}
-      <div className="mt-4 flex items-center gap-4 text-xs text-neutral-400">
+      <div className="mt-4 flex items-center gap-5 text-xs text-neutral-400">
+        <button
+          type="button"
+          onClick={toggleLike}
+          disabled={liking}
+          className={`flex items-center gap-2 transition-colors ${
+            liked ? "text-emerald-400" : "hover:text-emerald-400"
+          }`}
+        >
+          <span>{liked ? "❤️" : "🤍"}</span>
+          <span>{likesCount}</span>
+        </button>
+
         <button
           type="button"
           onClick={handleToggleComments}
-          className="flex items-center gap-1 hover:text-emerald-400 transition-colors"
+          className="flex items-center gap-2 hover:text-emerald-400 transition-colors"
         >
           <span>💬</span>
-          <span>
-            Comentarios{comments.length > 0 ? ` (${comments.length})` : ""}
-          </span>
+          <span>Comentarios{comments.length > 0 ? ` (${comments.length})` : ""}</span>
         </button>
       </div>
 
-      {/* Comentarios */}
       {showComments && (
         <div className="mt-4 border-t border-neutral-800 pt-3 space-y-3">
           {loadingComments ? (
@@ -279,9 +323,7 @@ export default function PostCard({
           ) : (
             <ul className="space-y-2">
               {comments.map((comment) => {
-                const created = comment.created_at
-                  ? new Date(comment.created_at)
-                  : null;
+                const created = comment.created_at ? new Date(comment.created_at) : null;
                 const createdLabel = created
                   ? created.toLocaleString("es-ES", {
                       day: "2-digit",
@@ -298,13 +340,9 @@ export default function PostCard({
                     className="text-xs bg-neutral-950/60 border border-neutral-800 rounded-lg px-3 py-2"
                   >
                     <div className="flex justify-between items-baseline gap-3">
-                      <span className="font-medium text-neutral-100">
-                        Usuario Ethiqia
-                      </span>
+                      <span className="font-medium text-neutral-100">Usuario Ethiqia</span>
                       {createdLabel && (
-                        <span className="text-[10px] text-neutral-500">
-                          {createdLabel}
-                        </span>
+                        <span className="text-[10px] text-neutral-500">{createdLabel}</span>
                       )}
                     </div>
                     <p className="mt-1 text-neutral-100">{comment.content}</p>
