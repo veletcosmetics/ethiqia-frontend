@@ -84,6 +84,9 @@ export default function ProfilePage() {
   const [editCoverUrl, setEditCoverUrl] = useState("");
   const [editAvatarUrl, setEditAvatarUrl] = useState("");
 
+  const [uploadingCover, setUploadingCover] = useState(false);
+  const [uploadingAvatar, setUploadingAvatar] = useState(false);
+
   // Username
   const [editHandle, setEditHandle] = useState("");
   const [handleStatus, setHandleStatus] = useState<
@@ -198,7 +201,6 @@ export default function ProfilePage() {
     }
   };
 
-  // --- Edit helpers ---
   const openEdit = () => {
     const p = profile;
     setEditFullName(p?.full_name ?? "");
@@ -240,7 +242,6 @@ export default function ProfilePage() {
       return;
     }
 
-    // Si no ha cambiado respecto al actual, no hace falta comprobar
     const current = (profile?.username ?? "").trim().toLowerCase();
     if (raw === current) {
       setHandleStatus("idle");
@@ -277,6 +278,62 @@ export default function ProfilePage() {
     };
   }, [editHandle, editOpen, profile?.username]);
 
+  async function uploadProfileImage(file: File, kind: "cover" | "avatar") {
+    const {
+      data: { session },
+    } = await supabaseBrowser.auth.getSession();
+
+    const token = session?.access_token;
+    if (!token) {
+      alert("Sesión no válida. Vuelve a iniciar sesión.");
+      window.location.href = "/login";
+      return null;
+    }
+
+    const formData = new FormData();
+    formData.append("file", file);
+    formData.append("kind", kind);
+
+    const res = await fetch("/api/profile/upload", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+      body: formData,
+    });
+
+    const json = await res.json();
+    if (!res.ok) {
+      console.error("Upload failed:", json);
+      alert(json?.error || "No se ha podido subir la imagen.");
+      return null;
+    }
+
+    return json.url as string;
+  }
+
+  const onPickCover = async (file: File | null) => {
+    if (!file) return;
+    setUploadingCover(true);
+    try {
+      const url = await uploadProfileImage(file, "cover");
+      if (url) setEditCoverUrl(url);
+    } finally {
+      setUploadingCover(false);
+    }
+  };
+
+  const onPickAvatar = async (file: File | null) => {
+    if (!file) return;
+    setUploadingAvatar(true);
+    try {
+      const url = await uploadProfileImage(file, "avatar");
+      if (url) setEditAvatarUrl(url);
+    } finally {
+      setUploadingAvatar(false);
+    }
+  };
+
   const saveProfile = async () => {
     if (!userId) return;
     if (saving) return;
@@ -295,14 +352,13 @@ export default function ProfilePage() {
           return;
         }
 
-        // Si no está "available", bloqueamos (salvo que haya cambiado a última hora)
         if (handleStatus === "taken") {
           alert("Ese @name ya está ocupado.");
           setSaving(false);
           return;
         }
 
-        const { data, error } = await supabaseBrowser.rpc("set_my_username", {
+        const { error } = await supabaseBrowser.rpc("set_my_username", {
           p_username: desired,
         });
 
@@ -312,12 +368,9 @@ export default function ProfilePage() {
           setSaving(false);
           return;
         }
-
-        // data devuelve el username final
-        // seguimos con el resto
       }
 
-      // 2) Update del resto de campos (tabla profiles)
+      // 2) Update resto campos
       const payload: any = {
         full_name: editFullName.trim() || null,
         bio: editBio.trim() || null,
@@ -345,7 +398,6 @@ export default function ProfilePage() {
         return;
       }
 
-      // 3) Reload profile
       await loadProfile(userId);
       setEditOpen(false);
     } finally {
@@ -422,10 +474,10 @@ export default function ProfilePage() {
           </div>
         </div>
 
-        {/* Perfil bonito */}
+        {/* Perfil bonito (layout ajustado) */}
         <div className="border border-neutral-800 rounded-2xl overflow-hidden bg-neutral-900">
-          {/* Cover */}
-          <div className="relative h-40 sm:h-52 bg-neutral-950 border-b border-neutral-800">
+          {/* Cover: más compacto para que no “se coma” la bio */}
+          <div className="relative h-32 sm:h-44 bg-neutral-950 border-b border-neutral-800">
             {coverUrl ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img
@@ -438,9 +490,8 @@ export default function ProfilePage() {
             )}
           </div>
 
-          {/* Avatar + info */}
           <div className="px-6 pb-6">
-            <div className="-mt-10 sm:-mt-12 flex items-end justify-between gap-4">
+            <div className="-mt-10 sm:-mt-12 flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
               <div className="flex items-end gap-4">
                 <div className="h-20 w-20 sm:h-24 sm:w-24 rounded-full border-4 border-neutral-900 bg-neutral-800 overflow-hidden flex items-center justify-center text-2xl font-semibold">
                   {avatarUrl ? (
@@ -481,7 +532,7 @@ export default function ProfilePage() {
               </div>
 
               {/* Contadores */}
-              <div className="flex gap-6 text-sm pb-2">
+              <div className="flex gap-6 text-sm">
                 <div className="text-center">
                   <div className="text-white font-semibold">
                     {loadingPosts ? "…" : posts.length}
@@ -527,7 +578,6 @@ export default function ProfilePage() {
                 </p>
               )}
 
-              {/* Website */}
               {profile?.website && (
                 <a
                   href={profile.website}
@@ -539,7 +589,6 @@ export default function ProfilePage() {
                 </a>
               )}
 
-              {/* Redes */}
               <div className="flex flex-wrap gap-3 text-sm">
                 {profile?.instagram_url && (
                   <a
@@ -706,6 +755,70 @@ export default function ProfilePage() {
                 />
               </div>
 
+              {/* SUBIDA DESDE PC */}
+              <div className="sm:col-span-2 rounded-xl border border-neutral-800 bg-black p-4">
+                <div className="text-xs text-neutral-400 mb-3">
+                  Imágenes del perfil (subir desde tu equipo)
+                </div>
+
+                <div className="grid sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs text-neutral-400 mb-1">
+                      Portada (cover)
+                    </label>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={(e) => onPickCover(e.target.files?.[0] ?? null)}
+                      className="text-xs text-neutral-300"
+                    />
+                    <div className="mt-2 text-[11px] text-neutral-400 break-all">
+                      {uploadingCover ? "Subiendo portada…" : (editCoverUrl ? `OK: ${editCoverUrl}` : "Sin portada")}
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs text-neutral-400 mb-1">
+                      Avatar (foto de perfil)
+                    </label>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={(e) => onPickAvatar(e.target.files?.[0] ?? null)}
+                      className="text-xs text-neutral-300"
+                    />
+                    <div className="mt-2 text-[11px] text-neutral-400 break-all">
+                      {uploadingAvatar ? "Subiendo avatar…" : (editAvatarUrl ? `OK: ${editAvatarUrl}` : "Sin avatar")}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* También dejamos los URLs manuales por si quieres */}
+              <div className="sm:col-span-2">
+                <label className="block text-xs text-neutral-400 mb-1">
+                  Cover URL (manual)
+                </label>
+                <input
+                  value={editCoverUrl}
+                  onChange={(e) => setEditCoverUrl(e.target.value)}
+                  placeholder="https://..."
+                  className="w-full rounded-xl bg-black border border-neutral-800 px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                />
+              </div>
+
+              <div className="sm:col-span-2">
+                <label className="block text-xs text-neutral-400 mb-1">
+                  Avatar URL (manual)
+                </label>
+                <input
+                  value={editAvatarUrl}
+                  onChange={(e) => setEditAvatarUrl(e.target.value)}
+                  placeholder="https://..."
+                  className="w-full rounded-xl bg-black border border-neutral-800 px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                />
+              </div>
+
               <div>
                 <label className="block text-xs text-neutral-400 mb-1">
                   Instagram
@@ -753,30 +866,6 @@ export default function ProfilePage() {
                   className="w-full rounded-xl bg-black border border-neutral-800 px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-emerald-500"
                 />
               </div>
-
-              <div className="sm:col-span-2">
-                <label className="block text-xs text-neutral-400 mb-1">
-                  Cover URL (portada)
-                </label>
-                <input
-                  value={editCoverUrl}
-                  onChange={(e) => setEditCoverUrl(e.target.value)}
-                  placeholder="https://..."
-                  className="w-full rounded-xl bg-black border border-neutral-800 px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-emerald-500"
-                />
-              </div>
-
-              <div className="sm:col-span-2">
-                <label className="block text-xs text-neutral-400 mb-1">
-                  Avatar URL
-                </label>
-                <input
-                  value={editAvatarUrl}
-                  onChange={(e) => setEditAvatarUrl(e.target.value)}
-                  placeholder="https://..."
-                  className="w-full rounded-xl bg-black border border-neutral-800 px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-emerald-500"
-                />
-              </div>
             </div>
 
             <div className="mt-5 flex items-center justify-end gap-2">
@@ -792,7 +881,7 @@ export default function ProfilePage() {
               <button
                 type="button"
                 onClick={saveProfile}
-                disabled={saving}
+                disabled={saving || uploadingCover || uploadingAvatar}
                 className="rounded-full bg-emerald-500 hover:bg-emerald-600 px-5 py-2 text-xs font-semibold text-black disabled:opacity-60"
               >
                 {saving ? "Guardando…" : "Guardar cambios"}
