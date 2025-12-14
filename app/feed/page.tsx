@@ -13,7 +13,7 @@ type NewPostState = {
 type ProfileMini = {
   id: string;
   full_name: string | null;
-  username: string | null;
+  avatar_url: string | null;
 };
 
 export default function FeedPage() {
@@ -31,6 +31,7 @@ export default function FeedPage() {
   const [currentUserName, setCurrentUserName] = useState<string>("Usuario Ethiqia");
   const [authChecked, setAuthChecked] = useState(false);
 
+  // Mapa de perfiles (para mostrar avatar/nombre en el feed)
   const [profilesMap, setProfilesMap] = useState<Record<string, ProfileMini>>({});
 
   // 1) Cargar usuario actual + perfil
@@ -46,16 +47,12 @@ export default function FeedPage() {
         if (user) {
           const { data: profile, error } = await supabaseBrowser
             .from("profiles")
-            .select("full_name, username")
+            .select("full_name")
             .eq("id", user.id)
             .maybeSingle();
 
-          if (!error) {
-            const name =
-              profile?.full_name?.trim() ||
-              (profile?.username ? `@${String(profile.username).replace(/^@+/, "")}` : "") ||
-              "Usuario Ethiqia";
-            setCurrentUserName(name);
+          if (!error && profile?.full_name) {
+            setCurrentUserName(profile.full_name as string);
           }
         }
       } catch (err) {
@@ -68,7 +65,7 @@ export default function FeedPage() {
     initAuthAndProfile();
   }, []);
 
-  // 2) Cargar posts + map de perfiles
+  // 2) Cargar posts
   useEffect(() => {
     const loadPosts = async () => {
       setLoadingPosts(true);
@@ -76,31 +73,24 @@ export default function FeedPage() {
         const res = await fetch("/api/posts");
         if (!res.ok) throw new Error("Error al cargar posts");
         const data = await res.json();
+        const list = (data.posts ?? []) as Post[];
+        setPosts(list);
 
-        const loaded = (data.posts ?? []) as Post[];
-        setPosts(loaded);
-
-        // Cargar nombres de autores (para no mostrar "Usuario Ethiqia")
-        const ids = Array.from(
-          new Set(loaded.map((p) => p.user_id).filter(Boolean))
-        );
-
+        // Intentar traer perfiles para los user_id del feed (si RLS lo permite)
+        const ids = Array.from(new Set(list.map((p) => p.user_id).filter(Boolean)));
         if (ids.length > 0) {
           const { data: profs, error } = await supabaseBrowser
             .from("profiles")
-            .select("id, full_name, username")
+            .select("id, full_name, avatar_url")
             .in("id", ids);
 
-          if (!error && Array.isArray(profs)) {
-            const map: Record<string, ProfileMini> = {};
-            for (const r of profs as any[]) {
-              map[r.id] = {
-                id: r.id,
-                full_name: r.full_name ?? null,
-                username: r.username ?? null,
-              };
-            }
-            setProfilesMap(map);
+          if (!error && profs) {
+            const next: Record<string, ProfileMini> = {};
+            (profs as ProfileMini[]).forEach((p) => (next[p.id] = p));
+            setProfilesMap(next);
+          } else {
+            // Si falla por RLS, no rompemos el feed; simplemente no habrá avatar/nombre de terceros.
+            if (error) console.warn("No se han podido cargar perfiles públicos (RLS):", error);
           }
         }
       } catch (err) {
@@ -123,12 +113,6 @@ export default function FeedPage() {
     setNewPost((prev) => ({ ...prev, caption: value }));
   };
 
-  const resolveAuthorName = (userId: string) => {
-    const p = profilesMap[userId];
-    if (!p) return "Usuario Ethiqia";
-    return p.full_name?.trim() || (p.username ? `@${String(p.username).replace(/^@+/, "")}` : "") || "Usuario Ethiqia";
-  };
-
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setMessage(null);
@@ -146,7 +130,7 @@ export default function FeedPage() {
     setSubmitting(true);
 
     try {
-      // 1) Subir imagen a /api/upload
+      // 1) Subir imagen
       const formData = new FormData();
       formData.append("file", newPost.file);
 
@@ -163,11 +147,9 @@ export default function FeedPage() {
       const uploadJson = await uploadRes.json();
       const imageUrl = (uploadJson.url ?? uploadJson.publicUrl) as string | undefined;
 
-      if (!imageUrl) {
-        throw new Error("No se ha recibido la URL pública de la imagen");
-      }
+      if (!imageUrl) throw new Error("No se ha recibido la URL pública de la imagen");
 
-      // 2) Moderar con IA
+      // 2) Moderación IA
       const moderationRes = await fetch("/api/moderate-post", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -183,14 +165,13 @@ export default function FeedPage() {
       }
 
       const moderation = await moderationRes.json();
-
       const aiProbability = moderation.aiProbability ?? 0;
       const blocked = moderation.blocked ?? false;
       const reason = moderation.reason ?? null;
 
       const globalScore = Math.max(0, Math.min(100, Math.round(100 - aiProbability)));
 
-      // 3) Guardar post REAL en /api/posts
+      // 3) Guardar post
       const bodyToSend = {
         userId: currentUser.id,
         imageUrl,
@@ -215,23 +196,9 @@ export default function FeedPage() {
 
       const { post } = await saveRes.json();
 
-      // 4) Añadir al estado sin recargar
+      // 4) Añadir al estado
       setPosts((prev) => [post as Post, ...prev]);
       setNewPost({ caption: "", file: null });
-
-      // Cachear el perfil del autor en el map si no estaba
-      setProfilesMap((prev) => {
-        if (prev[currentUser.id]) return prev;
-        return {
-          ...prev,
-          [currentUser.id]: {
-            id: currentUser.id,
-            full_name: currentUserName.startsWith("@") ? null : currentUserName,
-            username: currentUserName.startsWith("@") ? currentUserName.replace(/^@+/, "") : null,
-          },
-        };
-      });
-
       setMessage(
         `Publicación creada correctamente. Probabilidad estimada de IA: ${Math.round(aiProbability)}%`
       );
@@ -243,6 +210,9 @@ export default function FeedPage() {
     }
   };
 
+  const myId = currentUser?.id ?? null;
+
+  // Si ya hemos comprobado auth y no hay usuario
   if (authChecked && !currentUser) {
     return (
       <main className="min-h-screen bg-black text-white flex items-center justify-center">
@@ -287,9 +257,7 @@ export default function FeedPage() {
             <input type="file" accept="image/*" onChange={handleFileChange} className="text-sm" />
           </div>
 
-          {message && (
-            <p className="text-sm text-emerald-400 whitespace-pre-line">{message}</p>
-          )}
+          {message && <p className="text-sm text-emerald-400 whitespace-pre-line">{message}</p>}
 
           <button
             type="submit"
@@ -310,8 +278,24 @@ export default function FeedPage() {
 
         <div className="space-y-4 mt-4">
           {posts.map((post) => {
-            const author = post.user_id ? resolveAuthorName(post.user_id) : "Usuario Ethiqia";
-            return <PostCard key={post.id} post={post} authorName={author} />;
+            const isMine = myId && post.user_id === myId;
+
+            const profile = profilesMap[post.user_id];
+            const authorName = isMine
+              ? currentUserName
+              : profile?.full_name?.trim() || "Usuario Ethiqia";
+
+            const authorAvatarUrl = profile?.avatar_url ?? null;
+
+            return (
+              <PostCard
+                key={post.id}
+                post={post}
+                authorName={authorName}
+                authorId={post.user_id}
+                authorAvatarUrl={authorAvatarUrl}
+              />
+            );
           })}
         </div>
       </section>
