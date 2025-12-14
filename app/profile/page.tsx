@@ -4,51 +4,37 @@ import React, { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { supabaseBrowser } from "@/lib/supabaseBrowserClient";
 import PostCard, { Post } from "@/components/PostCard";
+import type { User } from "@supabase/supabase-js";
 
 type ProfileRow = {
   id: string;
   full_name: string | null;
+  username: string | null;
   bio: string | null;
-
-  username?: string | null;
-
-  website?: string | null;
-  location?: string | null;
-
-  avatar_url?: string | null;
-
-  is_verified?: boolean | null;
-
-  instagram_url?: string | null;
-  tiktok_url?: string | null;
-  linkedin_url?: string | null;
-  youtube_url?: string | null;
+  location: string | null;
+  website: string | null;
+  instagram_url: string | null;
+  linkedin_url: string | null;
+  avatar_url: string | null;
 };
 
 type FollowUser = {
   id: string;
   full_name: string;
+  username?: string | null;
+  avatar_url?: string | null;
 };
 
-function normalizeUrl(input: string): string {
-  const v = input.trim();
-  if (!v) return "";
-  if (/^https?:\/\//i.test(v)) return v;
-  return `https://${v}`;
-}
-
-function safeHandle(input: string): string {
-  return input.trim().replace(/^@+/, "").toLowerCase();
-}
-
-function isHandleFormatOk(h: string): boolean {
-  if (h.length < 3 || h.length > 20) return false;
-  return /^[a-z0-9][a-z0-9_.]*$/.test(h);
+function normalizeUrl(url: string) {
+  const u = (url || "").trim();
+  if (!u) return "";
+  if (u.startsWith("http://") || u.startsWith("https://")) return u;
+  return `https://${u}`;
 }
 
 export default function ProfilePage() {
   const [authChecked, setAuthChecked] = useState(false);
-  const [userId, setUserId] = useState<string | null>(null);
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [userEmail, setUserEmail] = useState<string | null>(null);
 
   const [profile, setProfile] = useState<ProfileRow | null>(null);
@@ -61,50 +47,34 @@ export default function ProfilePage() {
   const [posts, setPosts] = useState<Post[]>([]);
   const [loadingPosts, setLoadingPosts] = useState(false);
 
-  // Modal listas
+  // Modal lista seguidores/siguiendo
   const [listOpen, setListOpen] = useState<null | "followers" | "following">(null);
   const [listLoading, setListLoading] = useState(false);
   const [listUsers, setListUsers] = useState<FollowUser[]>([]);
 
-  // Edit mode
+  // Modal ver post (desde grid)
+  const [selectedPost, setSelectedPost] = useState<Post | null>(null);
+
+  // Modal editar perfil
   const [editOpen, setEditOpen] = useState(false);
-  const [saving, setSaving] = useState(false);
-
-  const [editFullName, setEditFullName] = useState("");
-  const [editBio, setEditBio] = useState("");
-  const [editWebsite, setEditWebsite] = useState("");
-  const [editLocation, setEditLocation] = useState("");
-
-  const [editInstagram, setEditInstagram] = useState("");
-  const [editTiktok, setEditTiktok] = useState("");
-  const [editLinkedin, setEditLinkedin] = useState("");
-  const [editYoutube, setEditYoutube] = useState("");
-
-  const [editAvatarUrl, setEditAvatarUrl] = useState("");
+  const [savingProfile, setSavingProfile] = useState(false);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
 
-  // Username
-  const [editHandle, setEditHandle] = useState("");
-  const [handleStatus, setHandleStatus] = useState<
-    "idle" | "checking" | "available" | "taken" | "invalid" | "error"
-  >("idle");
+  // Campos editables
+  const [fullName, setFullName] = useState("");
+  const [username, setUsername] = useState("");
+  const [location, setLocation] = useState("");
+  const [website, setWebsite] = useState("");
+  const [bio, setBio] = useState("");
+  const [instagramUrl, setInstagramUrl] = useState("");
+  const [linkedinUrl, setLinkedinUrl] = useState("");
+  const [avatarUrl, setAvatarUrl] = useState<string>("");
+
+  const userId = currentUser?.id ?? null;
 
   const displayName = useMemo(() => {
     return profile?.full_name?.trim() || userEmail || "Usuario Ethiqia";
   }, [profile?.full_name, userEmail]);
-
-  const displayHandle = useMemo(() => {
-    const u = (profile?.username ?? "").trim();
-    return u ? `@${u}` : "@sin_nombre";
-  }, [profile?.username]);
-
-  const initial = useMemo(() => {
-    const s = (displayName || "U").trim();
-    return (s[0] || "U").toUpperCase();
-  }, [displayName]);
-
-  const badgeVerified = Boolean(profile?.is_verified);
-  const avatarUrl = profile?.avatar_url?.trim() || "";
 
   const handleLogout = async () => {
     try {
@@ -122,7 +92,7 @@ export default function ProfilePage() {
       const { data, error } = await supabaseBrowser
         .from("profiles")
         .select(
-          "id, full_name, bio, username, website, location, avatar_url, is_verified, instagram_url, tiktok_url, linkedin_url, youtube_url"
+          "id, full_name, username, bio, location, website, instagram_url, linkedin_url, avatar_url"
         )
         .eq("id", targetId)
         .maybeSingle();
@@ -133,7 +103,18 @@ export default function ProfilePage() {
         return;
       }
 
-      setProfile((data as ProfileRow) ?? null);
+      const row = (data as ProfileRow) ?? null;
+      setProfile(row);
+
+      // Pre-cargar valores en editor
+      setFullName(row?.full_name ?? "");
+      setUsername(row?.username ?? "");
+      setBio(row?.bio ?? "");
+      setLocation(row?.location ?? "");
+      setWebsite(row?.website ?? "");
+      setInstagramUrl(row?.instagram_url ?? "");
+      setLinkedinUrl(row?.linkedin_url ?? "");
+      setAvatarUrl(row?.avatar_url ?? "");
     } finally {
       setLoadingProfile(false);
     }
@@ -195,198 +176,99 @@ export default function ProfilePage() {
     }
   };
 
-  const openEdit = () => {
-    const p = profile;
-    setEditFullName(p?.full_name ?? "");
-    setEditBio(p?.bio ?? "");
-    setEditWebsite(p?.website ?? "");
-    setEditLocation(p?.location ?? "");
-
-    setEditInstagram(p?.instagram_url ?? "");
-    setEditTiktok(p?.tiktok_url ?? "");
-    setEditLinkedin(p?.linkedin_url ?? "");
-    setEditYoutube(p?.youtube_url ?? "");
-
-    setEditAvatarUrl(p?.avatar_url ?? "");
-
-    setEditHandle(p?.username ?? "");
-    setHandleStatus("idle");
+  const handleOpenEdit = () => {
+    // refresca valores desde profile por si acaso
+    setFullName(profile?.full_name ?? "");
+    setUsername(profile?.username ?? "");
+    setBio(profile?.bio ?? "");
+    setLocation(profile?.location ?? "");
+    setWebsite(profile?.website ?? "");
+    setInstagramUrl(profile?.instagram_url ?? "");
+    setLinkedinUrl(profile?.linkedin_url ?? "");
+    setAvatarUrl(profile?.avatar_url ?? "");
     setEditOpen(true);
   };
 
-  const cancelEdit = () => {
-    setEditOpen(false);
-    setSaving(false);
-    setHandleStatus("idle");
-  };
-
-  // Username availability check (debounced)
-  useEffect(() => {
-    if (!editOpen) return;
-
-    const raw = safeHandle(editHandle);
-    if (!raw) {
-      setHandleStatus("idle");
-      return;
-    }
-
-    if (!isHandleFormatOk(raw)) {
-      setHandleStatus("invalid");
-      return;
-    }
-
-    const current = (profile?.username ?? "").trim().toLowerCase();
-    if (raw === current) {
-      setHandleStatus("idle");
-      return;
-    }
-
-    let cancelled = false;
-    setHandleStatus("checking");
-
-    const t = setTimeout(async () => {
-      try {
-        const { data, error } = await supabaseBrowser.rpc("is_username_available", {
-          p_username: raw,
-        });
-
-        if (cancelled) return;
-
-        if (error) {
-          console.error("RPC is_username_available error:", error);
-          setHandleStatus("error");
-          return;
-        }
-
-        setHandleStatus(data === true ? "available" : "taken");
-      } catch (e) {
-        console.error("is_username_available unexpected:", e);
-        if (!cancelled) setHandleStatus("error");
-      }
-    }, 450);
-
-    return () => {
-      cancelled = true;
-      clearTimeout(t);
-    };
-  }, [editHandle, editOpen, profile?.username]);
-
-  async function uploadAvatar(file: File) {
-    const {
-      data: { session },
-    } = await supabaseBrowser.auth.getSession();
-
-    const token = session?.access_token;
-    if (!token) {
-      alert("Sesión no válida. Vuelve a iniciar sesión.");
-      window.location.href = "/login";
-      return null;
-    }
-
-    const formData = new FormData();
-    formData.append("file", file);
-
-    const res = await fetch("/api/profile/upload", {
-      method: "POST",
-      headers: { Authorization: `Bearer ${token}` },
-      body: formData,
-    });
-
-    // Intentar leer JSON si existe, si no, texto
-    let payload: any = null;
-    try {
-      payload = await res.json();
-    } catch {
-      payload = { error: await res.text() };
-    }
-
-    if (!res.ok) {
-      console.error("Upload avatar failed:", payload);
-      const details = payload?.details ? `\n\nDetalle: ${payload.details}` : "";
-      alert(`${payload?.error || "No se ha podido subir el avatar."}${details}`);
-      return null;
-    }
-
-    return payload.url as string;
-  }
-
-  const onPickAvatar = async (file: File | null) => {
-    if (!file) return;
-    setUploadingAvatar(true);
-    try {
-      const url = await uploadAvatar(file);
-      if (url) setEditAvatarUrl(url);
-    } finally {
-      setUploadingAvatar(false);
-    }
-  };
-
-  const saveProfile = async () => {
+  const handleSaveProfile = async () => {
     if (!userId) return;
-    if (saving) return;
 
-    setSaving(true);
+    const u = username.trim().replace(/^@+/, "");
+    if (u && !/^[a-zA-Z0-9._-]{3,24}$/.test(u)) {
+      alert("El @username debe tener 3–24 caracteres y solo letras, números, punto, guion o guion bajo.");
+      return;
+    }
 
+    setSavingProfile(true);
     try {
-      // 1) Username via RPC si procede
-      const desired = safeHandle(editHandle);
-      const current = (profile?.username ?? "").trim().toLowerCase();
-
-      if (desired && desired !== current) {
-        if (!isHandleFormatOk(desired)) {
-          alert("El @name no tiene formato válido.");
-          setSaving(false);
-          return;
-        }
-        if (handleStatus === "taken") {
-          alert("Ese @name ya está ocupado.");
-          setSaving(false);
-          return;
-        }
-
-        const { error } = await supabaseBrowser.rpc("set_my_username", {
-          p_username: desired,
-        });
-
-        if (error) {
-          console.error("RPC set_my_username error:", error);
-          alert(error.message || "No se ha podido guardar el @name.");
-          setSaving(false);
-          return;
-        }
-      }
-
-      // 2) Resto campos
-      const payload: any = {
-        full_name: editFullName.trim() || null,
-        bio: editBio.trim() || null,
-        website: editWebsite.trim() ? normalizeUrl(editWebsite) : null,
-        location: editLocation.trim() || null,
-
-        instagram_url: editInstagram.trim() ? normalizeUrl(editInstagram) : null,
-        tiktok_url: editTiktok.trim() ? normalizeUrl(editTiktok) : null,
-        linkedin_url: editLinkedin.trim() ? normalizeUrl(editLinkedin) : null,
-        youtube_url: editYoutube.trim() ? normalizeUrl(editYoutube) : null,
-
-        avatar_url: editAvatarUrl.trim() ? normalizeUrl(editAvatarUrl) : null,
+      const payload: Partial<ProfileRow> = {
+        id: userId,
+        full_name: fullName.trim() || null,
+        username: u || null,
+        bio: bio.trim() || null,
+        location: location.trim() || null,
+        website: website.trim() ? normalizeUrl(website) : null,
+        instagram_url: instagramUrl.trim() ? normalizeUrl(instagramUrl) : null,
+        linkedin_url: linkedinUrl.trim() ? normalizeUrl(linkedinUrl) : null,
+        avatar_url: avatarUrl?.trim() ? avatarUrl.trim() : null,
       };
 
-      const { error: e2 } = await supabaseBrowser
-        .from("profiles")
-        .update(payload)
-        .eq("id", userId);
+      const { error } = await supabaseBrowser.from("profiles").upsert(payload, { onConflict: "id" });
 
-      if (e2) {
-        console.error("Error update profiles:", e2);
+      if (error) {
+        console.error("Error guardando profile:", error);
         alert("No se ha podido guardar el perfil.");
-        setSaving(false);
         return;
       }
 
       await loadProfile(userId);
       setEditOpen(false);
     } finally {
-      setSaving(false);
+      setSavingProfile(false);
+    }
+  };
+
+  const handleAvatarFile = async (file: File | null) => {
+    if (!file || !userId) return;
+
+    setUploadingAvatar(true);
+    try {
+      const {
+        data: { session },
+      } = await supabaseBrowser.auth.getSession();
+
+      const token = session?.access_token;
+      if (!token) {
+        alert("Sesión inválida. Vuelve a iniciar sesión.");
+        window.location.href = "/login";
+        return;
+      }
+
+      const form = new FormData();
+      form.append("file", file);
+
+      const res = await fetch("/api/profile/upload", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+        body: form,
+      });
+
+      const json = await res.json().catch(() => ({}));
+
+      if (!res.ok) {
+        console.error("Upload avatar error:", json);
+        alert("No se ha podido subir la foto de perfil.");
+        return;
+      }
+
+      const url = String(json.url || "");
+      if (!url) {
+        alert("No se ha recibido URL del avatar.");
+        return;
+      }
+
+      setAvatarUrl(url);
+    } finally {
+      setUploadingAvatar(false);
     }
   };
 
@@ -403,7 +285,7 @@ export default function ProfilePage() {
           return;
         }
 
-        setUserId(user.id);
+        setCurrentUser(user);
         setUserEmail(user.email ?? null);
 
         await loadProfile(user.id);
@@ -428,9 +310,16 @@ export default function ProfilePage() {
     );
   }
 
+  const safeUsername = (profile?.username || "").trim().replace(/^@+/, "");
+  const showUsername = safeUsername ? `@${safeUsername}` : "";
+
+  const showWebsite = profile?.website?.trim() || "";
+  const showInstagram = profile?.instagram_url?.trim() || "";
+  const showLinkedin = profile?.linkedin_url?.trim() || "";
+
   return (
     <main className="min-h-screen bg-black text-white">
-      <section className="max-w-4xl mx-auto px-4 py-8">
+      <section className="max-w-5xl mx-auto px-4 py-8">
         <div className="flex items-center justify-between mb-6">
           <Link
             href="/feed"
@@ -442,9 +331,8 @@ export default function ProfilePage() {
           <div className="flex items-center gap-2">
             <button
               type="button"
-              onClick={openEdit}
+              onClick={handleOpenEdit}
               className="rounded-full border border-neutral-700 bg-black px-4 py-2 text-xs font-semibold text-white hover:border-neutral-500"
-              disabled={loadingProfile}
             >
               Editar perfil
             </button>
@@ -459,145 +347,125 @@ export default function ProfilePage() {
           </div>
         </div>
 
-        {/* Tarjeta perfil (sin portada, corte negro mínimo) */}
-        <div className="border border-neutral-800 rounded-2xl overflow-hidden bg-neutral-900">
-          {/* Banda superior mínima para estética */}
-          <div className="h-2 sm:h-3 bg-neutral-950 border-b border-neutral-800" />
-
-          <div className="px-6 pb-6">
-            {/* Solape más pequeño para evitar “corte negro” */}
-            <div className="-mt-3 sm:-mt-4 flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
-              <div className="flex items-end gap-4">
-                <div className="h-20 w-20 sm:h-24 sm:w-24 rounded-full border-4 border-neutral-900 bg-neutral-800 overflow-hidden flex items-center justify-center text-2xl font-semibold">
-                  {avatarUrl ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img src={avatarUrl} alt="Avatar" className="w-full h-full object-cover" />
-                  ) : (
-                    initial
-                  )}
-                </div>
-
-                <div className="pb-1">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <h1 className="text-xl sm:text-2xl font-semibold">
-                      {loadingProfile ? "Cargando…" : displayName}
-                    </h1>
-
-                    {badgeVerified && (
-                      <span className="inline-flex items-center rounded-full px-3 py-1 text-[11px] font-semibold bg-emerald-500/15 text-emerald-300 border border-emerald-500/25">
-                        Verificado
-                      </span>
-                    )}
-                  </div>
-
-                  <div className="text-sm text-neutral-400 mt-1">{displayHandle}</div>
-
-                  {profile?.location && (
-                    <div className="text-xs text-neutral-400 mt-1">📍 {profile.location}</div>
-                  )}
-                </div>
+        {/* Card perfil */}
+        <div className="bg-neutral-900 border border-neutral-800 rounded-2xl p-6">
+          <div className="flex items-start justify-between gap-6">
+            <div className="flex items-center gap-4 min-w-0">
+              <div className="h-16 w-16 rounded-full overflow-hidden bg-neutral-800 border border-neutral-700 flex items-center justify-center">
+                {profile?.avatar_url ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={profile.avatar_url}
+                    alt={displayName}
+                    className="h-full w-full object-cover"
+                  />
+                ) : (
+                  <span className="text-xl font-semibold">
+                    {(displayName?.[0] || "U").toUpperCase()}
+                  </span>
+                )}
               </div>
 
-              <div className="flex gap-6 text-sm">
-                <div className="text-center">
-                  <div className="text-white font-semibold">{loadingPosts ? "…" : posts.length}</div>
-                  <div className="text-xs text-neutral-400">publicaciones</div>
+              <div className="min-w-0">
+                <div className="text-xl font-semibold truncate">
+                  {loadingProfile ? "Cargando…" : displayName}
                 </div>
 
-                <button
-                  type="button"
-                  onClick={() => openList("followers")}
-                  className="text-center hover:text-emerald-400 transition-colors"
-                  disabled={loadingCounts}
-                >
-                  <div className="text-white font-semibold">{loadingCounts ? "…" : followersCount}</div>
-                  <div className="text-xs text-neutral-400">seguidores</div>
-                </button>
+                {showUsername && (
+                  <div className="text-sm text-neutral-400 truncate">
+                    {showUsername}
+                  </div>
+                )}
 
-                <button
-                  type="button"
-                  onClick={() => openList("following")}
-                  className="text-center hover:text-emerald-400 transition-colors"
-                  disabled={loadingCounts}
-                >
-                  <div className="text-white font-semibold">{loadingCounts ? "…" : followingCount}</div>
-                  <div className="text-xs text-neutral-400">siguiendo</div>
-                </button>
+                {profile?.location && (
+                  <div className="text-sm text-neutral-400 truncate">
+                    📍 {profile.location}
+                  </div>
+                )}
               </div>
             </div>
 
-            <div className="mt-5 space-y-3">
-              {profile?.bio ? (
-                <p className="text-sm text-neutral-200 whitespace-pre-line">{profile.bio}</p>
-              ) : (
-                <p className="text-sm text-neutral-500">Aún no has añadido bio.</p>
-              )}
+            <div className="flex items-center gap-8">
+              <div className="text-center">
+                <div className="text-white font-semibold">
+                  {loadingPosts ? "…" : posts.length}
+                </div>
+                <div className="text-xs text-neutral-400">publicaciones</div>
+              </div>
 
-              {profile?.website && (
+              <button
+                type="button"
+                onClick={() => openList("followers")}
+                className="text-center hover:text-emerald-400 transition-colors"
+                disabled={loadingCounts}
+              >
+                <div className="text-white font-semibold">
+                  {loadingCounts ? "…" : followersCount}
+                </div>
+                <div className="text-xs text-neutral-400">seguidores</div>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => openList("following")}
+                className="text-center hover:text-emerald-400 transition-colors"
+                disabled={loadingCounts}
+              >
+                <div className="text-white font-semibold">
+                  {loadingCounts ? "…" : followingCount}
+                </div>
+                <div className="text-xs text-neutral-400">siguiendo</div>
+              </button>
+            </div>
+          </div>
+
+          {/* Bio + enlaces */}
+          <div className="mt-5 space-y-2">
+            {profile?.bio ? (
+              <p className="text-sm text-neutral-200 whitespace-pre-line">
+                {profile.bio}
+              </p>
+            ) : (
+              <p className="text-sm text-neutral-500">Aún no has añadido bio.</p>
+            )}
+
+            {showWebsite && (
+              <a
+                href={showWebsite}
+                target="_blank"
+                rel="noreferrer"
+                className="text-sm text-emerald-400 hover:underline inline-flex items-center gap-2"
+              >
+                🔗 {showWebsite}
+              </a>
+            )}
+
+            <div className="flex flex-wrap gap-2 pt-1">
+              {showInstagram && (
                 <a
-                  href={profile.website}
+                  href={showInstagram}
                   target="_blank"
                   rel="noreferrer"
-                  className="text-sm text-emerald-400 hover:text-emerald-300 break-all"
+                  className="rounded-full border border-neutral-700 bg-black px-4 py-2 text-xs font-semibold text-white hover:border-neutral-500"
                 >
-                  🔗 {profile.website}
+                  Instagram
                 </a>
               )}
-
-              <div className="flex flex-wrap gap-3 text-sm">
-                {profile?.instagram_url && (
-                  <a
-                    href={profile.instagram_url}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="inline-flex items-center gap-2 rounded-full border border-neutral-800 bg-black px-3 py-2 hover:border-neutral-600"
-                  >
-                    <span>📷</span>
-                    <span className="text-neutral-200">Instagram</span>
-                  </a>
-                )}
-
-                {profile?.tiktok_url && (
-                  <a
-                    href={profile.tiktok_url}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="inline-flex items-center gap-2 rounded-full border border-neutral-800 bg-black px-3 py-2 hover:border-neutral-600"
-                  >
-                    <span>🎵</span>
-                    <span className="text-neutral-200">TikTok</span>
-                  </a>
-                )}
-
-                {profile?.linkedin_url && (
-                  <a
-                    href={profile.linkedin_url}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="inline-flex items-center gap-2 rounded-full border border-neutral-800 bg-black px-3 py-2 hover:border-neutral-600"
-                  >
-                    <span>💼</span>
-                    <span className="text-neutral-200">LinkedIn</span>
-                  </a>
-                )}
-
-                {profile?.youtube_url && (
-                  <a
-                    href={profile.youtube_url}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="inline-flex items-center gap-2 rounded-full border border-neutral-800 bg-black px-3 py-2 hover:border-neutral-600"
-                  >
-                    <span>▶️</span>
-                    <span className="text-neutral-200">YouTube</span>
-                  </a>
-                )}
-              </div>
+              {showLinkedin && (
+                <a
+                  href={showLinkedin}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="rounded-full border border-neutral-700 bg-black px-4 py-2 text-xs font-semibold text-white hover:border-neutral-500"
+                >
+                  LinkedIn
+                </a>
+              )}
             </div>
           </div>
         </div>
 
-        {/* Posts */}
+        {/* Posts grid */}
         <div className="mt-8">
           <h2 className="text-base font-semibold mb-3">Tus publicaciones</h2>
 
@@ -608,180 +476,51 @@ export default function ProfilePage() {
               Todavía no has publicado contenido. Sube una foto auténtica desde el feed.
             </p>
           ) : (
-            <div className="space-y-4">
+            <div className="grid grid-cols-3 gap-2 sm:gap-3">
               {posts.map((p) => (
-                <PostCard key={p.id} post={p} authorName={displayName} />
+                <button
+                  key={p.id}
+                  type="button"
+                  onClick={() => setSelectedPost(p)}
+                  className="relative aspect-square overflow-hidden rounded-xl border border-neutral-800 bg-black hover:border-neutral-600"
+                  title={p.caption ?? "Ver publicación"}
+                >
+                  {p.image_url ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={p.image_url}
+                      alt={p.caption ?? "Post"}
+                      className="w-full h-full object-cover"
+                      loading="lazy"
+                    />
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center text-xs text-neutral-500">
+                      Sin imagen
+                    </div>
+                  )}
+                </button>
               ))}
             </div>
           )}
         </div>
       </section>
 
-      {/* Modal editar (sin portada; solo avatar) */}
-      {editOpen && (
-        <div className="fixed inset-0 z-50 bg-black/70">
-          <div className="absolute inset-0 overflow-y-auto">
-            <div className="min-h-screen flex items-start justify-center px-4 py-8">
-              <div className="w-full max-w-2xl rounded-2xl border border-neutral-800 bg-neutral-950 flex flex-col max-h-[85vh]">
-                <div className="sticky top-0 z-10 bg-neutral-950 border-b border-neutral-800 px-5 py-4 rounded-t-2xl">
-                  <div className="flex items-center justify-between">
-                    <h3 className="text-sm font-semibold">Editar perfil</h3>
-                    <button
-                      type="button"
-                      onClick={cancelEdit}
-                      className="text-xs text-neutral-400 hover:text-neutral-200"
-                    >
-                      Cerrar
-                    </button>
-                  </div>
-                </div>
-
-                <div className="flex-1 overflow-y-auto px-5 py-4">
-                  <div className="grid sm:grid-cols-2 gap-4">
-                    <div className="sm:col-span-2">
-                      <label className="block text-xs text-neutral-400 mb-1">Nombre</label>
-                      <input
-                        value={editFullName}
-                        onChange={(e) => setEditFullName(e.target.value)}
-                        className="w-full rounded-xl bg-black border border-neutral-800 px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-emerald-500"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-xs text-neutral-400 mb-1">@name (Ethiqia)</label>
-                      <input
-                        value={editHandle}
-                        onChange={(e) => setEditHandle(e.target.value)}
-                        placeholder="ej: david"
-                        className="w-full rounded-xl bg-black border border-neutral-800 px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-emerald-500"
-                      />
-                      <div className="mt-1 text-[11px]">
-                        {handleStatus === "checking" && <span className="text-neutral-400">Comprobando…</span>}
-                        {handleStatus === "available" && <span className="text-emerald-300">Disponible</span>}
-                        {handleStatus === "taken" && <span className="text-red-300">Ocupado</span>}
-                        {handleStatus === "invalid" && (
-                          <span className="text-yellow-300">
-                            Inválido (3-20, a-z 0-9 _ .; empieza por letra/número)
-                          </span>
-                        )}
-                        {handleStatus === "error" && <span className="text-red-300">Error comprobando</span>}
-                      </div>
-                    </div>
-
-                    <div>
-                      <label className="block text-xs text-neutral-400 mb-1">Ubicación</label>
-                      <input
-                        value={editLocation}
-                        onChange={(e) => setEditLocation(e.target.value)}
-                        className="w-full rounded-xl bg-black border border-neutral-800 px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-emerald-500"
-                      />
-                    </div>
-
-                    <div className="sm:col-span-2">
-                      <label className="block text-xs text-neutral-400 mb-1">
-                        Bio <span className="text-neutral-500">({editBio.length}/240)</span>
-                      </label>
-                      <textarea
-                        value={editBio}
-                        onChange={(e) => setEditBio(e.target.value.slice(0, 240))}
-                        rows={3}
-                        className="w-full rounded-xl bg-black border border-neutral-800 px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-emerald-500"
-                      />
-                    </div>
-
-                    <div className="sm:col-span-2">
-                      <label className="block text-xs text-neutral-400 mb-1">Website</label>
-                      <input
-                        value={editWebsite}
-                        onChange={(e) => setEditWebsite(e.target.value)}
-                        placeholder="https://tuweb.com"
-                        className="w-full rounded-xl bg-black border border-neutral-800 px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-emerald-500"
-                      />
-                    </div>
-
-                    {/* SOLO AVATAR */}
-                    <div className="sm:col-span-2 rounded-xl border border-neutral-800 bg-black p-4">
-                      <div className="text-xs text-neutral-400 mb-2">Foto de perfil (subir desde tu equipo)</div>
-                      <input
-                        type="file"
-                        accept="image/*"
-                        onChange={(e) => onPickAvatar(e.target.files?.[0] ?? null)}
-                        className="text-xs text-neutral-300"
-                      />
-                      <div className="mt-2 text-[11px] text-neutral-400 break-all">
-                        {uploadingAvatar
-                          ? "Subiendo avatar…"
-                          : editAvatarUrl
-                          ? `OK: ${editAvatarUrl}`
-                          : "Sin avatar"}
-                      </div>
-                    </div>
-
-                    <div className="sm:col-span-2">
-                      <label className="block text-xs text-neutral-400 mb-1">Instagram</label>
-                      <input
-                        value={editInstagram}
-                        onChange={(e) => setEditInstagram(e.target.value)}
-                        placeholder="https://instagram.com/..."
-                        className="w-full rounded-xl bg-black border border-neutral-800 px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-emerald-500"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-xs text-neutral-400 mb-1">TikTok</label>
-                      <input
-                        value={editTiktok}
-                        onChange={(e) => setEditTiktok(e.target.value)}
-                        placeholder="https://tiktok.com/@..."
-                        className="w-full rounded-xl bg-black border border-neutral-800 px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-emerald-500"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-xs text-neutral-400 mb-1">LinkedIn</label>
-                      <input
-                        value={editLinkedin}
-                        onChange={(e) => setEditLinkedin(e.target.value)}
-                        placeholder="https://linkedin.com/in/..."
-                        className="w-full rounded-xl bg-black border border-neutral-800 px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-emerald-500"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-xs text-neutral-400 mb-1">YouTube</label>
-                      <input
-                        value={editYoutube}
-                        onChange={(e) => setEditYoutube(e.target.value)}
-                        placeholder="https://youtube.com/@..."
-                        className="w-full rounded-xl bg-black border border-neutral-800 px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-emerald-500"
-                      />
-                    </div>
-                  </div>
-                </div>
-
-                <div className="sticky bottom-0 border-t border-neutral-800 bg-neutral-950 px-5 py-4 rounded-b-2xl">
-                  <div className="flex items-center justify-end gap-2">
-                    <button
-                      type="button"
-                      onClick={cancelEdit}
-                      className="rounded-full border border-neutral-800 bg-black px-4 py-2 text-xs font-semibold text-white hover:border-neutral-600"
-                      disabled={saving}
-                    >
-                      Cancelar
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={saveProfile}
-                      disabled={saving || uploadingAvatar}
-                      className="rounded-full bg-emerald-500 hover:bg-emerald-600 px-5 py-2 text-xs font-semibold text-black disabled:opacity-60"
-                    >
-                      {saving ? "Guardando…" : "Guardar cambios"}
-                    </button>
-                  </div>
-                </div>
-              </div>
+      {/* Modal ver post */}
+      {selectedPost && (
+        <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center px-4">
+          <div className="w-full max-w-3xl rounded-2xl border border-neutral-800 bg-neutral-950 p-4">
+            <div className="flex items-center justify-between mb-3">
+              <div className="text-sm font-semibold">Publicación</div>
+              <button
+                type="button"
+                onClick={() => setSelectedPost(null)}
+                className="text-xs text-neutral-400 hover:text-neutral-200"
+              >
+                Cerrar
+              </button>
             </div>
+
+            <PostCard post={selectedPost} authorName={displayName} />
           </div>
         </div>
       )}
@@ -815,14 +554,162 @@ export default function ProfilePage() {
                       <Link
                         href={`/u/${u.id}`}
                         className="block rounded-xl border border-neutral-800 bg-black px-3 py-3 hover:border-neutral-600"
+                        onClick={() => setListOpen(null)}
                       >
-                        <div className="text-sm font-semibold">{u.full_name}</div>
+                        <div className="text-sm font-semibold">
+                          {u.full_name || (u.username ? `@${u.username}` : "Usuario Ethiqia")}
+                        </div>
                         <div className="text-[10px] text-neutral-500 break-all">{u.id}</div>
                       </Link>
                     </li>
                   ))}
                 </ul>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal editar perfil */}
+      {editOpen && (
+        <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center px-4">
+          <div className="w-full max-w-2xl rounded-2xl border border-neutral-800 bg-neutral-950">
+            <div className="p-5 border-b border-neutral-800 flex items-center justify-between">
+              <h3 className="text-sm font-semibold">Editar perfil</h3>
+              <button
+                type="button"
+                onClick={() => setEditOpen(false)}
+                className="text-xs text-neutral-400 hover:text-neutral-200"
+              >
+                Cerrar
+              </button>
+            </div>
+
+            {/* Contenido scrollable */}
+            <div className="p-5 max-h-[75vh] overflow-y-auto space-y-4">
+              {/* Avatar */}
+              <div className="flex items-center gap-4">
+                <div className="h-16 w-16 rounded-full overflow-hidden bg-neutral-800 border border-neutral-700 flex items-center justify-center">
+                  {avatarUrl ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={avatarUrl} alt="avatar" className="h-full w-full object-cover" />
+                  ) : (
+                    <span className="text-xl font-semibold">
+                      {(displayName?.[0] || "U").toUpperCase()}
+                    </span>
+                  )}
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-xs text-neutral-400 block">
+                    Cambiar foto de perfil
+                  </label>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={(e) => handleAvatarFile(e.target.files?.[0] ?? null)}
+                    className="text-xs"
+                    disabled={uploadingAvatar}
+                  />
+                  {uploadingAvatar && (
+                    <div className="text-xs text-neutral-400">Subiendo…</div>
+                  )}
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs text-neutral-400 block mb-1">Nombre</label>
+                  <input
+                    value={fullName}
+                    onChange={(e) => setFullName(e.target.value)}
+                    className="w-full rounded-lg bg-black border border-neutral-700 px-3 py-2 text-sm"
+                    placeholder="Tu nombre"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-xs text-neutral-400 block mb-1">@username</label>
+                  <input
+                    value={username}
+                    onChange={(e) => setUsername(e.target.value.replace(/\s/g, ""))}
+                    className="w-full rounded-lg bg-black border border-neutral-700 px-3 py-2 text-sm"
+                    placeholder="ej: davidguirao"
+                  />
+                  <div className="text-[11px] text-neutral-500 mt-1">
+                    3–24 caracteres. Letras, números, punto, guion, guion bajo.
+                  </div>
+                </div>
+
+                <div>
+                  <label className="text-xs text-neutral-400 block mb-1">Ubicación</label>
+                  <input
+                    value={location}
+                    onChange={(e) => setLocation(e.target.value)}
+                    className="w-full rounded-lg bg-black border border-neutral-700 px-3 py-2 text-sm"
+                    placeholder="España / Alicante / etc."
+                  />
+                </div>
+
+                <div>
+                  <label className="text-xs text-neutral-400 block mb-1">Web</label>
+                  <input
+                    value={website}
+                    onChange={(e) => setWebsite(e.target.value)}
+                    className="w-full rounded-lg bg-black border border-neutral-700 px-3 py-2 text-sm"
+                    placeholder="https://tusitio.com"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-xs text-neutral-400 block mb-1">Instagram</label>
+                  <input
+                    value={instagramUrl}
+                    onChange={(e) => setInstagramUrl(e.target.value)}
+                    className="w-full rounded-lg bg-black border border-neutral-700 px-3 py-2 text-sm"
+                    placeholder="https://instagram.com/tuusuario"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-xs text-neutral-400 block mb-1">LinkedIn</label>
+                  <input
+                    value={linkedinUrl}
+                    onChange={(e) => setLinkedinUrl(e.target.value)}
+                    className="w-full rounded-lg bg-black border border-neutral-700 px-3 py-2 text-sm"
+                    placeholder="https://linkedin.com/in/tuusuario"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="text-xs text-neutral-400 block mb-1">Bio</label>
+                <textarea
+                  value={bio}
+                  onChange={(e) => setBio(e.target.value)}
+                  className="w-full rounded-lg bg-black border border-neutral-700 px-3 py-2 text-sm"
+                  rows={4}
+                  placeholder="Cuenta quién eres y por qué te deberían seguir…"
+                />
+              </div>
+            </div>
+
+            <div className="p-5 border-t border-neutral-800 flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setEditOpen(false)}
+                className="rounded-full border border-neutral-700 bg-black px-4 py-2 text-xs font-semibold text-white hover:border-neutral-500"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={handleSaveProfile}
+                disabled={savingProfile}
+                className="rounded-full bg-emerald-500 hover:bg-emerald-600 px-5 py-2 text-xs font-semibold text-black disabled:opacity-60"
+              >
+                {savingProfile ? "Guardando…" : "Guardar"}
+              </button>
             </div>
           </div>
         </div>
