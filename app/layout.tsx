@@ -1,31 +1,25 @@
 import type { Metadata } from "next";
 import "./globals.css";
-import Navbar from "@/components/Navbar";
-import Footer from "@/components/Footer";
+import AppTopNav from "@/components/AppTopNav";
 
 export const metadata: Metadata = {
-  title: "Ethiqia - Demo reputación IA",
-  description: "Ethiqia, la plataforma de reputación basada en contenido auténtico.",
+  title: "Ethiqia",
+  description: "Beta reputación ética",
 };
 
 export default function RootLayout({
   children,
-}: {
+}: Readonly<{
   children: React.ReactNode;
-}) {
+}>) {
   return (
     <html lang="es">
-      <body className="bg-black text-white">
-        <div className="min-h-screen flex flex-col">
-          {/* NAVBAR CORRECTO */}
-          <Navbar />
+      <body className="min-h-screen bg-black text-white">
+        {/* Navbar de la app (Feed/Mi perfil) — se oculta en / y /investors */}
+        <AppTopNav />
 
-          {/* CONTENIDO PRINCIPAL */}
-          <main className="flex-1">{children}</main>
-
-          {/* FOOTER */}
-          <Footer />
-        </div>
+        {/* Contenido de cada página */}
+        {children}
       </body>
     </html>
   );
