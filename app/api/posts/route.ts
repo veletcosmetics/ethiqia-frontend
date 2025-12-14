@@ -5,66 +5,67 @@ const supabaseUrl = process.env.SUPABASE_URL!;
 const supabaseAnonKey = process.env.SUPABASE_ANON_KEY!;
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
-// Cliente público (para POST si lo necesitas con anon)
-const supabasePublic = createClient(supabaseUrl, supabaseAnonKey);
+// Cliente “público” (como lo tenías)
+const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
-// Cliente admin (para GET + merge nombres sin RLS)
-const supabaseAdmin = createClient(
-  supabaseUrl,
-  serviceRoleKey || supabaseAnonKey
-);
+// Cliente admin SOLO en servidor (para enriquecer autores)
+const supabaseAdmin =
+  serviceRoleKey ? createClient(supabaseUrl, serviceRoleKey) : null;
 
+// GET /api/posts  → devuelve todos los posts (con datos de autor)
 export async function GET() {
   try {
-    // 1) Posts
-    const { data: posts, error: e1 } = await supabaseAdmin
+    const { data: posts, error } = await supabase
       .from("posts")
-      .select(
-        "id,user_id,image_url,caption,created_at,ai_probability,global_score,text,blocked,reason"
-      )
+      .select("*")
       .order("created_at", { ascending: false });
 
-    if (e1) {
-      console.error("Error cargando posts:", e1);
+    if (error) {
+      console.error("Error cargando posts:", error);
       return NextResponse.json(
-        { error: "Error cargando posts", details: e1 },
+        { error: "Error cargando posts", details: error },
         { status: 500 }
       );
     }
 
-    const safePosts = posts ?? [];
+    const list = posts ?? [];
 
-    // 2) IDs únicos
-    const userIds = Array.from(
-      new Set(
-        safePosts
-          .map((p: any) => p?.user_id)
-          .filter(Boolean) as string[]
-      )
-    );
-
-    // 3) Profiles
-    let nameById = new Map<string, string>();
-    if (userIds.length > 0) {
-      const { data: profiles, error: e2 } = await supabaseAdmin
-        .from("profiles")
-        .select("id, full_name")
-        .in("id", userIds);
-
-      if (e2) {
-        console.error("Error cargando profiles:", e2);
-      } else {
-        (profiles ?? []).forEach((p: any) => {
-          nameById.set(p.id, (p.full_name ?? "Usuario Ethiqia") as string);
-        });
-      }
+    // Si no hay service role, devolvemos lo que hay (sin autor enriquecido)
+    if (!supabaseAdmin || list.length === 0) {
+      return NextResponse.json({ posts: list }, { status: 200 });
     }
 
-    // 4) Merge (author_full_name)
-    const enriched = safePosts.map((p: any) => ({
-      ...p,
-      author_full_name: nameById.get(p.user_id) ?? "Usuario Ethiqia",
-    }));
+    // Enriquecer autores en batch
+    const userIds = Array.from(
+      new Set(list.map((p: any) => p.user_id).filter(Boolean))
+    ) as string[];
+
+    if (userIds.length === 0) {
+      return NextResponse.json({ posts: list }, { status: 200 });
+    }
+
+    const { data: profiles, error: profErr } = await supabaseAdmin
+      .from("profiles")
+      .select("id, full_name, username, avatar_url")
+      .in("id", userIds);
+
+    if (profErr) {
+      console.error("Error cargando profiles para posts:", profErr);
+      return NextResponse.json({ posts: list }, { status: 200 });
+    }
+
+    const map = new Map<string, any>();
+    (profiles ?? []).forEach((p) => map.set(p.id, p));
+
+    const enriched = list.map((p: any) => {
+      const pr = map.get(p.user_id);
+      return {
+        ...p,
+        author_name: pr?.full_name ?? null,
+        author_username: pr?.username ?? null,
+        author_avatar_url: pr?.avatar_url ?? null,
+      };
+    });
 
     return NextResponse.json({ posts: enriched }, { status: 200 });
   } catch (err) {
@@ -76,7 +77,7 @@ export async function GET() {
   }
 }
 
-// POST /api/posts (lo dejo como lo tenías: funciona y no lo rompemos)
+// POST /api/posts  → guarda un post real en la tabla `posts`
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
@@ -93,19 +94,26 @@ export async function POST(req: NextRequest) {
     } = body;
 
     if (!userId) {
-      return NextResponse.json({ error: "Falta userId en el body" }, { status: 400 });
+      return NextResponse.json(
+        { error: "Falta userId en el body" },
+        { status: 400 }
+      );
     }
 
     if (!imageUrl) {
-      return NextResponse.json({ error: "Falta imageUrl en el body" }, { status: 400 });
+      return NextResponse.json(
+        { error: "Falta imageUrl en el body" },
+        { status: 400 }
+      );
     }
 
     const aiProb = typeof aiProbability === "number" ? aiProbability : 0;
     const gScore = typeof globalScore === "number" ? globalScore : 0;
     const isBlocked = Boolean(blocked);
+
     const moderationStatus = isBlocked ? "rejected" : "approved";
 
-    const { data, error } = await supabasePublic
+    const { data, error } = await supabase
       .from("posts")
       .insert({
         user_id: userId,
@@ -132,7 +140,6 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Nota: el POST devuelve el post sin author_full_name; el feed lo mostrará tras recargar
     return NextResponse.json({ post: data }, { status: 201 });
   } catch (err) {
     console.error("Error inesperado en POST /api/posts:", err);
