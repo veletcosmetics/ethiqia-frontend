@@ -21,12 +21,6 @@ type ProfileRow = {
   full_name: string | null;
   bio: string | null;
   avatar_url: string | null;
-  username: string | null;
-  location: string | null;
-  website_url: string | null;
-  instagram_url: string | null;
-  linkedin_url: string | null;
-  verified: boolean | null;
 };
 
 export default function PublicProfilePage({ params }: { params: { id: string } }) {
@@ -60,11 +54,10 @@ export default function PublicProfilePage({ params }: { params: { id: string } }
   const loadProfile = async () => {
     setLoadingProfile(true);
     try {
+      // CAMBIO CLAVE: solo columnas seguras
       const { data, error } = await supabaseBrowser
         .from("profiles")
-        .select(
-          "id, full_name, bio, avatar_url, username, location, website_url, instagram_url, linkedin_url, verified"
-        )
+        .select("id, full_name, bio, avatar_url")
         .eq("id", targetId)
         .maybeSingle();
 
@@ -83,15 +76,12 @@ export default function PublicProfilePage({ params }: { params: { id: string } }
   const loadPosts = async () => {
     setLoadingPosts(true);
     try {
-      // Reutilizamos tu API actual de posts para no tocar backend
       const res = await fetch("/api/posts");
       const json = await res.json();
       const all = (json?.posts ?? []) as any[];
       const mine = all.filter((p) => p.user_id === targetId);
 
-      // Ordenar desc por fecha si no viene ya ordenado
       mine.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
-
       setPosts(mine as Post[]);
     } catch (e) {
       console.error("Error cargando posts:", e);
@@ -282,24 +272,7 @@ export default function PublicProfilePage({ params }: { params: { id: string } }
               )}
 
               <div>
-                <div className="flex items-center gap-2">
-                  <div className="text-xl font-semibold">
-                    {loadingProfile ? "Cargando…" : displayName}
-                  </div>
-                  {profile.verified && (
-                    <span className="text-[10px] rounded-full px-2 py-1 bg-emerald-700/30 border border-emerald-600 text-emerald-200">
-                      Verificado
-                    </span>
-                  )}
-                </div>
-
-                {profile.username && (
-                  <div className="text-xs text-neutral-400">@{profile.username}</div>
-                )}
-
-                {profile.location && (
-                  <div className="text-xs text-neutral-400">📍 {profile.location}</div>
-                )}
+                <div className="text-xl font-semibold">{loadingProfile ? "Cargando…" : displayName}</div>
 
                 <div className="mt-3 flex gap-10 text-sm">
                   <div>
@@ -330,39 +303,6 @@ export default function PublicProfilePage({ params }: { params: { id: string } }
           ) : (
             <p className="mt-5 text-sm text-neutral-500">Aún no hay bio.</p>
           )}
-
-          <div className="mt-4 flex flex-wrap gap-3 items-center">
-            {profile.website_url && (
-              <a
-                href={profile.website_url}
-                target="_blank"
-                rel="noreferrer"
-                className="text-xs text-emerald-400 hover:underline"
-              >
-                🔗 {profile.website_url}
-              </a>
-            )}
-            {profile.instagram_url && (
-              <a
-                href={profile.instagram_url}
-                target="_blank"
-                rel="noreferrer"
-                className="text-xs text-neutral-200 hover:text-emerald-400"
-              >
-                Instagram
-              </a>
-            )}
-            {profile.linkedin_url && (
-              <a
-                href={profile.linkedin_url}
-                target="_blank"
-                rel="noreferrer"
-                className="text-xs text-neutral-200 hover:text-emerald-400"
-              >
-                LinkedIn
-              </a>
-            )}
-          </div>
         </div>
 
         <div className="mt-8">
@@ -383,12 +323,7 @@ export default function PublicProfilePage({ params }: { params: { id: string } }
                 >
                   {p.image_url ? (
                     <div className="relative aspect-square">
-                      <Image
-                        src={p.image_url}
-                        alt={p.caption ?? "Post"}
-                        fill
-                        className="object-cover"
-                      />
+                      <Image src={p.image_url} alt={p.caption ?? "Post"} fill className="object-cover" />
                     </div>
                   ) : (
                     <div className="aspect-square flex items-center justify-center text-xs text-neutral-500">
