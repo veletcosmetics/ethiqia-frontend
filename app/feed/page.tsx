@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useMemo, useState, FormEvent } from "react";
+import React, { useEffect, useState, FormEvent } from "react";
 import PostCard, { Post } from "@/components/PostCard";
 import { supabaseBrowser } from "@/lib/supabaseBrowserClient";
 import type { User } from "@supabase/supabase-js";
@@ -8,12 +8,6 @@ import type { User } from "@supabase/supabase-js";
 type NewPostState = {
   caption: string;
   file: File | null;
-};
-
-type ProfileMini = {
-  id: string;
-  full_name: string | null;
-  avatar_url: string | null;
 };
 
 export default function FeedPage() {
@@ -31,10 +25,7 @@ export default function FeedPage() {
   const [currentUserName, setCurrentUserName] = useState<string>("Usuario Ethiqia");
   const [authChecked, setAuthChecked] = useState(false);
 
-  // Mapa de perfiles (para mostrar avatar/nombre en el feed)
-  const [profilesMap, setProfilesMap] = useState<Record<string, ProfileMini>>({});
-
-  // 1) Cargar usuario actual + perfil
+  // 1) Cargar usuario actual + su perfil (para mostrar su nombre en sus propios posts)
   useEffect(() => {
     const initAuthAndProfile = async () => {
       try {
@@ -65,7 +56,7 @@ export default function FeedPage() {
     initAuthAndProfile();
   }, []);
 
-  // 2) Cargar posts
+  // 2) Cargar posts (ya vienen con author_name + author_avatar_url desde /api/posts)
   useEffect(() => {
     const loadPosts = async () => {
       setLoadingPosts(true);
@@ -73,26 +64,7 @@ export default function FeedPage() {
         const res = await fetch("/api/posts");
         if (!res.ok) throw new Error("Error al cargar posts");
         const data = await res.json();
-        const list = (data.posts ?? []) as Post[];
-        setPosts(list);
-
-        // Intentar traer perfiles para los user_id del feed (si RLS lo permite)
-        const ids = Array.from(new Set(list.map((p) => p.user_id).filter(Boolean)));
-        if (ids.length > 0) {
-          const { data: profs, error } = await supabaseBrowser
-            .from("profiles")
-            .select("id, full_name, avatar_url")
-            .in("id", ids);
-
-          if (!error && profs) {
-            const next: Record<string, ProfileMini> = {};
-            (profs as ProfileMini[]).forEach((p) => (next[p.id] = p));
-            setProfilesMap(next);
-          } else {
-            // Si falla por RLS, no rompemos el feed; simplemente no habrá avatar/nombre de terceros.
-            if (error) console.warn("No se han podido cargar perfiles públicos (RLS):", error);
-          }
-        }
+        setPosts((data.posts ?? []) as Post[]);
       } catch (err) {
         console.error("Error cargando posts:", err);
       } finally {
@@ -130,7 +102,7 @@ export default function FeedPage() {
     setSubmitting(true);
 
     try {
-      // 1) Subir imagen
+      // 1) Subir imagen a /api/upload
       const formData = new FormData();
       formData.append("file", newPost.file);
 
@@ -149,7 +121,7 @@ export default function FeedPage() {
 
       if (!imageUrl) throw new Error("No se ha recibido la URL pública de la imagen");
 
-      // 2) Moderación IA
+      // 2) Moderar con IA
       const moderationRes = await fetch("/api/moderate-post", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -171,7 +143,7 @@ export default function FeedPage() {
 
       const globalScore = Math.max(0, Math.min(100, Math.round(100 - aiProbability)));
 
-      // 3) Guardar post
+      // 3) Guardar post en /api/posts
       const bodyToSend = {
         userId: currentUser.id,
         imageUrl,
@@ -196,7 +168,7 @@ export default function FeedPage() {
 
       const { post } = await saveRes.json();
 
-      // 4) Añadir al estado
+      // 4) Añadir al estado (el post recién creado aún puede venir sin author_*, no pasa nada)
       setPosts((prev) => [post as Post, ...prev]);
       setNewPost({ caption: "", file: null });
       setMessage(
@@ -209,8 +181,6 @@ export default function FeedPage() {
       setSubmitting(false);
     }
   };
-
-  const myId = currentUser?.id ?? null;
 
   // Si ya hemos comprobado auth y no hay usuario
   if (authChecked && !currentUser) {
@@ -278,14 +248,14 @@ export default function FeedPage() {
 
         <div className="space-y-4 mt-4">
           {posts.map((post) => {
-            const isMine = myId && post.user_id === myId;
+            const isMine = currentUser && post.user_id === currentUser.id;
 
-            const profile = profilesMap[post.user_id];
-            const authorName = isMine
-              ? currentUserName
-              : profile?.full_name?.trim() || "Usuario Ethiqia";
+            const authorName =
+              (post.author_name?.trim() ||
+                (isMine ? currentUserName : null) ||
+                "Usuario Ethiqia") as string;
 
-            const authorAvatarUrl = profile?.avatar_url ?? null;
+            const authorAvatarUrl = post.author_avatar_url ?? null;
 
             return (
               <PostCard
