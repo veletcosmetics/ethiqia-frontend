@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { supabaseBrowser } from "@/lib/supabaseBrowserClient";
@@ -16,17 +16,13 @@ export type Post = {
   text: string | null;
   blocked: boolean | null;
   reason: string | null;
-
-  // NUEVO: viene de /api/posts GET (merge)
-  author_full_name?: string | null;
-
-  // compatibilidad por si existiera join antiguo
-  profiles?: { full_name: string | null } | null;
 };
 
 type Props = {
   post: Post;
-  authorName?: string;
+  authorName: string;
+  authorId?: string; // para link a /u/[id]
+  authorAvatarUrl?: string | null; // avatar de Supabase Storage (url pública)
 };
 
 type Comment = {
@@ -39,14 +35,20 @@ type Comment = {
 
 const supabase = supabaseBrowser;
 
-export default function PostCard({ post, authorName }: Props) {
+export default function PostCard({ post, authorName, authorId, authorAvatarUrl }: Props) {
   const [comments, setComments] = useState<Comment[]>([]);
   const [showComments, setShowComments] = useState(false);
   const [newComment, setNewComment] = useState("");
   const [loadingComments, setLoadingComments] = useState(false);
   const [sendingComment, setSendingComment] = useState(false);
 
+  // Likes
+  const [likesCount, setLikesCount] = useState<number>(0);
+  const [likedByMe, setLikedByMe] = useState<boolean>(false);
+  const [togglingLike, setTogglingLike] = useState<boolean>(false);
+
   const createdAt = post.created_at ? new Date(post.created_at) : new Date();
+
   const formattedDate = createdAt.toLocaleString("es-ES", {
     day: "2-digit",
     month: "2-digit",
@@ -69,24 +71,14 @@ export default function PostCard({ post, authorName }: Props) {
     aiColor = "bg-yellow-500";
   }
 
-  const realAuthor = useMemo(() => {
-    const a = post.author_full_name?.trim();
-    if (a) return a;
-
-    const b = post.profiles?.full_name?.trim();
-    if (b) return b;
-
-    const c = authorName?.trim();
-    if (c) return c;
-
-    return "Usuario Ethiqia";
-  }, [post.author_full_name, post.profiles?.full_name, authorName]);
-
   const initial = useMemo(() => {
-    const s = (realAuthor || "U").trim();
+    const s = (authorName || "U").trim();
     return (s[0] || "U").toUpperCase();
-  }, [realAuthor]);
+  }, [authorName]);
 
+  const authorHref = authorId ? `/u/${authorId}` : undefined;
+
+  // ---------- Comentarios ----------
   const fetchComments = async () => {
     setLoadingComments(true);
     try {
@@ -127,7 +119,13 @@ export default function PostCard({ post, authorName }: Props) {
         error: authError,
       } = await supabase.auth.getUser();
 
-      if (authError || !user) {
+      if (authError) {
+        console.error("Error obteniendo usuario", authError);
+        alert("Error de sesión, vuelve a iniciar sesión.");
+        return;
+      }
+
+      if (!user) {
         alert("Debes iniciar sesión para comentar.");
         return;
       }
@@ -157,29 +155,138 @@ export default function PostCard({ post, authorName }: Props) {
     }
   };
 
+  // ---------- Likes ----------
+  const loadLikes = async () => {
+    try {
+      // total likes
+      const { count, error: countErr } = await supabase
+        .from("post_likes")
+        .select("id", { count: "exact", head: true })
+        .eq("post_id", post.id);
+
+      if (!countErr) setLikesCount(count ?? 0);
+
+      // liked by me
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+
+      if (!user) {
+        setLikedByMe(false);
+        return;
+      }
+
+      const { data: mine, error: mineErr } = await supabase
+        .from("post_likes")
+        .select("id")
+        .eq("post_id", post.id)
+        .eq("user_id", user.id)
+        .maybeSingle();
+
+      if (!mineErr) setLikedByMe(!!mine?.id);
+    } catch (e) {
+      console.error("Error cargando likes:", e);
+    }
+  };
+
+  const toggleLike = async () => {
+    if (togglingLike) return;
+    setTogglingLike(true);
+
+    try {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+
+      if (!user) {
+        alert("Debes iniciar sesión para dar me gusta.");
+        return;
+      }
+
+      if (likedByMe) {
+        const { error } = await supabase
+          .from("post_likes")
+          .delete()
+          .eq("post_id", post.id)
+          .eq("user_id", user.id);
+
+        if (error) {
+          console.error("Error quitando like:", error);
+          return;
+        }
+
+        setLikedByMe(false);
+        setLikesCount((c) => Math.max(0, c - 1));
+      } else {
+        const { error } = await supabase.from("post_likes").insert({
+          post_id: post.id,
+          user_id: user.id,
+        });
+
+        if (error) {
+          console.error("Error dando like:", error);
+          return;
+        }
+
+        setLikedByMe(true);
+        setLikesCount((c) => c + 1);
+      }
+    } finally {
+      setTogglingLike(false);
+    }
+  };
+
+  useEffect(() => {
+    loadLikes();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [post.id]);
+
+  // ---------- Render ----------
+  const HeaderInner = (
+    <div className="flex items-center gap-3">
+      <div className="h-10 w-10 rounded-full bg-neutral-800 border border-neutral-700 overflow-hidden flex items-center justify-center">
+        {authorAvatarUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={authorAvatarUrl}
+            alt={authorName}
+            className="h-full w-full object-cover"
+          />
+        ) : (
+          <span className="text-sm font-semibold text-white">{initial}</span>
+        )}
+      </div>
+
+      <div>
+        <div className="text-sm font-semibold">{authorName}</div>
+        <div className="text-xs text-neutral-400">{formattedDate}</div>
+      </div>
+    </div>
+  );
+
   return (
     <article className="bg-neutral-900 rounded-2xl p-4 sm:p-5 mb-4 border border-neutral-800">
+      {/* Cabecera */}
       <header className="flex justify-between items-start gap-3">
-        <Link href={`/u/${post.user_id}`} className="flex items-center gap-3 group">
-          <div className="h-10 w-10 rounded-full bg-emerald-600 flex items-center justify-center text-sm font-semibold">
-            {initial}
-          </div>
-          <div>
-            <div className="text-sm font-semibold group-hover:text-emerald-400 transition-colors">
-              {realAuthor}
-            </div>
-            <div className="text-xs text-neutral-400">{formattedDate}</div>
-          </div>
-        </Link>
+        {authorHref ? (
+          <Link href={authorHref} className="hover:opacity-90 transition-opacity">
+            {HeaderInner}
+          </Link>
+        ) : (
+          HeaderInner
+        )}
 
         <div className="text-right">
           <div className="text-[10px] uppercase tracking-wide text-neutral-400">
             Ethiqia Score
           </div>
-          <div className="text-emerald-400 text-sm font-semibold">{score}/100</div>
+          <div className="text-emerald-400 text-sm font-semibold">
+            {score}/100
+          </div>
         </div>
       </header>
 
+      {/* Imagen */}
       {post.image_url && (
         <div className="mt-4 relative overflow-hidden rounded-xl border border-neutral-800 bg-black">
           <Image
@@ -192,12 +299,14 @@ export default function PostCard({ post, authorName }: Props) {
         </div>
       )}
 
+      {/* Texto */}
       {post.caption && (
         <p className="mt-3 text-sm text-neutral-100 whitespace-pre-line">
           {post.caption}
         </p>
       )}
 
+      {/* Badges IA y estado */}
       <div className="mt-3 flex flex-wrap gap-2 items-center">
         <span
           className={`inline-flex items-center rounded-full px-3 py-1 text-[11px] font-medium ${aiColor} text-white`}
@@ -212,17 +321,34 @@ export default function PostCard({ post, authorName }: Props) {
         )}
       </div>
 
+      {/* Botones de interacción */}
       <div className="mt-4 flex items-center gap-4 text-xs text-neutral-400">
+        <button
+          type="button"
+          onClick={toggleLike}
+          disabled={togglingLike}
+          className={`flex items-center gap-1 transition-colors ${
+            likedByMe ? "text-emerald-400" : "hover:text-emerald-400"
+          }`}
+          title={likedByMe ? "Quitar me gusta" : "Dar me gusta"}
+        >
+          <span>{likedByMe ? "❤️" : "🤍"}</span>
+          <span>{likesCount}</span>
+        </button>
+
         <button
           type="button"
           onClick={handleToggleComments}
           className="flex items-center gap-1 hover:text-emerald-400 transition-colors"
         >
           <span>💬</span>
-          <span>Comentarios{comments.length > 0 ? ` (${comments.length})` : ""}</span>
+          <span>
+            Comentarios{comments.length > 0 ? ` (${comments.length})` : ""}
+          </span>
         </button>
       </div>
 
+      {/* Sección de comentarios */}
       {showComments && (
         <div className="mt-4 border-t border-neutral-800 pt-3 space-y-3">
           {loadingComments ? (
@@ -233,17 +359,41 @@ export default function PostCard({ post, authorName }: Props) {
             </p>
           ) : (
             <ul className="space-y-2">
-              {comments.map((comment) => (
-                <li
-                  key={comment.id}
-                  className="text-xs bg-neutral-950/60 border border-neutral-800 rounded-lg px-3 py-2"
-                >
-                  <p className="text-neutral-100">{comment.content}</p>
-                </li>
-              ))}
+              {comments.map((comment) => {
+                const created = comment.created_at ? new Date(comment.created_at) : null;
+                const createdLabel = created
+                  ? created.toLocaleString("es-ES", {
+                      day: "2-digit",
+                      month: "2-digit",
+                      year: "2-digit",
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    })
+                  : "";
+
+                return (
+                  <li
+                    key={comment.id}
+                    className="text-xs bg-neutral-950/60 border border-neutral-800 rounded-lg px-3 py-2"
+                  >
+                    <div className="flex justify-between items-baseline gap-3">
+                      <span className="font-medium text-neutral-100">
+                        Usuario Ethiqia
+                      </span>
+                      {createdLabel && (
+                        <span className="text-[10px] text-neutral-500">
+                          {createdLabel}
+                        </span>
+                      )}
+                    </div>
+                    <p className="mt-1 text-neutral-100">{comment.content}</p>
+                  </li>
+                );
+              })}
             </ul>
           )}
 
+          {/* Formulario nuevo comentario */}
           <div className="flex items-center gap-2">
             <input
               type="text"
