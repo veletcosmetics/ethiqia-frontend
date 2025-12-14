@@ -15,7 +15,6 @@ type ProfileRow = {
   website?: string | null;
   location?: string | null;
 
-  cover_url?: string | null;
   avatar_url?: string | null;
 
   is_verified?: boolean | null;
@@ -63,9 +62,7 @@ export default function ProfilePage() {
   const [loadingPosts, setLoadingPosts] = useState(false);
 
   // Modal listas
-  const [listOpen, setListOpen] = useState<null | "followers" | "following">(
-    null
-  );
+  const [listOpen, setListOpen] = useState<null | "followers" | "following">(null);
   const [listLoading, setListLoading] = useState(false);
   const [listUsers, setListUsers] = useState<FollowUser[]>([]);
 
@@ -83,10 +80,7 @@ export default function ProfilePage() {
   const [editLinkedin, setEditLinkedin] = useState("");
   const [editYoutube, setEditYoutube] = useState("");
 
-  const [editCoverUrl, setEditCoverUrl] = useState("");
   const [editAvatarUrl, setEditAvatarUrl] = useState("");
-
-  const [uploadingCover, setUploadingCover] = useState(false);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
 
   // Username
@@ -110,8 +104,6 @@ export default function ProfilePage() {
   }, [displayName]);
 
   const badgeVerified = Boolean(profile?.is_verified);
-
-  const coverUrl = profile?.cover_url?.trim() || "";
   const avatarUrl = profile?.avatar_url?.trim() || "";
 
   const handleLogout = async () => {
@@ -130,7 +122,7 @@ export default function ProfilePage() {
       const { data, error } = await supabaseBrowser
         .from("profiles")
         .select(
-          "id, full_name, bio, username, website, location, cover_url, avatar_url, is_verified, instagram_url, tiktok_url, linkedin_url, youtube_url"
+          "id, full_name, bio, username, website, location, avatar_url, is_verified, instagram_url, tiktok_url, linkedin_url, youtube_url"
         )
         .eq("id", targetId)
         .maybeSingle();
@@ -166,9 +158,7 @@ export default function ProfilePage() {
   const loadCountsServer = async (targetId: string) => {
     setLoadingCounts(true);
     try {
-      const res = await fetch(
-        `/api/follow-stats?userId=${encodeURIComponent(targetId)}`
-      );
+      const res = await fetch(`/api/follow-stats?userId=${encodeURIComponent(targetId)}`);
       const json = await res.json();
       if (!res.ok) {
         console.error("Error follow-stats:", json);
@@ -217,7 +207,6 @@ export default function ProfilePage() {
     setEditLinkedin(p?.linkedin_url ?? "");
     setEditYoutube(p?.youtube_url ?? "");
 
-    setEditCoverUrl(p?.cover_url ?? "");
     setEditAvatarUrl(p?.avatar_url ?? "");
 
     setEditHandle(p?.username ?? "");
@@ -257,12 +246,9 @@ export default function ProfilePage() {
 
     const t = setTimeout(async () => {
       try {
-        const { data, error } = await supabaseBrowser.rpc(
-          "is_username_available",
-          {
-            p_username: raw,
-          }
-        );
+        const { data, error } = await supabaseBrowser.rpc("is_username_available", {
+          p_username: raw,
+        });
 
         if (cancelled) return;
 
@@ -285,7 +271,7 @@ export default function ProfilePage() {
     };
   }, [editHandle, editOpen, profile?.username]);
 
-  async function uploadProfileImage(file: File, kind: "cover" | "avatar") {
+  async function uploadAvatar(file: File) {
     const {
       data: { session },
     } = await supabaseBrowser.auth.getSession();
@@ -299,42 +285,36 @@ export default function ProfilePage() {
 
     const formData = new FormData();
     formData.append("file", file);
-    formData.append("kind", kind);
 
     const res = await fetch("/api/profile/upload", {
       method: "POST",
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
+      headers: { Authorization: `Bearer ${token}` },
       body: formData,
     });
 
-    const json = await res.json();
+    // Intentar leer JSON si existe, si no, texto
+    let payload: any = null;
+    try {
+      payload = await res.json();
+    } catch {
+      payload = { error: await res.text() };
+    }
+
     if (!res.ok) {
-      console.error("Upload failed:", json);
-      alert(json?.error || "No se ha podido subir la imagen.");
+      console.error("Upload avatar failed:", payload);
+      const details = payload?.details ? `\n\nDetalle: ${payload.details}` : "";
+      alert(`${payload?.error || "No se ha podido subir el avatar."}${details}`);
       return null;
     }
 
-    return json.url as string;
+    return payload.url as string;
   }
-
-  const onPickCover = async (file: File | null) => {
-    if (!file) return;
-    setUploadingCover(true);
-    try {
-      const url = await uploadProfileImage(file, "cover");
-      if (url) setEditCoverUrl(url);
-    } finally {
-      setUploadingCover(false);
-    }
-  };
 
   const onPickAvatar = async (file: File | null) => {
     if (!file) return;
     setUploadingAvatar(true);
     try {
-      const url = await uploadProfileImage(file, "avatar");
+      const url = await uploadAvatar(file);
       if (url) setEditAvatarUrl(url);
     } finally {
       setUploadingAvatar(false);
@@ -348,7 +328,7 @@ export default function ProfilePage() {
     setSaving(true);
 
     try {
-      // 1) Update username via RPC si procede
+      // 1) Username via RPC si procede
       const desired = safeHandle(editHandle);
       const current = (profile?.username ?? "").trim().toLowerCase();
 
@@ -358,7 +338,6 @@ export default function ProfilePage() {
           setSaving(false);
           return;
         }
-
         if (handleStatus === "taken") {
           alert("Ese @name ya está ocupado.");
           setSaving(false);
@@ -377,23 +356,18 @@ export default function ProfilePage() {
         }
       }
 
-      // 2) Update resto campos
+      // 2) Resto campos
       const payload: any = {
         full_name: editFullName.trim() || null,
         bio: editBio.trim() || null,
         website: editWebsite.trim() ? normalizeUrl(editWebsite) : null,
         location: editLocation.trim() || null,
 
-        instagram_url: editInstagram.trim()
-          ? normalizeUrl(editInstagram)
-          : null,
+        instagram_url: editInstagram.trim() ? normalizeUrl(editInstagram) : null,
         tiktok_url: editTiktok.trim() ? normalizeUrl(editTiktok) : null,
-        linkedin_url: editLinkedin.trim()
-          ? normalizeUrl(editLinkedin)
-          : null,
+        linkedin_url: editLinkedin.trim() ? normalizeUrl(editLinkedin) : null,
         youtube_url: editYoutube.trim() ? normalizeUrl(editYoutube) : null,
 
-        cover_url: editCoverUrl.trim() ? normalizeUrl(editCoverUrl) : null,
         avatar_url: editAvatarUrl.trim() ? normalizeUrl(editAvatarUrl) : null,
       };
 
@@ -485,34 +459,19 @@ export default function ProfilePage() {
           </div>
         </div>
 
-        {/* Perfil bonito */}
+        {/* Tarjeta perfil (sin portada, corte negro mínimo) */}
         <div className="border border-neutral-800 rounded-2xl overflow-hidden bg-neutral-900">
-          {/* CAMBIO 1: cover más bajo */}
-          <div className="relative h-24 sm:h-32 bg-neutral-950 border-b border-neutral-800">
-            {coverUrl ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                src={coverUrl}
-                alt="Cover"
-                className="w-full h-full object-cover"
-              />
-            ) : (
-              <div className="w-full h-full bg-gradient-to-r from-neutral-950 via-neutral-900 to-neutral-950" />
-            )}
-          </div>
+          {/* Banda superior mínima para estética */}
+          <div className="h-2 sm:h-3 bg-neutral-950 border-b border-neutral-800" />
 
           <div className="px-6 pb-6">
-            {/* CAMBIO 1: margen avatar ajustado */}
-            <div className="-mt-8 sm:-mt-10 flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
+            {/* Solape más pequeño para evitar “corte negro” */}
+            <div className="-mt-3 sm:-mt-4 flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
               <div className="flex items-end gap-4">
                 <div className="h-20 w-20 sm:h-24 sm:w-24 rounded-full border-4 border-neutral-900 bg-neutral-800 overflow-hidden flex items-center justify-center text-2xl font-semibold">
                   {avatarUrl ? (
                     // eslint-disable-next-line @next/next/no-img-element
-                    <img
-                      src={avatarUrl}
-                      alt="Avatar"
-                      className="w-full h-full object-cover"
-                    />
+                    <img src={avatarUrl} alt="Avatar" className="w-full h-full object-cover" />
                   ) : (
                     initial
                   )}
@@ -531,24 +490,17 @@ export default function ProfilePage() {
                     )}
                   </div>
 
-                  <div className="text-sm text-neutral-400 mt-1">
-                    {displayHandle}
-                  </div>
+                  <div className="text-sm text-neutral-400 mt-1">{displayHandle}</div>
 
                   {profile?.location && (
-                    <div className="text-xs text-neutral-400 mt-1">
-                      📍 {profile.location}
-                    </div>
+                    <div className="text-xs text-neutral-400 mt-1">📍 {profile.location}</div>
                   )}
                 </div>
               </div>
 
-              {/* Contadores */}
               <div className="flex gap-6 text-sm">
                 <div className="text-center">
-                  <div className="text-white font-semibold">
-                    {loadingPosts ? "…" : posts.length}
-                  </div>
+                  <div className="text-white font-semibold">{loadingPosts ? "…" : posts.length}</div>
                   <div className="text-xs text-neutral-400">publicaciones</div>
                 </div>
 
@@ -558,9 +510,7 @@ export default function ProfilePage() {
                   className="text-center hover:text-emerald-400 transition-colors"
                   disabled={loadingCounts}
                 >
-                  <div className="text-white font-semibold">
-                    {loadingCounts ? "…" : followersCount}
-                  </div>
+                  <div className="text-white font-semibold">{loadingCounts ? "…" : followersCount}</div>
                   <div className="text-xs text-neutral-400">seguidores</div>
                 </button>
 
@@ -570,24 +520,17 @@ export default function ProfilePage() {
                   className="text-center hover:text-emerald-400 transition-colors"
                   disabled={loadingCounts}
                 >
-                  <div className="text-white font-semibold">
-                    {loadingCounts ? "…" : followingCount}
-                  </div>
+                  <div className="text-white font-semibold">{loadingCounts ? "…" : followingCount}</div>
                   <div className="text-xs text-neutral-400">siguiendo</div>
                 </button>
               </div>
             </div>
 
-            {/* Bio + links */}
             <div className="mt-5 space-y-3">
               {profile?.bio ? (
-                <p className="text-sm text-neutral-200 whitespace-pre-line">
-                  {profile.bio}
-                </p>
+                <p className="text-sm text-neutral-200 whitespace-pre-line">{profile.bio}</p>
               ) : (
-                <p className="text-sm text-neutral-500">
-                  Aún no has añadido bio.
-                </p>
+                <p className="text-sm text-neutral-500">Aún no has añadido bio.</p>
               )}
 
               {profile?.website && (
@@ -662,8 +605,7 @@ export default function ProfilePage() {
             <p className="text-sm text-neutral-400">Cargando publicaciones…</p>
           ) : posts.length === 0 ? (
             <p className="text-sm text-neutral-500">
-              Todavía no has publicado contenido. Sube una foto auténtica desde
-              el feed.
+              Todavía no has publicado contenido. Sube una foto auténtica desde el feed.
             </p>
           ) : (
             <div className="space-y-4">
@@ -675,13 +617,12 @@ export default function ProfilePage() {
         </div>
       </section>
 
-      {/* CAMBIO 2: Modal editar con scroll interno + header/footer sticky */}
+      {/* Modal editar (sin portada; solo avatar) */}
       {editOpen && (
         <div className="fixed inset-0 z-50 bg-black/70">
           <div className="absolute inset-0 overflow-y-auto">
             <div className="min-h-screen flex items-start justify-center px-4 py-8">
               <div className="w-full max-w-2xl rounded-2xl border border-neutral-800 bg-neutral-950 flex flex-col max-h-[85vh]">
-                {/* Header sticky */}
                 <div className="sticky top-0 z-10 bg-neutral-950 border-b border-neutral-800 px-5 py-4 rounded-t-2xl">
                   <div className="flex items-center justify-between">
                     <h3 className="text-sm font-semibold">Editar perfil</h3>
@@ -695,13 +636,10 @@ export default function ProfilePage() {
                   </div>
                 </div>
 
-                {/* Content scrollable */}
                 <div className="flex-1 overflow-y-auto px-5 py-4">
                   <div className="grid sm:grid-cols-2 gap-4">
                     <div className="sm:col-span-2">
-                      <label className="block text-xs text-neutral-400 mb-1">
-                        Nombre
-                      </label>
+                      <label className="block text-xs text-neutral-400 mb-1">Nombre</label>
                       <input
                         value={editFullName}
                         onChange={(e) => setEditFullName(e.target.value)}
@@ -710,9 +648,7 @@ export default function ProfilePage() {
                     </div>
 
                     <div>
-                      <label className="block text-xs text-neutral-400 mb-1">
-                        @name (Ethiqia)
-                      </label>
+                      <label className="block text-xs text-neutral-400 mb-1">@name (Ethiqia)</label>
                       <input
                         value={editHandle}
                         onChange={(e) => setEditHandle(e.target.value)}
@@ -720,30 +656,20 @@ export default function ProfilePage() {
                         className="w-full rounded-xl bg-black border border-neutral-800 px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-emerald-500"
                       />
                       <div className="mt-1 text-[11px]">
-                        {handleStatus === "checking" && (
-                          <span className="text-neutral-400">Comprobando…</span>
-                        )}
-                        {handleStatus === "available" && (
-                          <span className="text-emerald-300">Disponible</span>
-                        )}
-                        {handleStatus === "taken" && (
-                          <span className="text-red-300">Ocupado</span>
-                        )}
+                        {handleStatus === "checking" && <span className="text-neutral-400">Comprobando…</span>}
+                        {handleStatus === "available" && <span className="text-emerald-300">Disponible</span>}
+                        {handleStatus === "taken" && <span className="text-red-300">Ocupado</span>}
                         {handleStatus === "invalid" && (
                           <span className="text-yellow-300">
                             Inválido (3-20, a-z 0-9 _ .; empieza por letra/número)
                           </span>
                         )}
-                        {handleStatus === "error" && (
-                          <span className="text-red-300">Error comprobando</span>
-                        )}
+                        {handleStatus === "error" && <span className="text-red-300">Error comprobando</span>}
                       </div>
                     </div>
 
                     <div>
-                      <label className="block text-xs text-neutral-400 mb-1">
-                        Ubicación
-                      </label>
+                      <label className="block text-xs text-neutral-400 mb-1">Ubicación</label>
                       <input
                         value={editLocation}
                         onChange={(e) => setEditLocation(e.target.value)}
@@ -753,10 +679,7 @@ export default function ProfilePage() {
 
                     <div className="sm:col-span-2">
                       <label className="block text-xs text-neutral-400 mb-1">
-                        Bio{" "}
-                        <span className="text-neutral-500">
-                          ({editBio.length}/240)
-                        </span>
+                        Bio <span className="text-neutral-500">({editBio.length}/240)</span>
                       </label>
                       <textarea
                         value={editBio}
@@ -767,9 +690,7 @@ export default function ProfilePage() {
                     </div>
 
                     <div className="sm:col-span-2">
-                      <label className="block text-xs text-neutral-400 mb-1">
-                        Website
-                      </label>
+                      <label className="block text-xs text-neutral-400 mb-1">Website</label>
                       <input
                         value={editWebsite}
                         onChange={(e) => setEditWebsite(e.target.value)}
@@ -778,61 +699,26 @@ export default function ProfilePage() {
                       />
                     </div>
 
-                    {/* SUBIDA DESDE PC */}
+                    {/* SOLO AVATAR */}
                     <div className="sm:col-span-2 rounded-xl border border-neutral-800 bg-black p-4">
-                      <div className="text-xs text-neutral-400 mb-3">
-                        Imágenes del perfil (subir desde tu equipo)
-                      </div>
-
-                      <div className="grid sm:grid-cols-2 gap-4">
-                        <div>
-                          <label className="block text-xs text-neutral-400 mb-1">
-                            Portada (cover)
-                          </label>
-                          <input
-                            type="file"
-                            accept="image/*"
-                            onChange={(e) =>
-                              onPickCover(e.target.files?.[0] ?? null)
-                            }
-                            className="text-xs text-neutral-300"
-                          />
-                          <div className="mt-2 text-[11px] text-neutral-400 break-all">
-                            {uploadingCover
-                              ? "Subiendo portada…"
-                              : editCoverUrl
-                              ? `OK: ${editCoverUrl}`
-                              : "Sin portada"}
-                          </div>
-                        </div>
-
-                        <div>
-                          <label className="block text-xs text-neutral-400 mb-1">
-                            Avatar (foto de perfil)
-                          </label>
-                          <input
-                            type="file"
-                            accept="image/*"
-                            onChange={(e) =>
-                              onPickAvatar(e.target.files?.[0] ?? null)
-                            }
-                            className="text-xs text-neutral-300"
-                          />
-                          <div className="mt-2 text-[11px] text-neutral-400 break-all">
-                            {uploadingAvatar
-                              ? "Subiendo avatar…"
-                              : editAvatarUrl
-                              ? `OK: ${editAvatarUrl}`
-                              : "Sin avatar"}
-                          </div>
-                        </div>
+                      <div className="text-xs text-neutral-400 mb-2">Foto de perfil (subir desde tu equipo)</div>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        onChange={(e) => onPickAvatar(e.target.files?.[0] ?? null)}
+                        className="text-xs text-neutral-300"
+                      />
+                      <div className="mt-2 text-[11px] text-neutral-400 break-all">
+                        {uploadingAvatar
+                          ? "Subiendo avatar…"
+                          : editAvatarUrl
+                          ? `OK: ${editAvatarUrl}`
+                          : "Sin avatar"}
                       </div>
                     </div>
 
                     <div className="sm:col-span-2">
-                      <label className="block text-xs text-neutral-400 mb-1">
-                        Instagram
-                      </label>
+                      <label className="block text-xs text-neutral-400 mb-1">Instagram</label>
                       <input
                         value={editInstagram}
                         onChange={(e) => setEditInstagram(e.target.value)}
@@ -842,9 +728,7 @@ export default function ProfilePage() {
                     </div>
 
                     <div>
-                      <label className="block text-xs text-neutral-400 mb-1">
-                        TikTok
-                      </label>
+                      <label className="block text-xs text-neutral-400 mb-1">TikTok</label>
                       <input
                         value={editTiktok}
                         onChange={(e) => setEditTiktok(e.target.value)}
@@ -854,9 +738,7 @@ export default function ProfilePage() {
                     </div>
 
                     <div>
-                      <label className="block text-xs text-neutral-400 mb-1">
-                        LinkedIn
-                      </label>
+                      <label className="block text-xs text-neutral-400 mb-1">LinkedIn</label>
                       <input
                         value={editLinkedin}
                         onChange={(e) => setEditLinkedin(e.target.value)}
@@ -866,9 +748,7 @@ export default function ProfilePage() {
                     </div>
 
                     <div>
-                      <label className="block text-xs text-neutral-400 mb-1">
-                        YouTube
-                      </label>
+                      <label className="block text-xs text-neutral-400 mb-1">YouTube</label>
                       <input
                         value={editYoutube}
                         onChange={(e) => setEditYoutube(e.target.value)}
@@ -879,7 +759,6 @@ export default function ProfilePage() {
                   </div>
                 </div>
 
-                {/* Footer sticky */}
                 <div className="sticky bottom-0 border-t border-neutral-800 bg-neutral-950 px-5 py-4 rounded-b-2xl">
                   <div className="flex items-center justify-end gap-2">
                     <button
@@ -894,7 +773,7 @@ export default function ProfilePage() {
                     <button
                       type="button"
                       onClick={saveProfile}
-                      disabled={saving || uploadingCover || uploadingAvatar}
+                      disabled={saving || uploadingAvatar}
                       className="rounded-full bg-emerald-500 hover:bg-emerald-600 px-5 py-2 text-xs font-semibold text-black disabled:opacity-60"
                     >
                       {saving ? "Guardando…" : "Guardar cambios"}
@@ -938,9 +817,7 @@ export default function ProfilePage() {
                         className="block rounded-xl border border-neutral-800 bg-black px-3 py-3 hover:border-neutral-600"
                       >
                         <div className="text-sm font-semibold">{u.full_name}</div>
-                        <div className="text-[10px] text-neutral-500 break-all">
-                          {u.id}
-                        </div>
+                        <div className="text-[10px] text-neutral-500 break-all">{u.id}</div>
                       </Link>
                     </li>
                   ))}
@@ -953,4 +830,3 @@ export default function ProfilePage() {
     </main>
   );
 }
-
