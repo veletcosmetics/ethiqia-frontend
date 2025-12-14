@@ -5,12 +5,8 @@ const SUPABASE_URL = process.env.SUPABASE_URL!;
 const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY!;
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 
-/**
- * IMPORTANTE:
- * - Debe ser el mismo bucket que ya te funciona en /api/upload.
- * - Si tu bucket NO se llama "uploads", cambia aquí el valor.
- */
-const BUCKET = process.env.SUPABASE_STORAGE_BUCKET || "uploads";
+// BUCKET correcto (el que ya existe en tu proyecto)
+const BUCKET = process.env.SUPABASE_STORAGE_BUCKET || "profile-media";
 
 export const runtime = "nodejs";
 
@@ -20,9 +16,9 @@ function getBearerToken(req: NextRequest) {
   return m?.[1] || null;
 }
 
-// GET para comprobar que la ruta existe (evita dudas con 404/405)
+// Para comprobar que la ruta existe
 export async function GET() {
-  return NextResponse.json({ ok: true, route: "/api/profile/upload" }, { status: 200 });
+  return NextResponse.json({ ok: true, route: "/api/profile/upload", bucket: BUCKET }, { status: 200 });
 }
 
 export async function POST(req: NextRequest) {
@@ -35,7 +31,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Cliente con ANON para validar sesión del usuario usando su JWT
+    // Validar sesión del usuario con su JWT
     const supabaseAuth = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
       global: { headers: { Authorization: `Bearer ${token}` } },
       auth: { persistSession: false },
@@ -55,15 +51,11 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Missing file" }, { status: 400 });
     }
 
-    // Validación básica de tipo (solo imágenes)
     if (!file.type?.startsWith("image/")) {
-      return NextResponse.json(
-        { error: "El archivo debe ser una imagen" },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "El archivo debe ser una imagen" }, { status: 400 });
     }
 
-    // Cliente ADMIN para subir a Storage
+    // Admin para subir a Storage
     const supabaseAdmin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
       auth: { persistSession: false },
     });
@@ -78,7 +70,6 @@ export async function POST(req: NextRequest) {
         : "bin";
 
     const path = `profiles/${user.id}/avatar-${Date.now()}.${ext}`;
-
     const bytes = new Uint8Array(await file.arrayBuffer());
 
     const { error: upErr } = await supabaseAdmin.storage
@@ -86,6 +77,7 @@ export async function POST(req: NextRequest) {
       .upload(path, bytes, {
         contentType: file.type || "application/octet-stream",
         upsert: true,
+        cacheControl: "3600",
       });
 
     if (upErr) {
@@ -97,15 +89,11 @@ export async function POST(req: NextRequest) {
     }
 
     const { data: pub } = supabaseAdmin.storage.from(BUCKET).getPublicUrl(path);
-
     const publicUrl = pub?.publicUrl;
+
     if (!publicUrl) {
       return NextResponse.json(
-        {
-          error: "No se ha podido obtener la URL pública del archivo",
-          bucket: BUCKET,
-          path,
-        },
+        { error: "No public URL returned", bucket: BUCKET, path },
         { status: 500 }
       );
     }
