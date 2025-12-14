@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState, FormEvent } from "react";
+import React, { useEffect, useMemo, useState, FormEvent } from "react";
 import PostCard, { Post } from "@/components/PostCard";
 import { supabaseBrowser } from "@/lib/supabaseBrowserClient";
 import type { User } from "@supabase/supabase-js";
@@ -8,6 +8,12 @@ import type { User } from "@supabase/supabase-js";
 type NewPostState = {
   caption: string;
   file: File | null;
+};
+
+type ProfileMini = {
+  id: string;
+  full_name: string | null;
+  username: string | null;
 };
 
 export default function FeedPage() {
@@ -25,7 +31,9 @@ export default function FeedPage() {
   const [currentUserName, setCurrentUserName] = useState<string>("Usuario Ethiqia");
   const [authChecked, setAuthChecked] = useState(false);
 
-  // 1) Cargar usuario actual + perfil (full_name en profiles)
+  const [profilesMap, setProfilesMap] = useState<Record<string, ProfileMini>>({});
+
+  // 1) Cargar usuario actual + perfil
   useEffect(() => {
     const initAuthAndProfile = async () => {
       try {
@@ -38,12 +46,16 @@ export default function FeedPage() {
         if (user) {
           const { data: profile, error } = await supabaseBrowser
             .from("profiles")
-            .select("full_name")
+            .select("full_name, username")
             .eq("id", user.id)
             .maybeSingle();
 
-          if (!error && profile?.full_name) {
-            setCurrentUserName(profile.full_name as string);
+          if (!error) {
+            const name =
+              profile?.full_name?.trim() ||
+              (profile?.username ? `@${String(profile.username).replace(/^@+/, "")}` : "") ||
+              "Usuario Ethiqia";
+            setCurrentUserName(name);
           }
         }
       } catch (err) {
@@ -56,17 +68,41 @@ export default function FeedPage() {
     initAuthAndProfile();
   }, []);
 
-  // 2) Cargar posts reales al entrar
+  // 2) Cargar posts + map de perfiles
   useEffect(() => {
     const loadPosts = async () => {
       setLoadingPosts(true);
       try {
         const res = await fetch("/api/posts");
-        if (!res.ok) {
-          throw new Error("Error al cargar posts");
-        }
+        if (!res.ok) throw new Error("Error al cargar posts");
         const data = await res.json();
-        setPosts((data.posts ?? []) as Post[]);
+
+        const loaded = (data.posts ?? []) as Post[];
+        setPosts(loaded);
+
+        // Cargar nombres de autores (para no mostrar "Usuario Ethiqia")
+        const ids = Array.from(
+          new Set(loaded.map((p) => p.user_id).filter(Boolean))
+        );
+
+        if (ids.length > 0) {
+          const { data: profs, error } = await supabaseBrowser
+            .from("profiles")
+            .select("id, full_name, username")
+            .in("id", ids);
+
+          if (!error && Array.isArray(profs)) {
+            const map: Record<string, ProfileMini> = {};
+            for (const r of profs as any[]) {
+              map[r.id] = {
+                id: r.id,
+                full_name: r.full_name ?? null,
+                username: r.username ?? null,
+              };
+            }
+            setProfilesMap(map);
+          }
+        }
       } catch (err) {
         console.error("Error cargando posts:", err);
       } finally {
@@ -85,6 +121,12 @@ export default function FeedPage() {
   const handleCaptionChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const value = e.target.value;
     setNewPost((prev) => ({ ...prev, caption: value }));
+  };
+
+  const resolveAuthorName = (userId: string) => {
+    const p = profilesMap[userId];
+    if (!p) return "Usuario Ethiqia";
+    return p.full_name?.trim() || (p.username ? `@${String(p.username).replace(/^@+/, "")}` : "") || "Usuario Ethiqia";
   };
 
   const handleSubmit = async (e: FormEvent) => {
@@ -119,9 +161,7 @@ export default function FeedPage() {
       }
 
       const uploadJson = await uploadRes.json();
-      const imageUrl = (uploadJson.url ?? uploadJson.publicUrl) as
-        | string
-        | undefined;
+      const imageUrl = (uploadJson.url ?? uploadJson.publicUrl) as string | undefined;
 
       if (!imageUrl) {
         throw new Error("No se ha recibido la URL pública de la imagen");
@@ -148,10 +188,7 @@ export default function FeedPage() {
       const blocked = moderation.blocked ?? false;
       const reason = moderation.reason ?? null;
 
-      const globalScore = Math.max(
-        0,
-        Math.min(100, Math.round(100 - aiProbability))
-      );
+      const globalScore = Math.max(0, Math.min(100, Math.round(100 - aiProbability)));
 
       // 3) Guardar post REAL en /api/posts
       const bodyToSend = {
@@ -178,12 +215,25 @@ export default function FeedPage() {
 
       const { post } = await saveRes.json();
 
+      // 4) Añadir al estado sin recargar
       setPosts((prev) => [post as Post, ...prev]);
       setNewPost({ caption: "", file: null });
+
+      // Cachear el perfil del autor en el map si no estaba
+      setProfilesMap((prev) => {
+        if (prev[currentUser.id]) return prev;
+        return {
+          ...prev,
+          [currentUser.id]: {
+            id: currentUser.id,
+            full_name: currentUserName.startsWith("@") ? null : currentUserName,
+            username: currentUserName.startsWith("@") ? currentUserName.replace(/^@+/, "") : null,
+          },
+        };
+      });
+
       setMessage(
-        `Publicación creada correctamente. Probabilidad estimada de IA: ${Math.round(
-          aiProbability
-        )}%`
+        `Publicación creada correctamente. Probabilidad estimada de IA: ${Math.round(aiProbability)}%`
       );
     } catch (err) {
       console.error("Error creando publicación:", err);
@@ -216,17 +266,13 @@ export default function FeedPage() {
     <main className="min-h-screen bg-black text-white">
       <section className="max-w-3xl mx-auto px-4 py-8">
         <h1 className="text-3xl font-semibold mb-2">Feed Ethiqia</h1>
-
         <p className="text-gray-400 mb-6">
-          Sube contenido auténtico. Cada publicación se analiza con IA para estimar
-          la probabilidad de que la imagen sea generada por IA y calcular tu Ethiqia
-          Score.
+          Sube contenido auténtico. Cada publicación se analiza con IA para estimar la probabilidad
+          de que la imagen sea generada por IA y calcular tu Ethiqia Score.
         </p>
 
-        <form
-          onSubmit={handleSubmit}
-          className="bg-neutral-900 rounded-xl p-6 mb-8 space-y-4"
-        >
+        {/* Formulario */}
+        <form onSubmit={handleSubmit} className="bg-neutral-900 rounded-xl p-6 mb-8 space-y-4">
           <label className="block text-sm font-medium mb-1">
             Cuenta algo sobre tu foto o contenido auténtico...
           </label>
@@ -238,12 +284,7 @@ export default function FeedPage() {
           />
 
           <div className="flex items-center gap-4">
-            <input
-              type="file"
-              accept="image/*"
-              onChange={handleFileChange}
-              className="text-sm"
-            />
+            <input type="file" accept="image/*" onChange={handleFileChange} className="text-sm" />
           </div>
 
           {message && (
@@ -259,9 +300,7 @@ export default function FeedPage() {
           </button>
         </form>
 
-        {loadingPosts && (
-          <p className="text-sm text-gray-400">Cargando publicaciones...</p>
-        )}
+        {loadingPosts && <p className="text-sm text-gray-400">Cargando publicaciones...</p>}
 
         {!loadingPosts && posts.length === 0 && (
           <p className="text-sm text-gray-500">
@@ -271,10 +310,8 @@ export default function FeedPage() {
 
         <div className="space-y-4 mt-4">
           {posts.map((post) => {
-            const isMine = currentUser && post.user_id === currentUser.id;
-            const authorName = isMine ? currentUserName : "Usuario Ethiqia";
-
-            return <PostCard key={post.id} post={post} authorName={authorName} />;
+            const author = post.user_id ? resolveAuthorName(post.user_id) : "Usuario Ethiqia";
+            return <PostCard key={post.id} post={post} authorName={author} />;
           })}
         </div>
       </section>
