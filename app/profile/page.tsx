@@ -25,6 +25,28 @@ type FollowUser = {
   avatar_url?: string | null;
 };
 
+type ScoreResponse = {
+  userId: string;
+  score: number;
+  by_event?: Record<string, number>;
+  days_active?: number;
+  last_event?: string | null;
+};
+
+type NotificationRow = {
+  id: string;
+  user_id: string;
+  actor_user_id: string | null;
+  type: string;
+  entity_type: string | null;
+  entity_id: string | null;
+  title: string;
+  body: string | null;
+  metadata: any;
+  read_at: string | null;
+  created_at: string;
+};
+
 function normalizeUrl(url: string) {
   const u = (url || "").trim();
   if (!u) return "";
@@ -46,6 +68,17 @@ export default function ProfilePage() {
 
   const [posts, setPosts] = useState<Post[]>([]);
   const [loadingPosts, setLoadingPosts] = useState(false);
+
+  // Score
+  const [score, setScore] = useState<ScoreResponse | null>(null);
+  const [loadingScore, setLoadingScore] = useState(false);
+
+  // Notifications
+  const [notifications, setNotifications] = useState<NotificationRow[]>([]);
+  const [loadingNotifications, setLoadingNotifications] = useState(false);
+
+  // Banner (flash)
+  const [flash, setFlash] = useState<{ title: string; body: string; created_at: string } | null>(null);
 
   // Modal lista seguidores/siguiendo
   const [listOpen, setListOpen] = useState<null | "followers" | "following">(null);
@@ -109,7 +142,6 @@ export default function ProfilePage() {
       const row = (data as ProfileRow) ?? null;
       setProfile(row);
 
-      // Pre-cargar valores en editor
       setFullName(row?.full_name ?? "");
       setUsername(row?.username ?? "");
       setBio(row?.bio ?? "");
@@ -132,13 +164,12 @@ export default function ProfilePage() {
         return;
       }
 
-      // Intento 1: si existe soporte en backend
+      // Preferimos mine=1 si está disponible
       let res = await fetch(`/api/posts?mine=1`, {
         headers: { Authorization: `Bearer ${token}` },
         cache: "no-store",
       });
 
-      // Fallback: si no existe mine=1, pedimos todo y filtramos
       if (!res.ok) {
         res = await fetch(`/api/posts`, {
           headers: { Authorization: `Bearer ${token}` },
@@ -146,14 +177,7 @@ export default function ProfilePage() {
         });
       }
 
-      if (!res.ok) {
-        const t = await res.text();
-        console.error("Error cargando posts:", res.status, t);
-        setPosts([]);
-        return;
-      }
-
-      const json = await res.json();
+      const json = await res.json().catch(() => ({}));
       const all = (json?.posts ?? []) as any[];
       const mine = all.filter((p) => p.user_id === targetId);
       setPosts(mine as Post[]);
@@ -165,16 +189,88 @@ export default function ProfilePage() {
     }
   };
 
+  const loadScore = async () => {
+    setLoadingScore(true);
+    try {
+      const token = await getAccessToken();
+      if (!token) {
+        setScore(null);
+        return;
+      }
+
+      const res = await fetch("/api/score", {
+        headers: { Authorization: `Bearer ${token}` },
+        cache: "no-store",
+      });
+
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        console.error("Error score:", json);
+        setScore(null);
+        return;
+      }
+      setScore(json as ScoreResponse);
+    } finally {
+      setLoadingScore(false);
+    }
+  };
+
+  const loadNotifications = async () => {
+    setLoadingNotifications(true);
+    try {
+      const token = await getAccessToken();
+      if (!token) {
+        setNotifications([]);
+        return;
+      }
+
+      const res = await fetch("/api/notifications?limit=20", {
+        headers: { Authorization: `Bearer ${token}` },
+        cache: "no-store",
+      });
+
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        console.error("Error notifications:", json);
+        setNotifications([]);
+        return;
+      }
+      setNotifications((json.notifications ?? []) as NotificationRow[]);
+    } finally {
+      setLoadingNotifications(false);
+    }
+  };
+
+  const markAllRead = async () => {
+    const token = await getAccessToken();
+    if (!token) return;
+    await fetch("/api/notifications", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ markAllRead: true }),
+    });
+    await loadNotifications();
+  };
+
+  const markOneRead = async (id: string) => {
+    const token = await getAccessToken();
+    if (!token) return;
+    await fetch("/api/notifications", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ id }),
+    });
+    await loadNotifications();
+  };
+
   const loadCountsServer = async (targetId: string) => {
     setLoadingCounts(true);
     try {
       const token = await getAccessToken();
-
       const res = await fetch(`/api/follow-stats?userId=${encodeURIComponent(targetId)}`, {
         headers: token ? { Authorization: `Bearer ${token}` } : undefined,
         cache: "no-store",
       });
-
       const json = await res.json().catch(() => ({}));
       if (!res.ok) {
         console.error("Error follow-stats:", json);
@@ -197,12 +293,10 @@ export default function ProfilePage() {
 
     try {
       const token = await getAccessToken();
-
       const res = await fetch(`/api/follow-list?userId=${encodeURIComponent(userId)}&kind=${kind}`, {
         headers: token ? { Authorization: `Bearer ${token}` } : undefined,
         cache: "no-store",
       });
-
       const json = await res.json().catch(() => ({}));
       if (!res.ok) {
         console.error("Error follow-list:", json);
@@ -311,6 +405,17 @@ export default function ProfilePage() {
   };
 
   useEffect(() => {
+    // Banner flash desde localStorage (lo escribiremos desde el feed)
+    try {
+      const raw = localStorage.getItem("ethiqia_flash");
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed?.title && parsed?.body && parsed?.created_at) {
+          setFlash(parsed);
+        }
+      }
+    } catch {}
+
     const init = async () => {
       try {
         const {
@@ -329,6 +434,9 @@ export default function ProfilePage() {
         await loadProfile(user.id);
         await loadCountsServer(user.id);
         await loadMyPosts(user.id);
+
+        await loadScore();
+        await loadNotifications();
       } catch (e) {
         console.error("Error init profile:", e);
       } finally {
@@ -354,6 +462,8 @@ export default function ProfilePage() {
   const showWebsite = profile?.website?.trim() || "";
   const showInstagram = profile?.instagram_url?.trim() || "";
   const showLinkedin = profile?.linkedin_url?.trim() || "";
+
+  const unreadCount = notifications.filter((n) => !n.read_at).length;
 
   return (
     <main className="min-h-screen bg-black text-white">
@@ -382,6 +492,121 @@ export default function ProfilePage() {
           </div>
         </div>
 
+        {flash && (
+          <div className="mb-4 rounded-2xl border border-emerald-700/40 bg-emerald-500/10 p-4">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <div className="text-sm font-semibold text-emerald-300">{flash.title}</div>
+                <div className="text-sm text-neutral-200 mt-1">{flash.body}</div>
+              </div>
+              <button
+                type="button"
+                className="text-xs text-neutral-300 hover:text-white"
+                onClick={() => {
+                  localStorage.removeItem("ethiqia_flash");
+                  setFlash(null);
+                }}
+              >
+                Cerrar
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Score + Notifications */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+          <div className="bg-neutral-900 border border-neutral-800 rounded-2xl p-5">
+            <div className="flex items-center justify-between">
+              <div className="text-sm font-semibold">Ethiqia Score</div>
+              <button
+                type="button"
+                onClick={loadScore}
+                className="text-xs text-neutral-400 hover:text-emerald-400"
+                disabled={loadingScore}
+              >
+                {loadingScore ? "Actualizando…" : "Actualizar"}
+              </button>
+            </div>
+
+            <div className="mt-3 flex items-end gap-3">
+              <div className="text-4xl font-semibold">{score?.score ?? 0}</div>
+              <div className="text-xs text-neutral-400 pb-1">
+                {score?.days_active ? `${score.days_active} días activos` : "—"}
+              </div>
+            </div>
+
+            <div className="mt-3 text-xs text-neutral-400">
+              Último evento: {score?.last_event ? new Date(score.last_event).toLocaleString() : "—"}
+            </div>
+
+            {score?.by_event && (
+              <div className="mt-4 space-y-2">
+                {Object.entries(score.by_event).slice(0, 6).map(([k, v]) => (
+                  <div key={k} className="flex items-center justify-between text-xs">
+                    <span className="text-neutral-300">{k}</span>
+                    <span className="text-neutral-200 font-semibold">{v}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div className="bg-neutral-900 border border-neutral-800 rounded-2xl p-5">
+            <div className="flex items-center justify-between">
+              <div className="text-sm font-semibold">
+                Notificaciones {unreadCount > 0 ? <span className="text-emerald-400">({unreadCount})</span> : null}
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={loadNotifications}
+                  className="text-xs text-neutral-400 hover:text-emerald-400"
+                  disabled={loadingNotifications}
+                >
+                  {loadingNotifications ? "Actualizando…" : "Actualizar"}
+                </button>
+                <button
+                  type="button"
+                  onClick={markAllRead}
+                  className="text-xs text-neutral-400 hover:text-white"
+                  disabled={loadingNotifications || notifications.length === 0}
+                >
+                  Marcar todo leído
+                </button>
+              </div>
+            </div>
+
+            <div className="mt-3 space-y-2">
+              {loadingNotifications ? (
+                <p className="text-xs text-neutral-400">Cargando…</p>
+              ) : notifications.length === 0 ? (
+                <p className="text-xs text-neutral-500">Aún no hay notificaciones.</p>
+              ) : (
+                notifications.slice(0, 8).map((n) => (
+                  <button
+                    key={n.id}
+                    type="button"
+                    onClick={() => !n.read_at && markOneRead(n.id)}
+                    className={`w-full text-left rounded-xl border px-3 py-3 ${
+                      n.read_at
+                        ? "border-neutral-800 bg-black"
+                        : "border-emerald-700/40 bg-emerald-500/10"
+                    }`}
+                    title={n.read_at ? "Leída" : "Click para marcar como leída"}
+                  >
+                    <div className="text-xs font-semibold text-white">{n.title}</div>
+                    {n.body && <div className="text-xs text-neutral-300 mt-1">{n.body}</div>}
+                    <div className="text-[11px] text-neutral-500 mt-2">
+                      {new Date(n.created_at).toLocaleString()}
+                    </div>
+                  </button>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Card perfil */}
         <div className="bg-neutral-900 border border-neutral-800 rounded-2xl p-6">
           <div className="flex items-start justify-between gap-6">
             <div className="flex items-center gap-4 min-w-0">
@@ -476,6 +701,7 @@ export default function ProfilePage() {
           </div>
         </div>
 
+        {/* Posts grid */}
         <div className="mt-8">
           <h2 className="text-base font-semibold mb-3">Tus publicaciones</h2>
 
@@ -515,6 +741,7 @@ export default function ProfilePage() {
         </div>
       </section>
 
+      {/* Modal ver post */}
       {selectedPost && (
         <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center px-4">
           <div className="w-full max-w-3xl rounded-2xl border border-neutral-800 bg-neutral-950 p-4">
@@ -534,6 +761,7 @@ export default function ProfilePage() {
         </div>
       )}
 
+      {/* Modal listas */}
       {listOpen && (
         <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center px-4">
           <div className="w-full max-w-md rounded-2xl border border-neutral-800 bg-neutral-950 p-5">
@@ -576,6 +804,7 @@ export default function ProfilePage() {
         </div>
       )}
 
+      {/* Modal editar perfil */}
       {editOpen && (
         <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center px-4">
           <div className="w-full max-w-2xl rounded-2xl border border-neutral-800 bg-neutral-950">
