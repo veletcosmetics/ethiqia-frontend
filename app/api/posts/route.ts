@@ -19,10 +19,17 @@ function getBearerToken(req: NextRequest): string | null {
 export async function GET(req: NextRequest) {
   try {
     const token = getBearerToken(req);
-    if (!token) return NextResponse.json({ error: "Missing Authorization Bearer token" }, { status: 401 });
+    if (!token) {
+      return NextResponse.json(
+        { error: "Missing Authorization Bearer token" },
+        { status: 401 }
+      );
+    }
 
     const { data: userData, error: userErr } = await supabaseAdmin.auth.getUser(token);
-    if (userErr || !userData?.user) return NextResponse.json({ error: "Invalid session" }, { status: 401 });
+    if (userErr || !userData?.user) {
+      return NextResponse.json({ error: "Invalid session" }, { status: 401 });
+    }
 
     const url = new URL(req.url);
     const mine = url.searchParams.get("mine") === "1";
@@ -37,7 +44,10 @@ export async function GET(req: NextRequest) {
 
     if (error) {
       console.error("Error cargando posts:", error);
-      return NextResponse.json({ error: "Error cargando posts", details: error }, { status: 500 });
+      return NextResponse.json(
+        { error: "Error cargando posts", details: error },
+        { status: 500 }
+      );
     }
 
     return NextResponse.json({ posts: data ?? [] }, { status: 200 });
@@ -47,30 +57,30 @@ export async function GET(req: NextRequest) {
   }
 }
 
-// POST /api/posts -> crea post + reputation_events + notificación puntos
+// POST /api/posts -> crea post + reputation_events + notificación puntos (payload)
 export async function POST(req: NextRequest) {
   try {
     const token = getBearerToken(req);
-    if (!token) return NextResponse.json({ error: "Missing Authorization Bearer token" }, { status: 401 });
+    if (!token) {
+      return NextResponse.json(
+        { error: "Missing Authorization Bearer token" },
+        { status: 401 }
+      );
+    }
 
     const { data: userData, error: userErr } = await supabaseAdmin.auth.getUser(token);
-    if (userErr || !userData?.user) return NextResponse.json({ error: "Invalid session" }, { status: 401 });
+    if (userErr || !userData?.user) {
+      return NextResponse.json({ error: "Invalid session" }, { status: 401 });
+    }
 
     const userId = userData.user.id;
     const body = await req.json();
 
-    const {
-      imageUrl,
-      caption,
-      aiProbability,
-      globalScore,
-      text,
-      blocked,
-      reason,
-      aiDisclosed,
-    } = body;
+    const { imageUrl, caption, aiProbability, globalScore, text, blocked, reason, aiDisclosed } = body;
 
-    if (!imageUrl) return NextResponse.json({ error: "Falta imageUrl en el body" }, { status: 400 });
+    if (!imageUrl) {
+      return NextResponse.json({ error: "Falta imageUrl en el body" }, { status: 400 });
+    }
 
     const aiProb = typeof aiProbability === "number" ? aiProbability : 0;
     const gScore = typeof globalScore === "number" ? globalScore : 0;
@@ -117,7 +127,12 @@ export async function POST(req: NextRequest) {
         actor_user_id: userId,
         event_type: "post_created",
         points: pointsBase,
-        metadata: { post_id: post.id, ai_probability: aiProb, global_score: gScore, blocked: isBlocked },
+        metadata: {
+          post_id: post.id,
+          ai_probability: aiProb,
+          global_score: gScore,
+          blocked: isBlocked,
+        },
       },
     ];
 
@@ -133,23 +148,36 @@ export async function POST(req: NextRequest) {
     }
 
     const { error: evErr } = await supabaseAdmin.from("reputation_events").insert(events);
-    if (evErr) console.error("Error insertando reputation_events:", evErr);
+    if (evErr) {
+      console.error("Error insertando reputation_events:", evErr);
+      // No bloqueamos el post
+    }
 
-    // 3) Notificación puntos (MVP)
-    const { error: nErr } = await supabaseAdmin.from("notifications").insert({
-      user_id: userId,
-      actor_user_id: userId,
-      type: "points_awarded",
-      entity_type: "post",
-      entity_id: post.id,
+    // 3) Notificación puntos (TU ESQUEMA REAL: user_id, type, payload)
+    const payload = {
       title: "Publicación creada",
       body: disclosed
         ? `Has ganado +${pointsAwarded} puntos (+3 por publicar, +1 por transparencia IA).`
         : `Has ganado +${pointsAwarded} puntos por publicar.`,
-      metadata: { post_id: post.id, points_awarded: pointsAwarded, ai_disclosed: disclosed },
+      points_awarded: pointsAwarded,
+      post_id: post.id,
+      ai_disclosed: disclosed,
+      ai_probability: aiProb,
+      global_score: gScore,
+    };
+
+    const { error: nErr } = await supabaseAdmin.from("notifications").insert({
+      user_id: userId,
+      type: "points_awarded",
+      payload,
+      // read_at: null -> por defecto se queda null
+      // created_at: default now() (si lo tienes así en tabla)
     });
 
-    if (nErr) console.error("Error insertando notification:", nErr);
+    if (nErr) {
+      console.error("Error insertando notification:", nErr);
+      // No bloqueamos el post
+    }
 
     return NextResponse.json({ post, points_awarded: pointsAwarded }, { status: 201 });
   } catch (err) {
