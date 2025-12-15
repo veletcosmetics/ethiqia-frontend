@@ -33,16 +33,20 @@ type ScoreResponse = {
   last_event?: string | null;
 };
 
+type NotificationPayload = {
+  title?: string;
+  body?: string;
+  points_awarded?: number;
+  post_id?: string;
+  ai_disclosed?: boolean;
+  [k: string]: any;
+};
+
 type NotificationRow = {
   id: string;
   user_id: string;
-  actor_user_id: string | null;
   type: string;
-  entity_type: string | null;
-  entity_id: string | null;
-  title: string;
-  body: string | null;
-  metadata: any;
+  payload: NotificationPayload | null;
   read_at: string | null;
   created_at: string;
 };
@@ -78,7 +82,9 @@ export default function ProfilePage() {
   const [loadingNotifications, setLoadingNotifications] = useState(false);
 
   // Banner (flash)
-  const [flash, setFlash] = useState<{ title: string; body: string; created_at: string } | null>(null);
+  const [flash, setFlash] = useState<{ title: string; body: string; created_at: string } | null>(
+    null
+  );
 
   // Modal lista seguidores/siguiendo
   const [listOpen, setListOpen] = useState<null | "followers" | "following">(null);
@@ -129,7 +135,9 @@ export default function ProfilePage() {
     try {
       const { data, error } = await supabaseBrowser
         .from("profiles")
-        .select("id, full_name, username, bio, location, website, instagram_url, linkedin_url, avatar_url")
+        .select(
+          "id, full_name, username, bio, location, website, instagram_url, linkedin_url, avatar_url"
+        )
         .eq("id", targetId)
         .maybeSingle();
 
@@ -164,7 +172,6 @@ export default function ProfilePage() {
         return;
       }
 
-      // Preferimos mine=1 si está disponible
       let res = await fetch(`/api/posts?mine=1`, {
         headers: { Authorization: `Bearer ${token}` },
         cache: "no-store",
@@ -326,7 +333,9 @@ export default function ProfilePage() {
 
     const u = username.trim().replace(/^@+/, "");
     if (u && !/^[a-zA-Z0-9._-]{3,24}$/.test(u)) {
-      alert("El @username debe tener 3–24 caracteres y solo letras, números, punto, guion o guion bajo.");
+      alert(
+        "El @username debe tener 3–24 caracteres y solo letras, números, punto, guion o guion bajo."
+      );
       return;
     }
 
@@ -405,7 +414,7 @@ export default function ProfilePage() {
   };
 
   useEffect(() => {
-    // Banner flash desde localStorage (lo escribiremos desde el feed)
+    // Banner flash desde localStorage
     try {
       const raw = localStorage.getItem("ethiqia_flash");
       if (raw) {
@@ -554,7 +563,8 @@ export default function ProfilePage() {
           <div className="bg-neutral-900 border border-neutral-800 rounded-2xl p-5">
             <div className="flex items-center justify-between">
               <div className="text-sm font-semibold">
-                Notificaciones {unreadCount > 0 ? <span className="text-emerald-400">({unreadCount})</span> : null}
+                Notificaciones{" "}
+                {unreadCount > 0 ? <span className="text-emerald-400">({unreadCount})</span> : null}
               </div>
               <div className="flex items-center gap-2">
                 <button
@@ -582,25 +592,32 @@ export default function ProfilePage() {
               ) : notifications.length === 0 ? (
                 <p className="text-xs text-neutral-500">Aún no hay notificaciones.</p>
               ) : (
-                notifications.slice(0, 8).map((n) => (
-                  <button
-                    key={n.id}
-                    type="button"
-                    onClick={() => !n.read_at && markOneRead(n.id)}
-                    className={`w-full text-left rounded-xl border px-3 py-3 ${
-                      n.read_at
-                        ? "border-neutral-800 bg-black"
-                        : "border-emerald-700/40 bg-emerald-500/10"
-                    }`}
-                    title={n.read_at ? "Leída" : "Click para marcar como leída"}
-                  >
-                    <div className="text-xs font-semibold text-white">{n.title}</div>
-                    {n.body && <div className="text-xs text-neutral-300 mt-1">{n.body}</div>}
-                    <div className="text-[11px] text-neutral-500 mt-2">
-                      {new Date(n.created_at).toLocaleString()}
-                    </div>
-                  </button>
-                ))
+                notifications.slice(0, 8).map((n) => {
+                  const title = n.payload?.title || n.type;
+                  const body =
+                    n.payload?.body ||
+                    (typeof n.payload?.points_awarded === "number"
+                      ? `Has ganado +${n.payload.points_awarded} puntos.`
+                      : "");
+
+                  return (
+                    <button
+                      key={n.id}
+                      type="button"
+                      onClick={() => !n.read_at && markOneRead(n.id)}
+                      className={`w-full text-left rounded-xl border px-3 py-3 ${
+                        n.read_at ? "border-neutral-800 bg-black" : "border-emerald-700/40 bg-emerald-500/10"
+                      }`}
+                      title={n.read_at ? "Leída" : "Click para marcar como leída"}
+                    >
+                      <div className="text-xs font-semibold text-white">{title}</div>
+                      {body ? <div className="text-xs text-neutral-300 mt-1">{body}</div> : null}
+                      <div className="text-[11px] text-neutral-500 mt-2">
+                        {new Date(n.created_at).toLocaleString()}
+                      </div>
+                    </button>
+                  );
+                })
               )}
             </div>
           </div>
@@ -624,9 +641,7 @@ export default function ProfilePage() {
 
                 {showUsername && <div className="text-sm text-neutral-400 truncate">{showUsername}</div>}
 
-                {profile?.location && (
-                  <div className="text-sm text-neutral-400 truncate">📍 {profile.location}</div>
-                )}
+                {profile?.location && <div className="text-sm text-neutral-400 truncate">📍 {profile.location}</div>}
               </div>
             </div>
 
@@ -730,9 +745,7 @@ export default function ProfilePage() {
                       loading="lazy"
                     />
                   ) : (
-                    <div className="w-full h-full flex items-center justify-center text-xs text-neutral-500">
-                      Sin imagen
-                    </div>
+                    <div className="w-full h-full flex items-center justify-center text-xs text-neutral-500">Sin imagen</div>
                   )}
                 </button>
               ))}
