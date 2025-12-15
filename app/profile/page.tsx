@@ -76,6 +76,11 @@ export default function ProfilePage() {
     return profile?.full_name?.trim() || userEmail || "Usuario Ethiqia";
   }, [profile?.full_name, userEmail]);
 
+  const getAccessToken = async (): Promise<string | null> => {
+    const { data } = await supabaseBrowser.auth.getSession();
+    return data.session?.access_token ?? null;
+  };
+
   const handleLogout = async () => {
     try {
       await supabaseBrowser.auth.signOut();
@@ -91,9 +96,7 @@ export default function ProfilePage() {
     try {
       const { data, error } = await supabaseBrowser
         .from("profiles")
-        .select(
-          "id, full_name, username, bio, location, website, instagram_url, linkedin_url, avatar_url"
-        )
+        .select("id, full_name, username, bio, location, website, instagram_url, linkedin_url, avatar_url")
         .eq("id", targetId)
         .maybeSingle();
 
@@ -123,7 +126,33 @@ export default function ProfilePage() {
   const loadMyPosts = async (targetId: string) => {
     setLoadingPosts(true);
     try {
-      const res = await fetch("/api/posts");
+      const token = await getAccessToken();
+      if (!token) {
+        setPosts([]);
+        return;
+      }
+
+      // Intento 1: si existe soporte en backend
+      let res = await fetch(`/api/posts?mine=1`, {
+        headers: { Authorization: `Bearer ${token}` },
+        cache: "no-store",
+      });
+
+      // Fallback: si no existe mine=1, pedimos todo y filtramos
+      if (!res.ok) {
+        res = await fetch(`/api/posts`, {
+          headers: { Authorization: `Bearer ${token}` },
+          cache: "no-store",
+        });
+      }
+
+      if (!res.ok) {
+        const t = await res.text();
+        console.error("Error cargando posts:", res.status, t);
+        setPosts([]);
+        return;
+      }
+
       const json = await res.json();
       const all = (json?.posts ?? []) as any[];
       const mine = all.filter((p) => p.user_id === targetId);
@@ -139,8 +168,14 @@ export default function ProfilePage() {
   const loadCountsServer = async (targetId: string) => {
     setLoadingCounts(true);
     try {
-      const res = await fetch(`/api/follow-stats?userId=${encodeURIComponent(targetId)}`);
-      const json = await res.json();
+      const token = await getAccessToken();
+
+      const res = await fetch(`/api/follow-stats?userId=${encodeURIComponent(targetId)}`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+        cache: "no-store",
+      });
+
+      const json = await res.json().catch(() => ({}));
       if (!res.ok) {
         console.error("Error follow-stats:", json);
         setFollowersCount(0);
@@ -161,10 +196,14 @@ export default function ProfilePage() {
     setListUsers([]);
 
     try {
-      const res = await fetch(
-        `/api/follow-list?userId=${encodeURIComponent(userId)}&kind=${kind}`
-      );
-      const json = await res.json();
+      const token = await getAccessToken();
+
+      const res = await fetch(`/api/follow-list?userId=${encodeURIComponent(userId)}&kind=${kind}`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+        cache: "no-store",
+      });
+
+      const json = await res.json().catch(() => ({}));
       if (!res.ok) {
         console.error("Error follow-list:", json);
         setListUsers([]);
@@ -177,7 +216,6 @@ export default function ProfilePage() {
   };
 
   const handleOpenEdit = () => {
-    // refresca valores desde profile por si acaso
     setFullName(profile?.full_name ?? "");
     setUsername(profile?.username ?? "");
     setBio(profile?.bio ?? "");
@@ -321,10 +359,7 @@ export default function ProfilePage() {
     <main className="min-h-screen bg-black text-white">
       <section className="max-w-5xl mx-auto px-4 py-8">
         <div className="flex items-center justify-between mb-6">
-          <Link
-            href="/feed"
-            className="text-xs text-neutral-300 hover:text-emerald-400 transition-colors"
-          >
+          <Link href="/feed" className="text-xs text-neutral-300 hover:text-emerald-400 transition-colors">
             ← Volver al feed
           </Link>
 
@@ -347,49 +382,32 @@ export default function ProfilePage() {
           </div>
         </div>
 
-        {/* Card perfil */}
         <div className="bg-neutral-900 border border-neutral-800 rounded-2xl p-6">
           <div className="flex items-start justify-between gap-6">
             <div className="flex items-center gap-4 min-w-0">
               <div className="h-16 w-16 rounded-full overflow-hidden bg-neutral-800 border border-neutral-700 flex items-center justify-center">
                 {profile?.avatar_url ? (
                   // eslint-disable-next-line @next/next/no-img-element
-                  <img
-                    src={profile.avatar_url}
-                    alt={displayName}
-                    className="h-full w-full object-cover"
-                  />
+                  <img src={profile.avatar_url} alt={displayName} className="h-full w-full object-cover" />
                 ) : (
-                  <span className="text-xl font-semibold">
-                    {(displayName?.[0] || "U").toUpperCase()}
-                  </span>
+                  <span className="text-xl font-semibold">{(displayName?.[0] || "U").toUpperCase()}</span>
                 )}
               </div>
 
               <div className="min-w-0">
-                <div className="text-xl font-semibold truncate">
-                  {loadingProfile ? "Cargando…" : displayName}
-                </div>
+                <div className="text-xl font-semibold truncate">{loadingProfile ? "Cargando…" : displayName}</div>
 
-                {showUsername && (
-                  <div className="text-sm text-neutral-400 truncate">
-                    {showUsername}
-                  </div>
-                )}
+                {showUsername && <div className="text-sm text-neutral-400 truncate">{showUsername}</div>}
 
                 {profile?.location && (
-                  <div className="text-sm text-neutral-400 truncate">
-                    📍 {profile.location}
-                  </div>
+                  <div className="text-sm text-neutral-400 truncate">📍 {profile.location}</div>
                 )}
               </div>
             </div>
 
             <div className="flex items-center gap-8">
               <div className="text-center">
-                <div className="text-white font-semibold">
-                  {loadingPosts ? "…" : posts.length}
-                </div>
+                <div className="text-white font-semibold">{loadingPosts ? "…" : posts.length}</div>
                 <div className="text-xs text-neutral-400">publicaciones</div>
               </div>
 
@@ -399,9 +417,7 @@ export default function ProfilePage() {
                 className="text-center hover:text-emerald-400 transition-colors"
                 disabled={loadingCounts}
               >
-                <div className="text-white font-semibold">
-                  {loadingCounts ? "…" : followersCount}
-                </div>
+                <div className="text-white font-semibold">{loadingCounts ? "…" : followersCount}</div>
                 <div className="text-xs text-neutral-400">seguidores</div>
               </button>
 
@@ -411,20 +427,15 @@ export default function ProfilePage() {
                 className="text-center hover:text-emerald-400 transition-colors"
                 disabled={loadingCounts}
               >
-                <div className="text-white font-semibold">
-                  {loadingCounts ? "…" : followingCount}
-                </div>
+                <div className="text-white font-semibold">{loadingCounts ? "…" : followingCount}</div>
                 <div className="text-xs text-neutral-400">siguiendo</div>
               </button>
             </div>
           </div>
 
-          {/* Bio + enlaces */}
           <div className="mt-5 space-y-2">
             {profile?.bio ? (
-              <p className="text-sm text-neutral-200 whitespace-pre-line">
-                {profile.bio}
-              </p>
+              <p className="text-sm text-neutral-200 whitespace-pre-line">{profile.bio}</p>
             ) : (
               <p className="text-sm text-neutral-500">Aún no has añadido bio.</p>
             )}
@@ -465,7 +476,6 @@ export default function ProfilePage() {
           </div>
         </div>
 
-        {/* Posts grid */}
         <div className="mt-8">
           <h2 className="text-base font-semibold mb-3">Tus publicaciones</h2>
 
@@ -485,10 +495,10 @@ export default function ProfilePage() {
                   className="relative aspect-square overflow-hidden rounded-xl border border-neutral-800 bg-black hover:border-neutral-600"
                   title={p.caption ?? "Ver publicación"}
                 >
-                  {p.image_url ? (
+                  {(p as any).image_url ? (
                     // eslint-disable-next-line @next/next/no-img-element
                     <img
-                      src={p.image_url}
+                      src={(p as any).image_url}
                       alt={p.caption ?? "Post"}
                       className="w-full h-full object-cover"
                       loading="lazy"
@@ -505,7 +515,6 @@ export default function ProfilePage() {
         </div>
       </section>
 
-      {/* Modal ver post */}
       {selectedPost && (
         <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center px-4">
           <div className="w-full max-w-3xl rounded-2xl border border-neutral-800 bg-neutral-950 p-4">
@@ -525,14 +534,11 @@ export default function ProfilePage() {
         </div>
       )}
 
-      {/* Modal listas */}
       {listOpen && (
         <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center px-4">
           <div className="w-full max-w-md rounded-2xl border border-neutral-800 bg-neutral-950 p-5">
             <div className="flex items-center justify-between">
-              <h3 className="text-sm font-semibold">
-                {listOpen === "followers" ? "Seguidores" : "Siguiendo"}
-              </h3>
+              <h3 className="text-sm font-semibold">{listOpen === "followers" ? "Seguidores" : "Siguiendo"}</h3>
               <button
                 type="button"
                 onClick={() => setListOpen(null)}
@@ -570,7 +576,6 @@ export default function ProfilePage() {
         </div>
       )}
 
-      {/* Modal editar perfil */}
       {editOpen && (
         <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center px-4">
           <div className="w-full max-w-2xl rounded-2xl border border-neutral-800 bg-neutral-950">
@@ -585,25 +590,19 @@ export default function ProfilePage() {
               </button>
             </div>
 
-            {/* Contenido scrollable */}
             <div className="p-5 max-h-[75vh] overflow-y-auto space-y-4">
-              {/* Avatar */}
               <div className="flex items-center gap-4">
                 <div className="h-16 w-16 rounded-full overflow-hidden bg-neutral-800 border border-neutral-700 flex items-center justify-center">
                   {avatarUrl ? (
                     // eslint-disable-next-line @next/next/no-img-element
                     <img src={avatarUrl} alt="avatar" className="h-full w-full object-cover" />
                   ) : (
-                    <span className="text-xl font-semibold">
-                      {(displayName?.[0] || "U").toUpperCase()}
-                    </span>
+                    <span className="text-xl font-semibold">{(displayName?.[0] || "U").toUpperCase()}</span>
                   )}
                 </div>
 
                 <div className="space-y-2">
-                  <label className="text-xs text-neutral-400 block">
-                    Cambiar foto de perfil
-                  </label>
+                  <label className="text-xs text-neutral-400 block">Cambiar foto de perfil</label>
                   <input
                     type="file"
                     accept="image/*"
@@ -611,9 +610,7 @@ export default function ProfilePage() {
                     className="text-xs"
                     disabled={uploadingAvatar}
                   />
-                  {uploadingAvatar && (
-                    <div className="text-xs text-neutral-400">Subiendo…</div>
-                  )}
+                  {uploadingAvatar && <div className="text-xs text-neutral-400">Subiendo…</div>}
                 </div>
               </div>
 
