@@ -6,24 +6,22 @@ export const runtime = "nodejs";
 const supabaseUrl = process.env.SUPABASE_URL!;
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 
-// Admin (bypass RLS + validar token)
 const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey);
 
 function getBearerToken(req: NextRequest): string | null {
   const h = req.headers.get("authorization") || "";
-  if (!h.startsWith("Bearer ")) return null;
+  if (!h.toLowerCase().startsWith("bearer ")) return null;
   return h.slice(7).trim() || null;
 }
 
-// GET /api/posts → requiere auth (evita exposición pública)
+// GET /api/posts → auth + filtros opcionales:
+//   - /api/posts?mine=1  (mis posts)
+//   - /api/posts?user_id=UUID (posts de un usuario)
 export async function GET(req: NextRequest) {
   try {
     const token = getBearerToken(req);
     if (!token) {
-      return NextResponse.json(
-        { error: "Missing Authorization Bearer token" },
-        { status: 401 }
-      );
+      return NextResponse.json({ error: "Missing Authorization Bearer token" }, { status: 401 });
     }
 
     const { data: userData, error: userErr } = await supabaseAdmin.auth.getUser(token);
@@ -31,27 +29,29 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "Invalid session" }, { status: 401 });
     }
 
-    // Cargar posts (ordenados)
-    const { data, error } = await supabaseAdmin
-      .from("posts")
-      .select("*")
-      .order("created_at", { ascending: false });
+    const url = new URL(req.url);
+    const mine = url.searchParams.get("mine") === "1";
+    const userIdParam = url.searchParams.get("user_id");
+
+    let q = supabaseAdmin.from("posts").select("*").order("created_at", { ascending: false });
+
+    if (mine) {
+      q = q.eq("user_id", userData.user.id);
+    } else if (userIdParam) {
+      q = q.eq("user_id", userIdParam);
+    }
+
+    const { data, error } = await q;
 
     if (error) {
       console.error("Error cargando posts:", error);
-      return NextResponse.json(
-        { error: "Error cargando posts", details: error },
-        { status: 500 }
-      );
+      return NextResponse.json({ error: "Error cargando posts", details: error }, { status: 500 });
     }
 
     return NextResponse.json({ posts: data ?? [] }, { status: 200 });
   } catch (err) {
     console.error("Error inesperado en GET /api/posts:", err);
-    return NextResponse.json(
-      { error: "Error inesperado cargando posts" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Error inesperado cargando posts" }, { status: 500 });
   }
 }
 
@@ -60,10 +60,7 @@ export async function POST(req: NextRequest) {
   try {
     const token = getBearerToken(req);
     if (!token) {
-      return NextResponse.json(
-        { error: "Missing Authorization Bearer token" },
-        { status: 401 }
-      );
+      return NextResponse.json({ error: "Missing Authorization Bearer token" }, { status: 401 });
     }
 
     const { data: userData, error: userErr } = await supabaseAdmin.auth.getUser(token);
@@ -72,8 +69,8 @@ export async function POST(req: NextRequest) {
     }
 
     const userId = userData.user.id;
-
     const body = await req.json();
+
     const {
       imageUrl,
       caption,
@@ -82,7 +79,7 @@ export async function POST(req: NextRequest) {
       text,
       blocked,
       reason,
-      aiDisclosed, // boolean opcional (marcado por usuario)
+      aiDisclosed,
     } = body;
 
     if (!imageUrl) {
@@ -96,7 +93,6 @@ export async function POST(req: NextRequest) {
 
     const moderationStatus = isBlocked ? "rejected" : "approved";
 
-    // 1) Insertar post
     const { data: post, error: postErr } = await supabaseAdmin
       .from("posts")
       .insert({
@@ -118,14 +114,10 @@ export async function POST(req: NextRequest) {
       .single();
 
     if (postErr) {
-      console.error("Error insertando post en Supabase:", postErr);
-      return NextResponse.json(
-        { error: "Error insertando post", details: postErr },
-        { status: 400 }
-      );
+      console.error("Error insertando post:", postErr);
+      return NextResponse.json({ error: "Error insertando post", details: postErr }, { status: 400 });
     }
 
-    // 2) Insertar eventos de reputación
     const events: any[] = [
       {
         subject_type: "user",
@@ -133,12 +125,7 @@ export async function POST(req: NextRequest) {
         actor_user_id: userId,
         event_type: "post_created",
         points: 3,
-        metadata: {
-          post_id: post.id,
-          ai_probability: aiProb,
-          global_score: gScore,
-          blocked: isBlocked,
-        },
+        metadata: { post_id: post.id, ai_probability: aiProb, global_score: gScore, blocked: isBlocked },
       },
     ];
 
@@ -149,25 +136,16 @@ export async function POST(req: NextRequest) {
         actor_user_id: userId,
         event_type: "ai_disclosed",
         points: 1,
-        metadata: {
-          post_id: post.id,
-        },
+        metadata: { post_id: post.id },
       });
     }
 
     const { error: evErr } = await supabaseAdmin.from("reputation_events").insert(events);
-
-    if (evErr) {
-      // No tumbamos el post: lo dejamos registrado y lo revisamos luego
-      console.error("Error insertando reputation_events:", evErr);
-    }
+    if (evErr) console.error("Error insertando reputation_events:", evErr);
 
     return NextResponse.json({ post }, { status: 201 });
   } catch (err) {
     console.error("Error inesperado en POST /api/posts:", err);
-    return NextResponse.json(
-      { error: "Error inesperado guardando el post" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Error inesperado guardando el post" }, { status: 500 });
   }
 }
