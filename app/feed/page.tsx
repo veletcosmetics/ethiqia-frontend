@@ -8,6 +8,7 @@ import type { User } from "@supabase/supabase-js";
 type NewPostState = {
   caption: string;
   file: File | null;
+  aiDisclosed: boolean;
 };
 
 type ProfileMini = {
@@ -17,7 +18,11 @@ type ProfileMini = {
 };
 
 export default function FeedPage() {
-  const [newPost, setNewPost] = useState<NewPostState>({ caption: "", file: null });
+  const [newPost, setNewPost] = useState<NewPostState>({
+    caption: "",
+    file: null,
+    aiDisclosed: false,
+  });
 
   const [posts, setPosts] = useState<Post[]>([]);
   const [loadingPosts, setLoadingPosts] = useState(false);
@@ -30,7 +35,12 @@ export default function FeedPage() {
 
   const [profilesMap, setProfilesMap] = useState<Record<string, ProfileMini>>({});
 
-  // 1) Cargar usuario actual + perfil
+  const getAccessToken = async (): Promise<string | null> => {
+    const { data } = await supabaseBrowser.auth.getSession();
+    return data.session?.access_token ?? null;
+  };
+
+  // 1) Cargar usuario actual + su perfil
   useEffect(() => {
     const initAuthAndProfile = async () => {
       try {
@@ -48,7 +58,7 @@ export default function FeedPage() {
             .maybeSingle();
 
           if (!error && profile?.full_name) {
-            setCurrentUserName(String(profile.full_name));
+            setCurrentUserName(profile.full_name as string);
           }
         }
       } catch (err) {
@@ -61,18 +71,31 @@ export default function FeedPage() {
     initAuthAndProfile();
   }, []);
 
-  // 2) Cargar posts
+  // 2) Cargar posts (requiere Bearer)
   useEffect(() => {
     const loadPosts = async () => {
       setLoadingPosts(true);
       try {
-        const res = await fetch("/api/posts");
-        if (!res.ok) throw new Error("Error al cargar posts");
+        const token = await getAccessToken();
+        if (!token) return;
+
+        const res = await fetch("/api/posts", {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        });
+
+        if (!res.ok) {
+          const t = await res.text();
+          console.error("GET /api/posts failed:", res.status, t);
+          throw new Error("Error al cargar posts");
+        }
+
         const data = await res.json();
         const list = (data.posts ?? []) as Post[];
         setPosts(list);
 
-        // Traer perfiles para user_id del feed (si RLS lo permite)
+        // Cargar mini-perfiles para nombres/avatares (si RLS lo permite)
         const ids = Array.from(new Set(list.map((p) => p.user_id).filter(Boolean)));
         if (ids.length > 0) {
           const { data: profs, error } = await supabaseBrowser
@@ -84,8 +107,8 @@ export default function FeedPage() {
             const next: Record<string, ProfileMini> = {};
             (profs as ProfileMini[]).forEach((p) => (next[p.id] = p));
             setProfilesMap(next);
-          } else if (error) {
-            console.warn("No se han podido cargar perfiles públicos (RLS):", error);
+          } else {
+            if (error) console.warn("No se han podido cargar perfiles públicos (RLS):", error);
           }
         }
       } catch (err) {
@@ -107,6 +130,10 @@ export default function FeedPage() {
     setNewPost((prev) => ({ ...prev, caption: e.target.value }));
   };
 
+  const handleAiDisclosedChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setNewPost((prev) => ({ ...prev, aiDisclosed: e.target.checked }));
+  };
+
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setMessage(null);
@@ -124,31 +151,19 @@ export default function FeedPage() {
     setSubmitting(true);
 
     try {
-      // 0) Obtener token de sesión (CLAVE para evitar 401 en /api/upload)
-      const {
-        data: { session },
-        error: sessionErr,
-      } = await supabaseBrowser.auth.getSession();
-
-      if (sessionErr) {
-        console.error("Error obteniendo sesión:", sessionErr);
-        throw new Error("Error de sesión");
-      }
-
-      const token = session?.access_token;
+      const token = await getAccessToken();
       if (!token) {
-        throw new Error("No hay token de sesión. Cierra sesión y vuelve a iniciar.");
+        setMessage("Sesión no válida. Vuelve a iniciar sesión.");
+        return;
       }
 
-      // 1) Subir imagen a /api/upload con Authorization Bearer
+      // 1) Subir imagen
       const formData = new FormData();
       formData.append("file", newPost.file);
 
       const uploadRes = await fetch("/api/upload", {
         method: "POST",
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
+        headers: { Authorization: `Bearer ${token}` },
         body: formData,
       });
 
@@ -159,13 +174,12 @@ export default function FeedPage() {
 
       const uploadJson = await uploadRes.json();
       const imageUrl = (uploadJson.url ?? uploadJson.publicUrl) as string | undefined;
-
       if (!imageUrl) throw new Error("No se ha recibido la URL pública de la imagen");
 
       // 2) Moderación IA
       const moderationRes = await fetch("/api/moderate-post", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify({ caption: newPost.caption, imageUrl }),
       });
 
@@ -179,24 +193,24 @@ export default function FeedPage() {
       const blocked = moderation.blocked ?? false;
       const reason = moderation.reason ?? null;
 
+      // Nota: si aiProbability viene 0..1, este globalScore quedará casi siempre 99-100.
+      // Si detectas eso, lo ajustamos a *100.
       const globalScore = Math.max(0, Math.min(100, Math.round(100 - aiProbability)));
 
-      // 3) Guardar post
-      const bodyToSend = {
-        userId: currentUser.id,
-        imageUrl,
-        caption: newPost.caption,
-        aiProbability,
-        globalScore,
-        text: newPost.caption,
-        blocked,
-        reason,
-      };
-
+      // 3) Guardar post (sin userId en body)
       const saveRes = await fetch("/api/posts", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(bodyToSend),
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          imageUrl,
+          caption: newPost.caption,
+          aiProbability,
+          globalScore,
+          text: newPost.caption,
+          blocked,
+          reason,
+          aiDisclosed: newPost.aiDisclosed,
+        }),
       });
 
       if (!saveRes.ok) {
@@ -205,15 +219,10 @@ export default function FeedPage() {
       }
 
       const { post } = await saveRes.json();
-
-      // 4) Añadir al estado
       setPosts((prev) => [post as Post, ...prev]);
-      setNewPost({ caption: "", file: null });
-      setMessage(
-        `Publicación creada correctamente. Probabilidad estimada de IA: ${Math.round(
-          aiProbability
-        )}%`
-      );
+      setNewPost({ caption: "", file: null, aiDisclosed: false });
+
+      setMessage("Publicación creada correctamente.");
     } catch (err) {
       console.error("Error creando publicación:", err);
       setMessage("Ha ocurrido un error al crear la publicación.");
@@ -224,93 +233,12 @@ export default function FeedPage() {
 
   const myId = currentUser?.id ?? null;
 
-  // Si ya hemos comprobado auth y no hay usuario
   if (authChecked && !currentUser) {
     return (
       <main className="min-h-screen bg-black text-white flex items-center justify-center">
         <div className="text-center space-y-3">
           <h1 className="text-2xl font-semibold">Ethiqia</h1>
-          <p className="text-sm text-gray-400">
-            Debes iniciar sesión para ver y publicar en el feed.
-          </p>
+          <p className="text-sm text-gray-400">Debes iniciar sesión para ver y publicar en el feed.</p>
           <a
             href="/login"
-            className="inline-flex items-center justify-center rounded-full bg-emerald-500 hover:bg-emerald-600 px-6 py-2 text-sm font-semibold"
-          >
-            Ir a iniciar sesión
-          </a>
-        </div>
-      </main>
-    );
-  }
-
-  return (
-    <main className="min-h-screen bg-black text-white">
-      <section className="max-w-3xl mx-auto px-4 py-8">
-        <h1 className="text-3xl font-semibold mb-2">Feed Ethiqia</h1>
-        <p className="text-gray-400 mb-6">
-          Sube contenido auténtico. Cada publicación se analiza con IA para estimar la probabilidad
-          de que la imagen sea generada por IA y calcular tu Ethiqia Score.
-        </p>
-
-        <form onSubmit={handleSubmit} className="bg-neutral-900 rounded-xl p-6 mb-8 space-y-4">
-          <label className="block text-sm font-medium mb-1">
-            Cuenta algo sobre tu foto o contenido auténtico...
-          </label>
-
-          <textarea
-            className="w-full rounded-lg bg-black border border-neutral-700 px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-emerald-500"
-            rows={3}
-            value={newPost.caption}
-            onChange={handleCaptionChange}
-          />
-
-          <div className="flex items-center gap-4">
-            <input type="file" accept="image/*" onChange={handleFileChange} className="text-sm" />
-          </div>
-
-          {message && <p className="text-sm text-emerald-400 whitespace-pre-line">{message}</p>}
-
-          <button
-            type="submit"
-            disabled={submitting}
-            className="mt-2 inline-flex items-center justify-center rounded-full bg-emerald-500 hover:bg-emerald-600 px-6 py-2 text-sm font-semibold disabled:opacity-60"
-          >
-            {submitting ? "Publicando..." : "Publicar"}
-          </button>
-        </form>
-
-        {loadingPosts && <p className="text-sm text-gray-400">Cargando publicaciones...</p>}
-
-        {!loadingPosts && posts.length === 0 && (
-          <p className="text-sm text-gray-500">
-            Todavía no hay publicaciones. Sube la primera foto auténtica.
-          </p>
-        )}
-
-        <div className="space-y-4 mt-4">
-          {posts.map((post) => {
-            const isMine = myId && post.user_id === myId;
-
-            const profile = profilesMap[post.user_id];
-            const authorName = isMine
-              ? currentUserName
-              : profile?.full_name?.trim() || "Usuario Ethiqia";
-
-            const authorAvatarUrl = profile?.avatar_url ?? null;
-
-            return (
-              <PostCard
-                key={post.id}
-                post={post}
-                authorName={authorName}
-                authorId={post.user_id}
-                authorAvatarUrl={authorAvatarUrl}
-              />
-            );
-          })}
-        </div>
-      </section>
-    </main>
-  );
-}
+            className="inline-flex items-center justify-center rounded-full bg-emerald
