@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useState, FormEvent } from "react";
+import Link from "next/link";
 import PostCard, { Post } from "@/components/PostCard";
 import { supabaseBrowser } from "@/lib/supabaseBrowserClient";
 import type { User } from "@supabase/supabase-js";
@@ -17,6 +18,16 @@ type ProfileMini = {
   avatar_url: string | null;
 };
 
+function computeGlobalScore(aiProbability: any): number {
+  const n = typeof aiProbability === "number" ? aiProbability : 0;
+
+  // Si viene como 0..1 lo convertimos a porcentaje 0..100
+  const probPct = n <= 1 ? n * 100 : n;
+
+  // Score simple: 100 - probabilidad IA (capado)
+  return Math.max(0, Math.min(100, Math.round(100 - probPct)));
+}
+
 export default function FeedPage() {
   const [newPost, setNewPost] = useState<NewPostState>({
     caption: "",
@@ -28,6 +39,7 @@ export default function FeedPage() {
   const [loadingPosts, setLoadingPosts] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const [lastPoints, setLastPoints] = useState<number | null>(null);
 
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [currentUserName, setCurrentUserName] = useState<string>("Usuario Ethiqia");
@@ -83,6 +95,7 @@ export default function FeedPage() {
           headers: {
             Authorization: `Bearer ${token}`,
           },
+          cache: "no-store",
         });
 
         if (!res.ok) {
@@ -137,6 +150,7 @@ export default function FeedPage() {
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setMessage(null);
+    setLastPoints(null);
 
     if (!currentUser) {
       setMessage("Debes iniciar sesión para publicar.");
@@ -193,9 +207,7 @@ export default function FeedPage() {
       const blocked = moderation.blocked ?? false;
       const reason = moderation.reason ?? null;
 
-      // Nota: si aiProbability viene 0..1, este globalScore quedará casi siempre 99-100.
-      // Si detectas eso, lo ajustamos a *100.
-      const globalScore = Math.max(0, Math.min(100, Math.round(100 - aiProbability)));
+      const globalScore = computeGlobalScore(aiProbability);
 
       // 3) Guardar post (sin userId en body)
       const saveRes = await fetch("/api/posts", {
@@ -218,11 +230,32 @@ export default function FeedPage() {
         throw new Error("Error guardando el post");
       }
 
-      const { post } = await saveRes.json();
-      setPosts((prev) => [post as Post, ...prev]);
+      const saved = await saveRes.json();
+      const post = saved.post as Post;
+      const pointsAwarded = typeof saved.points_awarded === "number" ? saved.points_awarded : 3;
+
+      setPosts((prev) => [post, ...prev]);
       setNewPost({ caption: "", file: null, aiDisclosed: false });
 
-      setMessage("Publicación creada correctamente.");
+      setLastPoints(pointsAwarded);
+      setMessage(
+        `Publicación creada correctamente.\nHas ganado +${pointsAwarded} puntos.`
+      );
+
+      // 4) Flash banner para /profile
+      try {
+        const flash = {
+          title: "Publicación creada",
+          body:
+            newPost.aiDisclosed
+              ? `Has ganado +${pointsAwarded} puntos (+3 por publicar, +1 por transparencia IA).`
+              : `Has ganado +${pointsAwarded} puntos por publicar.`,
+          created_at: new Date().toISOString(),
+        };
+        localStorage.setItem("ethiqia_flash", JSON.stringify(flash));
+      } catch (e) {
+        console.warn("No se pudo guardar ethqia_flash en localStorage:", e);
+      }
     } catch (err) {
       console.error("Error creando publicación:", err);
       setMessage("Ha ocurrido un error al crear la publicación.");
@@ -242,85 +275,3 @@ export default function FeedPage() {
           <a
             href="/login"
             className="inline-flex items-center justify-center rounded-full bg-emerald-500 hover:bg-emerald-600 px-6 py-2 text-sm font-semibold"
-          >
-            Ir a iniciar sesión
-          </a>
-        </div>
-      </main>
-    );
-  }
-
-  return (
-    <main className="min-h-screen bg-black text-white">
-      <section className="max-w-3xl mx-auto px-4 py-8">
-        <h1 className="text-3xl font-semibold mb-2">Feed Ethiqia</h1>
-        <p className="text-gray-400 mb-6">
-          Publica contenido y construye reputación. Puedes marcar si has usado IA (transparencia).
-        </p>
-
-        <form onSubmit={handleSubmit} className="bg-neutral-900 rounded-xl p-6 mb-8 space-y-4">
-          <label className="block text-sm font-medium mb-1">Cuenta algo sobre tu foto…</label>
-          <textarea
-            className="w-full rounded-lg bg-black border border-neutral-700 px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-emerald-500"
-            rows={3}
-            value={newPost.caption}
-            onChange={handleCaptionChange}
-          />
-
-          <div className="flex items-center gap-4">
-            <input type="file" accept="image/*" onChange={handleFileChange} className="text-sm" />
-          </div>
-
-          <label className="flex items-center gap-2 text-xs text-neutral-300">
-            <input
-              type="checkbox"
-              checked={newPost.aiDisclosed}
-              onChange={handleAiDisclosedChange}
-              className="accent-emerald-500"
-            />
-            He usado IA en esta publicación (transparencia)
-          </label>
-
-          {message && <p className="text-sm text-emerald-400 whitespace-pre-line">{message}</p>}
-
-          <button
-            type="submit"
-            disabled={submitting}
-            className="mt-2 inline-flex items-center justify-center rounded-full bg-emerald-500 hover:bg-emerald-600 px-6 py-2 text-sm font-semibold disabled:opacity-60"
-          >
-            {submitting ? "Publicando..." : "Publicar"}
-          </button>
-        </form>
-
-        {loadingPosts && <p className="text-sm text-gray-400">Cargando publicaciones...</p>}
-
-        {!loadingPosts && posts.length === 0 && (
-          <p className="text-sm text-gray-500">Todavía no hay publicaciones.</p>
-        )}
-
-        <div className="space-y-4 mt-4">
-          {posts.map((post) => {
-            const isMine = myId && post.user_id === myId;
-
-            const profile = profilesMap[post.user_id];
-            const authorName = isMine
-              ? currentUserName
-              : profile?.full_name?.trim() || "Usuario Ethiqia";
-
-            const authorAvatarUrl = profile?.avatar_url ?? null;
-
-            return (
-              <PostCard
-                key={post.id}
-                post={post}
-                authorName={authorName}
-                authorId={post.user_id}
-                authorAvatarUrl={authorAvatarUrl}
-              />
-            );
-          })}
-        </div>
-      </section>
-    </main>
-  );
-}
