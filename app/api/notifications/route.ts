@@ -15,15 +15,16 @@ function getBearerToken(req: NextRequest): string | null {
 
 async function requireUser(req: NextRequest) {
   const token = getBearerToken(req);
-  if (!token) return { token: null, user: null, error: "Missing Authorization Bearer token" };
+  if (!token) return { user: null, error: "Missing Authorization Bearer token" };
 
   const { data, error } = await supabaseAdmin.auth.getUser(token);
-  if (error || !data?.user) return { token, user: null, error: "Invalid session" };
+  if (error || !data?.user) return { user: null, error: "Invalid session" };
 
-  return { token, user: data.user, error: null };
+  return { user: data.user, error: null };
 }
 
 // GET /api/notifications -> lista últimas notificaciones del usuario (unread primero)
+// Devuelve title/body "aplanados" desde payload para que la UI lo tenga fácil.
 export async function GET(req: NextRequest) {
   try {
     const { user, error } = await requireUser(req);
@@ -34,7 +35,7 @@ export async function GET(req: NextRequest) {
 
     const { data, error: dbErr } = await supabaseAdmin
       .from("notifications")
-      .select("*")
+      .select("id, user_id, type, payload, read_at, created_at")
       .eq("user_id", user.id)
       .order("read_at", { ascending: true, nullsFirst: true })
       .order("created_at", { ascending: false })
@@ -45,7 +46,27 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "Error cargando notifications", details: dbErr }, { status: 500 });
     }
 
-    return NextResponse.json({ notifications: data ?? [] }, { status: 200 });
+    const notifications = (data ?? []).map((n: any) => {
+      const payload = n.payload ?? {};
+      return {
+        id: n.id,
+        user_id: n.user_id,
+        type: n.type,
+        // Campos “bonitos” para UI:
+        title: payload.title ?? null,
+        body: payload.body ?? null,
+        // Si tu UI quiere “metadata”, aquí va todo el payload
+        metadata: payload,
+        read_at: n.read_at,
+        created_at: n.created_at,
+        // Campos legacy opcionales (por compatibilidad con pantallas antiguas)
+        actor_user_id: null,
+        entity_type: null,
+        entity_id: null,
+      };
+    });
+
+    return NextResponse.json({ notifications }, { status: 200 });
   } catch (err) {
     console.error("Error inesperado GET /api/notifications:", err);
     return NextResponse.json({ error: "Error inesperado cargando notifications" }, { status: 500 });
