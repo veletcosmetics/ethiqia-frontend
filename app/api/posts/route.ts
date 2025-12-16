@@ -13,6 +13,11 @@ function getBearerToken(req: NextRequest): string | null {
   return h.slice(7).trim() || null;
 }
 
+function uuid(): string {
+  // Node runtime: crypto.randomUUID() está disponible en Node 18+
+  return crypto.randomUUID();
+}
+
 // GET /api/posts -> auth + filtros opcionales:
 //   /api/posts?mine=1
 //   /api/posts?user_id=UUID
@@ -35,7 +40,10 @@ export async function GET(req: NextRequest) {
     const mine = url.searchParams.get("mine") === "1";
     const userIdParam = url.searchParams.get("user_id");
 
-    let q = supabaseAdmin.from("posts").select("*").order("created_at", { ascending: false });
+    let q = supabaseAdmin
+      .from("posts")
+      .select("*")
+      .order("created_at", { ascending: false });
 
     if (mine) q = q.eq("user_id", userData.user.id);
     else if (userIdParam) q = q.eq("user_id", userIdParam);
@@ -53,11 +61,14 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ posts: data ?? [] }, { status: 200 });
   } catch (err) {
     console.error("Error inesperado en GET /api/posts:", err);
-    return NextResponse.json({ error: "Error inesperado cargando posts" }, { status: 500 });
+    return NextResponse.json(
+      { error: "Error inesperado cargando posts" },
+      { status: 500 }
+    );
   }
 }
 
-// POST /api/posts -> crea post + reputation_events + notificación puntos (payload)
+// POST /api/posts -> crea post + reputation_events + notificación puntos
 export async function POST(req: NextRequest) {
   try {
     const token = getBearerToken(req);
@@ -76,7 +87,16 @@ export async function POST(req: NextRequest) {
     const userId = userData.user.id;
     const body = await req.json();
 
-    const { imageUrl, caption, aiProbability, globalScore, text, blocked, reason, aiDisclosed } = body;
+    const {
+      imageUrl,
+      caption,
+      aiProbability,
+      globalScore,
+      text,
+      blocked,
+      reason,
+      aiDisclosed,
+    } = body;
 
     if (!imageUrl) {
       return NextResponse.json({ error: "Falta imageUrl en el body" }, { status: 400 });
@@ -112,7 +132,10 @@ export async function POST(req: NextRequest) {
 
     if (postErr) {
       console.error("Error insertando post:", postErr);
-      return NextResponse.json({ error: "Error insertando post", details: postErr }, { status: 400 });
+      return NextResponse.json(
+        { error: "Error insertando post", details: postErr },
+        { status: 400 }
+      );
     }
 
     // 2) reputation_events
@@ -150,10 +173,12 @@ export async function POST(req: NextRequest) {
     const { error: evErr } = await supabaseAdmin.from("reputation_events").insert(events);
     if (evErr) {
       console.error("Error insertando reputation_events:", evErr);
-      // No bloqueamos el post
+      // no bloqueamos el post
     }
 
-    // 3) Notificación puntos (TU ESQUEMA REAL: user_id, type, payload)
+    // 3) Notificación (esquema real: id, user_id, type, payload, read_at, created_at)
+    const nowIso = new Date().toISOString();
+
     const payload = {
       title: "Publicación creada",
       body: disclosed
@@ -167,21 +192,25 @@ export async function POST(req: NextRequest) {
     };
 
     const { error: nErr } = await supabaseAdmin.from("notifications").insert({
+      id: uuid(),
       user_id: userId,
       type: "points_awarded",
       payload,
-      // read_at: null -> por defecto se queda null
-      // created_at: default now() (si lo tienes así en tabla)
+      read_at: null,
+      created_at: nowIso,
     });
 
     if (nErr) {
       console.error("Error insertando notification:", nErr);
-      // No bloqueamos el post
+      // no bloqueamos el post
     }
 
     return NextResponse.json({ post, points_awarded: pointsAwarded }, { status: 201 });
   } catch (err) {
     console.error("Error inesperado en POST /api/posts:", err);
-    return NextResponse.json({ error: "Error inesperado guardando el post" }, { status: 500 });
+    return NextResponse.json(
+      { error: "Error inesperado guardando el post" },
+      { status: 500 }
+    );
   }
 }
