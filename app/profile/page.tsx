@@ -46,7 +46,16 @@ type NotificationRow = {
   id: string;
   user_id: string;
   type: string;
-  payload: NotificationPayload | null;
+
+  // Esquema A (payload)
+  payload?: NotificationPayload | null;
+
+  // Esquema B (columnas planas)
+  title?: string | null;
+  body?: string | null;
+  points_awarded?: string | number | null;
+  post_id?: string | null;
+
   read_at: string | null;
   created_at: string;
 };
@@ -118,6 +127,14 @@ export default function ProfilePage() {
   const getAccessToken = async (): Promise<string | null> => {
     const { data } = await supabaseBrowser.auth.getSession();
     return data.session?.access_token ?? null;
+  };
+
+  const pushFlash = (title: string, body: string) => {
+    const obj = { title, body, created_at: new Date().toISOString() };
+    setFlash(obj);
+    try {
+      localStorage.setItem("ethiqia_flash", JSON.stringify(obj));
+    } catch {}
   };
 
   const handleLogout = async () => {
@@ -328,14 +345,37 @@ export default function ProfilePage() {
     setEditOpen(true);
   };
 
+  // ✅ NUEVO: tras guardar, intentamos otorgar +2 si cumple perfil completo
+  const tryAwardProfileCompleteMin = async () => {
+    const token = await getAccessToken();
+    if (!token) return;
+
+    const res = await fetch("/api/profile/complete-min", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}` },
+      cache: "no-store",
+    });
+
+    const json = await res.json().catch(() => ({}));
+
+    if (!res.ok) {
+      console.error("complete-min error:", json);
+      return;
+    }
+
+    if (json?.awarded) {
+      pushFlash("Perfil completado", `Has ganado +${json.points_awarded} puntos por transparencia.`);
+      await loadScore();
+      await loadNotifications();
+    }
+  };
+
   const handleSaveProfile = async () => {
     if (!userId) return;
 
     const u = username.trim().replace(/^@+/, "");
     if (u && !/^[a-zA-Z0-9._-]{3,24}$/.test(u)) {
-      alert(
-        "El @username debe tener 3–24 caracteres y solo letras, números, punto, guion o guion bajo."
-      );
+      alert("El @username debe tener 3–24 caracteres y solo letras, números, punto, guion o guion bajo.");
       return;
     }
 
@@ -363,6 +403,9 @@ export default function ProfilePage() {
 
       await loadProfile(userId);
       setEditOpen(false);
+
+      // ✅ NUEVO: chequeo +2 transparencia
+      await tryAwardProfileCompleteMin();
     } finally {
       setSavingProfile(false);
     }
@@ -593,11 +636,14 @@ export default function ProfilePage() {
                 <p className="text-xs text-neutral-500">Aún no hay notificaciones.</p>
               ) : (
                 notifications.slice(0, 8).map((n) => {
-                  const title = n.payload?.title || n.type;
+                  const title = n.payload?.title || n.title || n.type;
                   const body =
                     n.payload?.body ||
+                    n.body ||
                     (typeof n.payload?.points_awarded === "number"
                       ? `Has ganado +${n.payload.points_awarded} puntos.`
+                      : typeof n.points_awarded !== "undefined" && n.points_awarded !== null
+                      ? `Has ganado +${n.points_awarded} puntos.`
                       : "");
 
                   return (
@@ -745,7 +791,9 @@ export default function ProfilePage() {
                       loading="lazy"
                     />
                   ) : (
-                    <div className="w-full h-full flex items-center justify-center text-xs text-neutral-500">Sin imagen</div>
+                    <div className="w-full h-full flex items-center justify-center text-xs text-neutral-500">
+                      Sin imagen
+                    </div>
                   )}
                 </button>
               ))}
@@ -881,12 +929,12 @@ export default function ProfilePage() {
                 </div>
 
                 <div>
-                  <label className="text-xs text-neutral-400 block mb-1">Ubicación</label>
+                  <label className="text-xs text-neutral-400 block mb-1">Ubicación (país)</label>
                   <input
                     value={location}
                     onChange={(e) => setLocation(e.target.value)}
                     className="w-full rounded-lg bg-black border border-neutral-700 px-3 py-2 text-sm"
-                    placeholder="España / Alicante / etc."
+                    placeholder="España"
                   />
                 </div>
 
@@ -922,7 +970,7 @@ export default function ProfilePage() {
               </div>
 
               <div>
-                <label className="text-xs text-neutral-400 block mb-1">Bio</label>
+                <label className="text-xs text-neutral-400 block mb-1">Bio (mín. 40 caracteres)</label>
                 <textarea
                   value={bio}
                   onChange={(e) => setBio(e.target.value)}
