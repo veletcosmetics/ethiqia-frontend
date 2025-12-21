@@ -39,6 +39,12 @@ function monthKeyUTC(d: Date) {
   return `${y}-${m}`;
 }
 
+function maxDate(...dates: Array<Date | null | undefined>) {
+  const filtered = dates.filter(Boolean) as Date[];
+  if (filtered.length === 0) return new Date(0);
+  return filtered.reduce((acc, d) => (d.getTime() > acc.getTime() ? d : acc), filtered[0]);
+}
+
 // GET /api/score -> Score v1 Usuario (Base 50 + hitos capados, sin puntos por post)
 export async function GET(req: NextRequest) {
   try {
@@ -47,14 +53,18 @@ export async function GET(req: NextRequest) {
 
     const now = new Date();
     const yearStartISO = isoYearStartUTC(now);
+    const yearStart = new Date(yearStartISO);
 
-    // 1) Cargar eventos relevantes del año
+    // IMPORTANTÍSIMO: evita backfill antes de que el usuario exista
+    const userCreatedAt = user?.created_at ? new Date(user.created_at) : yearStart;
+
+    // 1) Cargar eventos relevantes del año (ordenados DESC para last_event)
     const relevantTypes = [
       "profile_completed_min",
       "misconduct_strike",
       "conduct_quarter_awarded",
       "participation_milestone_awarded",
-      "post_created", // solo para tracking (no sumamos puntos directos)
+      "post_created", // solo tracking
     ];
 
     const { data: evs, error: evErr } = await supabaseAdmin
@@ -63,7 +73,8 @@ export async function GET(req: NextRequest) {
       .eq("subject_type", "user")
       .eq("subject_id", user.id)
       .gte("created_at", yearStartISO)
-      .in("event_type", relevantTypes);
+      .in("event_type", relevantTypes)
+      .order("created_at", { ascending: false });
 
     if (evErr) {
       console.error("score: error events", evErr);
@@ -82,39 +93,37 @@ export async function GET(req: NextRequest) {
     const hasProfileMin = events.some((e) => e.event_type === "profile_completed_min");
     const transparencyPoints = hasProfileMin ? 2 : 0;
 
-    // --- BLOQUE 2: Conducta (hitos trimestrales +2, cap 4/año) + strikes -10 inmediato
+    // --- BLOQUE 2: Conducta
+    // Strikes este año
     const strikes = events
       .filter((e) => e.event_type === "misconduct_strike")
       .map((e) => new Date(e.created_at))
       .sort((a, b) => a.getTime() - b.getTime());
 
-    const strikePenalty = Math.min(30, strikes.length * 10) * -1; // cap de seguridad -30 (ajústalo si quieres)
+    // Penalización inmediata por strikes
+    const strikePenalty = Math.min(30, strikes.length * 10) * -1; // cap -30 (ajústalo)
 
-    // Calcular cuántos "trimestres limpios" (90 días) ha conseguido este año, sumando segmentos limpios.
-    const yearStart = new Date(yearStartISO);
-    const segmentCuts = [yearStart, ...strikes, now];
+    // "clean_start" real: desde que existe el usuario, inicio de año, y último strike (si hay)
+    const lastStrike = strikes.length ? strikes[strikes.length - 1] : null;
+    const cleanStart = maxDate(yearStart, userCreatedAt, lastStrike);
 
-    let cleanQuarters = 0;
-    for (let i = 0; i < segmentCuts.length - 1; i++) {
-      const start = segmentCuts[i];
-      const end = segmentCuts[i + 1];
-      const d = daysBetween(start, end);
-      cleanQuarters += Math.floor(d / 90);
-      if (cleanQuarters >= 4) {
-        cleanQuarters = 4;
-        break;
-      }
-    }
+    const cleanDays = daysBetween(cleanStart, now);
+    const cleanQuarters = Math.min(4, Math.floor(cleanDays / 90));
 
-    // Eventos ya otorgados
+    // Eventos ya otorgados (por quarter_index único)
     const existingConductAwards = events.filter((e) => e.event_type === "conduct_quarter_awarded");
-    const awardedConductCount = Math.min(4, existingConductAwards.length);
+    const existingQuarterIdx = new Set<number>(
+      existingConductAwards
+        .map((e) => Number(e.metadata?.quarter_index))
+        .filter((n) => Number.isFinite(n) && n >= 1 && n <= 4)
+    );
 
-    // Insertar eventos faltantes (idempotente por conteo)
-    const missingConduct = Math.max(0, cleanQuarters - awardedConductCount);
+    // Debemos tener quarter_index 1..cleanQuarters
+    const shouldHave = Array.from({ length: cleanQuarters }).map((_, i) => i + 1);
+    const missingQuarterIdx = shouldHave.filter((q) => !existingQuarterIdx.has(q));
 
-    if (missingConduct > 0) {
-      const inserts = Array.from({ length: missingConduct }).map((_, idx) => ({
+    if (missingQuarterIdx.length > 0) {
+      const inserts = missingQuarterIdx.map((q) => ({
         subject_type: "user",
         subject_id: user.id,
         actor_user_id: user.id,
@@ -122,19 +131,22 @@ export async function GET(req: NextRequest) {
         points: 2,
         metadata: {
           year: now.getUTCFullYear(),
-          quarter_index: awardedConductCount + idx + 1,
-          rule: "90_days_clean",
+          quarter_index: q,
+          rule: "90_days_clean_from_clean_start",
+          clean_start: cleanStart.toISOString(),
         },
       }));
 
       const { error: insErr } = await supabaseAdmin.from("reputation_events").insert(inserts);
       if (insErr) console.error("score: error insert conduct milestones", insErr);
+
+      // Actualiza el set local para puntos
+      missingQuarterIdx.forEach((q) => existingQuarterIdx.add(q));
     }
 
-    const conductPoints = Math.min(8, (awardedConductCount + missingConduct) * 2);
+    const conductPoints = Math.min(8, existingQuarterIdx.size * 2);
 
     // --- BLOQUE 3: Participación (meses activos -> hitos 2/4/6/8/10/12, +1 cada uno, cap 6)
-    // Mes activo = existe al menos 1 post en ese mes (este año)
     const { data: postsData, error: postsErr } = await supabaseAdmin
       .from("posts")
       .select("created_at")
@@ -154,18 +166,16 @@ export async function GET(req: NextRequest) {
 
     const activeMonths = monthSet.size;
     const milestones = [2, 4, 6, 8, 10, 12];
-    const achievedMilestones = milestones.filter((m) => activeMonths >= m);
-    const achievedCount = Math.min(6, achievedMilestones.length);
+    const achievedMilestones = milestones.filter((m) => activeMonths >= m).slice(0, 6); // cap 6
 
     const existingPartAwards = events.filter((e) => e.event_type === "participation_milestone_awarded");
-    // Guardamos milestones ya otorgados por metadata.milestone_months
     const existingMilestones = new Set<number>(
       existingPartAwards
         .map((e) => Number(e.metadata?.milestone_months))
         .filter((n) => Number.isFinite(n))
     );
 
-    const missingPart = achievedMilestones.filter((m) => !existingMilestones.has(m)).slice(0, 6);
+    const missingPart = achievedMilestones.filter((m) => !existingMilestones.has(m));
 
     if (missingPart.length > 0) {
       const inserts = missingPart.map((m) => ({
@@ -183,30 +193,34 @@ export async function GET(req: NextRequest) {
 
       const { error: insErr } = await supabaseAdmin.from("reputation_events").insert(inserts);
       if (insErr) console.error("score: error insert participation milestones", insErr);
+
+      missingPart.forEach((m) => existingMilestones.add(m));
     }
 
-    // Puntos de participación = nº de milestones otorgados (existentes + recién insertados), cap 6
-    const participationPoints = Math.min(6, existingMilestones.size + missingPart.length);
+    const participationPoints = Math.min(6, existingMilestones.size);
 
     // --- SCORE FINAL
     const base = 50;
     let score = base + transparencyPoints + conductPoints + participationPoints + strikePenalty;
     score = Math.max(0, Math.min(100, score));
 
-    // Progreso “próximo hito” para UI
+    // Progreso para UI
     const nextConduct =
-      (awardedConductCount + missingConduct) >= 4
+      existingQuarterIdx.size >= 4
         ? null
         : (() => {
-            // Progreso desde el último corte (último strike o 1 enero)
-            const lastCut = strikes.length ? strikes[strikes.length - 1] : yearStart;
-            const d = daysBetween(lastCut, now);
-            const rem = 90 - (d % 90);
-            return { days_until_next_quarter: rem };
+            const rem = 90 - (cleanDays % 90 || 0);
+            const daysUntil = rem === 0 ? 90 : rem;
+            return {
+              clean_start: cleanStart.toISOString(),
+              clean_days: cleanDays,
+              days_until_next_quarter: daysUntil,
+              quarters_earned: existingQuarterIdx.size,
+            };
           })();
 
     const nextParticipation =
-      achievedCount >= 6
+      existingMilestones.size >= 6
         ? null
         : (() => {
             const nextM = milestones.find((m) => activeMonths < m) ?? null;
@@ -227,6 +241,8 @@ export async function GET(req: NextRequest) {
         stats: {
           active_months: activeMonths,
           strikes_this_year: strikes.length,
+          clean_start: cleanStart.toISOString(),
+          clean_days: cleanDays,
         },
         next: {
           conduct: nextConduct,
