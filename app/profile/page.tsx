@@ -345,7 +345,7 @@ export default function ProfilePage() {
     setEditOpen(true);
   };
 
-  // ✅ NUEVO: tras guardar, intentamos otorgar +2 si cumple perfil completo
+  // ✅ tras guardar, intentamos otorgar +2 si cumple perfil completo
   const tryAwardProfileCompleteMin = async () => {
     const token = await getAccessToken();
     if (!token) return;
@@ -404,7 +404,7 @@ export default function ProfilePage() {
       await loadProfile(userId);
       setEditOpen(false);
 
-      // ✅ NUEVO: chequeo +2 transparencia
+      // ✅ chequeo +2 transparencia
       await tryAwardProfileCompleteMin();
     } finally {
       setSavingProfile(false);
@@ -570,14 +570,25 @@ export default function ProfilePage() {
           <div className="bg-neutral-900 border border-neutral-800 rounded-2xl p-5">
             <div className="flex items-center justify-between">
               <div className="text-sm font-semibold">Ethiqia Score</div>
-              <button
-                type="button"
-                onClick={loadScore}
-                className="text-xs text-neutral-400 hover:text-emerald-400"
-                disabled={loadingScore}
-              >
-                {loadingScore ? "Actualizando…" : "Actualizar"}
-              </button>
+
+              <div className="flex items-center gap-3">
+                {/* ✅ NUEVO: enlace a reglas */}
+                <Link
+                  href="/score-rules"
+                  className="text-xs text-neutral-400 hover:text-emerald-400"
+                >
+                  Ver reglas
+                </Link>
+
+                <button
+                  type="button"
+                  onClick={loadScore}
+                  className="text-xs text-neutral-400 hover:text-emerald-400"
+                  disabled={loadingScore}
+                >
+                  {loadingScore ? "Actualizando…" : "Actualizar"}
+                </button>
+              </div>
             </div>
 
             <div className="mt-3 flex items-end gap-3">
@@ -652,7 +663,9 @@ export default function ProfilePage() {
                       type="button"
                       onClick={() => !n.read_at && markOneRead(n.id)}
                       className={`w-full text-left rounded-xl border px-3 py-3 ${
-                        n.read_at ? "border-neutral-800 bg-black" : "border-emerald-700/40 bg-emerald-500/10"
+                        n.read_at
+                          ? "border-neutral-800 bg-black"
+                          : "border-emerald-700/40 bg-emerald-500/10"
                       }`}
                       title={n.read_at ? "Leída" : "Click para marcar como leída"}
                     >
@@ -676,18 +689,28 @@ export default function ProfilePage() {
               <div className="h-16 w-16 rounded-full overflow-hidden bg-neutral-800 border border-neutral-700 flex items-center justify-center">
                 {profile?.avatar_url ? (
                   // eslint-disable-next-line @next/next/no-img-element
-                  <img src={profile.avatar_url} alt={displayName} className="h-full w-full object-cover" />
+                  <img
+                    src={profile.avatar_url}
+                    alt={displayName}
+                    className="h-full w-full object-cover"
+                  />
                 ) : (
-                  <span className="text-xl font-semibold">{(displayName?.[0] || "U").toUpperCase()}</span>
+                  <span className="text-xl font-semibold">
+                    {(displayName?.[0] || "U").toUpperCase()}
+                  </span>
                 )}
               </div>
 
               <div className="min-w-0">
-                <div className="text-xl font-semibold truncate">{loadingProfile ? "Cargando…" : displayName}</div>
+                <div className="text-xl font-semibold truncate">
+                  {loadingProfile ? "Cargando…" : displayName}
+                </div>
 
                 {showUsername && <div className="text-sm text-neutral-400 truncate">{showUsername}</div>}
 
-                {profile?.location && <div className="text-sm text-neutral-400 truncate">📍 {profile.location}</div>}
+                {profile?.location && (
+                  <div className="text-sm text-neutral-400 truncate">📍 {profile.location}</div>
+                )}
               </div>
             </div>
 
@@ -827,7 +850,9 @@ export default function ProfilePage() {
         <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center px-4">
           <div className="w-full max-w-md rounded-2xl border border-neutral-800 bg-neutral-950 p-5">
             <div className="flex items-center justify-between">
-              <h3 className="text-sm font-semibold">{listOpen === "followers" ? "Seguidores" : "Siguiendo"}</h3>
+              <h3 className="text-sm font-semibold">
+                {listOpen === "followers" ? "Seguidores" : "Siguiendo"}
+              </h3>
               <button
                 type="button"
                 onClick={() => setListOpen(null)}
@@ -887,7 +912,9 @@ export default function ProfilePage() {
                     // eslint-disable-next-line @next/next/no-img-element
                     <img src={avatarUrl} alt="avatar" className="h-full w-full object-cover" />
                   ) : (
-                    <span className="text-xl font-semibold">{(displayName?.[0] || "U").toUpperCase()}</span>
+                    <span className="text-xl font-semibold">
+                      {(displayName?.[0] || "U").toUpperCase()}
+                    </span>
                   )}
                 </div>
 
