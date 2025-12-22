@@ -5,33 +5,33 @@ export const runtime = "nodejs";
 
 const supabaseUrl = process.env.SUPABASE_URL!;
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-const adminSecret = process.env.ADMIN_SECRET!; // <-- añade esto en Render
+const adminSecret = process.env.ADMIN_SECRET!;
 
 const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey);
 
-function requireAdminSecret(req: NextRequest) {
-  const hdr = req.headers.get("x-admin-secret") || "";
-  // Comparación simple; suficiente para MVP si el secret no se filtra.
-  return Boolean(adminSecret) && hdr === adminSecret;
+function isAuthorized(req: NextRequest) {
+  const provided = req.headers.get("x-admin-secret") || "";
+  return Boolean(adminSecret) && provided === adminSecret;
 }
 
 type StrikeBody = {
-  userId: string; // UUID del usuario a sancionar
-  reason?: string; // texto breve: "insultos", "acoso", etc.
-  category?: string; // "harassment" | "hate" | "spam" | ...
-  evidence?: string; // link/post_id/etc
-  source?: string; // "manual" | "report" | "ai"
-  points?: number; // por defecto -10
-  // opcional: metadata extra
-  metadata?: Record<string, any>;
+  userId: string;
+  reason?: string;
+  category?: string;
+  source?: string;
+  evidence?: string;
 };
 
-// POST /api/moderation/strike
-// Protegido con header: x-admin-secret: <ADMIN_SECRET>
-// Body: { userId, reason, category, evidence, source, points? }
+export async function GET(req: NextRequest) {
+  if (!isAuthorized(req)) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  return NextResponse.json({ ok: true, route: "/api/moderation/strike" }, { status: 200 });
+}
+
 export async function POST(req: NextRequest) {
   try {
-    if (!requireAdminSecret(req)) {
+    if (!isAuthorized(req)) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
@@ -42,88 +42,62 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Missing userId" }, { status: 400 });
     }
 
-    const strikePoints = Number.isFinite(body.points) ? Number(body.points) : -10;
-    // Aseguramos que es penalización (negativa)
-    const normalizedPoints = strikePoints > 0 ? -Math.abs(strikePoints) : strikePoints;
+    const reason = String(body.reason || "Misconduct strike").trim();
+    const category = String(body.category || "manual").trim();
+    const source = String(body.source || "admin_secret").trim();
+    const evidence = body.evidence ? String(body.evidence) : null;
 
-    const reason = (body.reason || "Mala conducta").toString().trim();
-    const category = (body.category || "misconduct").toString().trim();
-    const evidence = (body.evidence || "").toString().trim();
-    const source = (body.source || "manual").toString().trim();
-
-    // 1) Insertar evento de reputación (strike)
-    // Nota: si tu tabla requiere actor_user_id NOT NULL, usamos el propio userId para cumplir.
-    const { data: ev, error: evErr } = await supabaseAdmin
+    // 1) Insertar evento en reputation_events (penalización inmediata -10)
+    const { data: strikeEvent, error: evErr } = await supabaseAdmin
       .from("reputation_events")
       .insert({
         subject_type: "user",
         subject_id: userId,
-        actor_user_id: userId, // MVP sin rol/mod: lo dejamos así para no romper constraints
+        actor_user_id: null,
         event_type: "misconduct_strike",
-        points: normalizedPoints,
+        points: -10,
         metadata: {
-          category,
           reason,
-          evidence: evidence || null,
+          category,
           source,
-          rule: "manual_strike",
-          ...((body.metadata && typeof body.metadata === "object") ? body.metadata : {}),
+          evidence,
         },
       })
-      .select("id, event_type, points, created_at, metadata")
+      .select("id, subject_id, event_type, points, created_at, metadata")
       .single();
 
     if (evErr) {
-      console.error("strike: error insert reputation_events", evErr);
+      console.error("strike: insert reputation_events error", evErr);
       return NextResponse.json(
-        { error: "Failed to insert misconduct_strike", details: evErr },
-        { status: 400 }
+        { error: "Failed to insert strike", details: evErr },
+        { status: 500 }
       );
     }
 
     // 2) Insertar notificación (tu esquema actual: user_id, type, payload)
     const payload = {
-      title: "Sanción aplicada",
-      body: `Se ha aplicado una sanción de ${normalizedPoints} puntos por: ${reason}.`,
-      points_delta: normalizedPoints,
+      title: "Strike por mala conducta",
+      body: `Se ha aplicado una penalización de -10 puntos. Motivo: ${reason}`,
+      points_delta: -10,
+      event_id: strikeEvent.id,
       category,
-      reason,
-      evidence: evidence || null,
       source,
-      reputation_event_id: ev.id,
     };
 
     const { error: nErr } = await supabaseAdmin.from("notifications").insert({
       user_id: userId,
       type: "misconduct_strike",
       payload,
-      // read_at null por defecto
     });
 
     if (nErr) {
-      // No bloqueamos: el strike ya está registrado.
-      console.error("strike: error insert notification", nErr);
+      console.error("strike: insert notifications error", nErr);
+      // No bloqueamos el strike por fallo de notificación
     }
 
-    return NextResponse.json(
-      {
-        ok: true,
-        strike: ev,
-        notification_inserted: !nErr,
-      },
-      { status: 201 }
-    );
+    return NextResponse.json({ ok: true, strike: strikeEvent }, { status: 201 });
   } catch (err) {
     console.error("strike: unexpected", err);
     return NextResponse.json({ error: "Unexpected error" }, { status: 500 });
   }
-}
-
-// (Opcional) GET para sanity-check (no devuelve datos sensibles; solo confirma que está vivo)
-// Requiere x-admin-secret igualmente.
-export async function GET(req: NextRequest) {
-  if (!requireAdminSecret(req)) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-  return NextResponse.json({ ok: true, route: "/api/moderation/strike" }, { status: 200 });
 }
