@@ -103,32 +103,30 @@ export default function AppTopNav() {
   const markOneRead = async (id: string) => {
     const token = await getAccessToken();
     if (!token) return;
+
     await fetch("/api/notifications", {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-      },
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
       body: JSON.stringify({ id }),
     });
+
     await loadNotifications();
   };
 
   const markAllRead = async () => {
     const token = await getAccessToken();
     if (!token) return;
+
     await fetch("/api/notifications", {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-      },
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
       body: JSON.stringify({ markAllRead: true }),
     });
+
     await loadNotifications();
   };
 
-  // Cargar contador al entrar + refresco
+  // Cargar contador al entrar + refresco ligero
   useEffect(() => {
     if (hidden) return;
 
@@ -139,9 +137,7 @@ export default function AppTopNav() {
     };
     document.addEventListener("visibilitychange", onVis);
 
-    const t = window.setInterval(() => {
-      loadNotifications();
-    }, 30000);
+    const t = window.setInterval(() => loadNotifications(), 30000);
 
     return () => {
       document.removeEventListener("visibilitychange", onVis);
@@ -161,26 +157,12 @@ export default function AppTopNav() {
     return () => document.removeEventListener("mousedown", onDown);
   }, [open]);
 
-  // ✅ Cerrar con ESC
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setOpen(false);
-    };
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, []);
-
-  // ✅ Si cambia la ruta, cerramos el panel (evita “panel colgado”)
-  useEffect(() => {
-    setOpen(false);
-  }, [pathname]);
-
   if (hidden) return null;
 
   return (
     <div className="sticky top-0 z-50 border-b border-neutral-800 bg-black/90 backdrop-blur">
       <div className="max-w-5xl mx-auto px-4 h-14 flex items-center justify-between">
-        {/* Izquierda: Logo + enlaces */}
+        {/* Izquierda */}
         <div className="flex items-center gap-4">
           <Link href="/feed" className="font-semibold text-sm hover:text-emerald-400">
             Ethiqia
@@ -199,7 +181,7 @@ export default function AppTopNav() {
           </nav>
         </div>
 
-        {/* Derecha: Campana */}
+        {/* Derecha: campana */}
         <div className="relative" ref={panelRef}>
           <button
             type="button"
@@ -226,11 +208,10 @@ export default function AppTopNav() {
 
           {/* Panel rápido */}
           {open && (
-            <div className="absolute right-0 mt-2 w-[92vw] max-w-[360px] rounded-2xl border border-neutral-800 bg-neutral-950 shadow-lg overflow-hidden">
+            <div className="absolute right-0 mt-2 w-[340px] rounded-2xl border border-neutral-800 bg-neutral-950 shadow-lg overflow-hidden">
               <div className="px-4 py-3 border-b border-neutral-800 flex items-center justify-between">
                 <div className="text-sm font-semibold">
-                  Notificaciones{" "}
-                  {unread > 0 ? <span className="text-emerald-400">({unread})</span> : null}
+                  Notificaciones {unread > 0 ? <span className="text-emerald-400">({unread})</span> : null}
                 </div>
                 <button
                   type="button"
@@ -244,9 +225,7 @@ export default function AppTopNav() {
 
               <div className="max-h-[360px] overflow-y-auto">
                 {!authed ? (
-                  <div className="px-4 py-4 text-xs text-neutral-400">
-                    Inicia sesión para ver notificaciones.
-                  </div>
+                  <div className="px-4 py-4 text-xs text-neutral-400">Inicia sesión para ver notificaciones.</div>
                 ) : loading ? (
                   <div className="px-4 py-4 text-xs text-neutral-400">Cargando…</div>
                 ) : items.length === 0 ? (
@@ -264,17 +243,13 @@ export default function AppTopNav() {
                             if (!n.read_at) markOneRead(n.id);
                           }}
                           className={`w-full text-left rounded-xl border px-3 py-3 ${
-                            n.read_at
-                              ? "border-neutral-800 bg-black"
-                              : "border-emerald-700/40 bg-emerald-500/10"
+                            n.read_at ? "border-neutral-800 bg-black" : "border-emerald-700/40 bg-emerald-500/10"
                           }`}
                           title={n.read_at ? "Leída" : "Click para marcar como leída"}
                         >
                           <div className="text-xs font-semibold text-white">{title}</div>
                           {body ? <div className="text-xs text-neutral-300 mt-1">{body}</div> : null}
-                          <div className="text-[11px] text-neutral-500 mt-2">
-                            {new Date(n.created_at).toLocaleString()}
-                          </div>
+                          <div className="text-[11px] text-neutral-500 mt-2">{new Date(n.created_at).toLocaleString()}</div>
                         </button>
                       );
                     })}
@@ -290,11 +265,7 @@ export default function AppTopNav() {
                 >
                   Ver todas
                 </Link>
-                <button
-                  type="button"
-                  onClick={() => setOpen(false)}
-                  className="text-xs text-neutral-400 hover:text-white"
-                >
+                <button type="button" onClick={() => setOpen(false)} className="text-xs text-neutral-400 hover:text-white">
                   Cerrar
                 </button>
               </div>
