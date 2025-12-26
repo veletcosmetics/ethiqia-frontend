@@ -1,7 +1,8 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { supabaseBrowser } from "@/lib/supabaseBrowserClient";
 
 type NotificationPayload = {
@@ -24,9 +25,14 @@ type NotificationRow = {
 };
 
 export default function NotificationsPage() {
+  const router = useRouter();
+
+  const [authChecked, setAuthChecked] = useState(false);
   const [loading, setLoading] = useState(false);
   const [items, setItems] = useState<NotificationRow[]>([]);
   const [error, setError] = useState<string | null>(null);
+
+  const unreadCount = useMemo(() => items.filter((n) => !n.read_at).length, [items]);
 
   const getAccessToken = async (): Promise<string | null> => {
     const { data } = await supabaseBrowser.auth.getSession();
@@ -40,11 +46,11 @@ export default function NotificationsPage() {
       const token = await getAccessToken();
       if (!token) {
         setItems([]);
-        setError("Sesión inválida. Inicia sesión de nuevo.");
+        router.push("/login");
         return;
       }
 
-      // Puedes subir el limit si quieres (ej: 100)
+      // Puedes subir el limit si quieres (ej: 200)
       const res = await fetch("/api/notifications?limit=100", {
         headers: { Authorization: `Bearer ${token}` },
         cache: "no-store",
@@ -66,32 +72,62 @@ export default function NotificationsPage() {
 
   const markOneRead = async (id: string) => {
     const token = await getAccessToken();
-    if (!token) return;
+    if (!token) {
+      router.push("/login");
+      return;
+    }
+
     await fetch("/api/notifications", {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
       body: JSON.stringify({ id }),
     });
+
     await loadAll();
   };
 
   const markAllRead = async () => {
     const token = await getAccessToken();
-    if (!token) return;
+    if (!token) {
+      router.push("/login");
+      return;
+    }
+
     await fetch("/api/notifications", {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
       body: JSON.stringify({ markAllRead: true }),
     });
+
     await loadAll();
   };
 
   useEffect(() => {
-    loadAll();
+    const init = async () => {
+      try {
+        const { data } = await supabaseBrowser.auth.getUser();
+        if (!data?.user) {
+          setAuthChecked(true);
+          router.push("/login");
+          return;
+        }
+        await loadAll();
+      } finally {
+        setAuthChecked(true);
+      }
+    };
+
+    init();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const unreadCount = items.filter((n) => !n.read_at).length;
+  if (!authChecked) {
+    return (
+      <main className="min-h-screen bg-black text-white flex items-center justify-center">
+        <p className="text-sm text-neutral-400">Cargando…</p>
+      </main>
+    );
+  }
 
   return (
     <main className="min-h-screen bg-black text-white">
@@ -111,6 +147,16 @@ export default function NotificationsPage() {
             >
               Volver al feed
             </Link>
+
+            <button
+              type="button"
+              onClick={loadAll}
+              disabled={loading}
+              className="rounded-full border border-neutral-800 bg-black px-4 py-2 text-xs font-semibold text-white hover:border-neutral-600 disabled:opacity-50"
+            >
+              {loading ? "Actualizando…" : "Actualizar"}
+            </button>
+
             <button
               type="button"
               onClick={markAllRead}
@@ -123,17 +169,6 @@ export default function NotificationsPage() {
         </div>
 
         <div className="bg-neutral-900 border border-neutral-800 rounded-2xl p-4">
-          <div className="flex items-center justify-between mb-3">
-            <button
-              type="button"
-              onClick={loadAll}
-              className="text-xs text-neutral-400 hover:text-emerald-400"
-              disabled={loading}
-            >
-              {loading ? "Actualizando…" : "Actualizar"}
-            </button>
-          </div>
-
           {error ? (
             <div className="text-xs text-red-400">{error}</div>
           ) : loading ? (
