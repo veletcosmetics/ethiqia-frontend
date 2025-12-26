@@ -646,7 +646,7 @@ export default function ProfilePage() {
               ) : notifications.length === 0 ? (
                 <p className="text-xs text-neutral-500">Aún no hay notificaciones.</p>
               ) : (
-                notifications.slice(0, 8).map((n) => {
+                notifications.slice(0, 3).map((n) => {
                   const title = n.payload?.title || n.title || n.type;
                   const body =
                     n.payload?.body ||
