@@ -1,105 +1,174 @@
-'use client';
+"use client";
 
-import { useEffect, useState } from 'react';
-import {
-  DemoNotification,
-  loadNotifications,
-  clearAllNotifications,
-  markNotificationAsRead,
-} from '../../lib/demoStorage';
+import React, { useEffect, useState } from "react";
+import Link from "next/link";
+import { supabaseBrowser } from "@/lib/supabaseBrowserClient";
+
+type NotificationPayload = {
+  title?: string;
+  body?: string;
+  points_awarded?: number;
+  points_delta?: number;
+  post_id?: string;
+  event_id?: string;
+  [k: string]: any;
+};
+
+type NotificationRow = {
+  id: string;
+  user_id: string;
+  type: string;
+  payload: NotificationPayload | null;
+  read_at: string | null;
+  created_at: string;
+};
 
 export default function NotificationsPage() {
-  const [notifications, setNotifications] = useState<DemoNotification[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [items, setItems] = useState<NotificationRow[]>([]);
+  const [error, setError] = useState<string | null>(null);
+
+  const getAccessToken = async (): Promise<string | null> => {
+    const { data } = await supabaseBrowser.auth.getSession();
+    return data.session?.access_token ?? null;
+  };
+
+  const loadAll = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const token = await getAccessToken();
+      if (!token) {
+        setItems([]);
+        setError("Sesión inválida. Inicia sesión de nuevo.");
+        return;
+      }
+
+      // Puedes subir el limit si quieres (ej: 100)
+      const res = await fetch("/api/notifications?limit=100", {
+        headers: { Authorization: `Bearer ${token}` },
+        cache: "no-store",
+      });
+
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        console.error("notifications page error:", json);
+        setError("No se han podido cargar las notificaciones.");
+        setItems([]);
+        return;
+      }
+
+      setItems((json.notifications ?? []) as NotificationRow[]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const markOneRead = async (id: string) => {
+    const token = await getAccessToken();
+    if (!token) return;
+    await fetch("/api/notifications", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ id }),
+    });
+    await loadAll();
+  };
+
+  const markAllRead = async () => {
+    const token = await getAccessToken();
+    if (!token) return;
+    await fetch("/api/notifications", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ markAllRead: true }),
+    });
+    await loadAll();
+  };
 
   useEffect(() => {
-    const list = loadNotifications();
-    setNotifications(list);
+    loadAll();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const handleMarkAsRead = (id: string) => {
-    markNotificationAsRead(id);
-    setNotifications(loadNotifications());
-  };
-
-  const handleClearAll = () => {
-    clearAllNotifications();
-    setNotifications([]);
-  };
+  const unreadCount = items.filter((n) => !n.read_at).length;
 
   return (
-    <div className="min-h-screen bg-black text-slate-50">
-      <main className="mx-auto max-w-3xl px-4 pb-16 pt-8">
-        <header className="mb-6 flex items-center justify-between gap-4">
+    <main className="min-h-screen bg-black text-white">
+      <section className="max-w-3xl mx-auto px-4 py-8">
+        <div className="flex items-center justify-between mb-6">
           <div>
-            <h1 className="text-2xl font-semibold">Notificaciones</h1>
-            <p className="text-sm text-slate-400">
-              Actividad generada en esta demo local de Ethiqia desde este
-              navegador.
-            </p>
+            <h1 className="text-lg font-semibold">Notificaciones</h1>
+            <div className="text-xs text-neutral-400 mt-1">
+              {unreadCount > 0 ? `${unreadCount} sin leer` : "Todo al día"}
+            </div>
           </div>
 
-          {notifications.length > 0 && (
-            <button
-              onClick={handleClearAll}
-              className="rounded-full border border-slate-600 px-3 py-1 text-xs text-slate-300 hover:border-red-500 hover:text-red-300"
+          <div className="flex items-center gap-2">
+            <Link
+              href="/feed"
+              className="rounded-full border border-neutral-800 bg-black px-4 py-2 text-xs font-semibold text-white hover:border-neutral-600"
             >
-              Borrar todas
+              Volver al feed
+            </Link>
+            <button
+              type="button"
+              onClick={markAllRead}
+              disabled={loading || items.length === 0 || unreadCount === 0}
+              className="rounded-full border border-neutral-800 bg-black px-4 py-2 text-xs font-semibold text-white hover:border-neutral-600 disabled:opacity-50"
+            >
+              Marcar todo leído
             </button>
-          )}
-        </header>
+          </div>
+        </div>
 
-        {notifications.length === 0 ? (
-          <p className="text-sm text-slate-400">
-            Todavía no hay notificaciones. Sube una imagen desde la demo Live o
-            genera actividad para verlas aquí.
-          </p>
-        ) : (
-          <ul className="space-y-3">
-            {notifications.map((n) => (
-              <li
-                key={n.id}
-                className={`flex items-start justify-between gap-4 rounded-2xl border px-4 py-3 text-sm ${
-                  n.type === 'error'
-                    ? 'border-red-700/80 bg-red-950/60'
-                    : n.type === 'score'
-                    ? 'border-emerald-600/80 bg-emerald-950/50'
-                    : 'border-slate-700 bg-slate-900/60'
-                }`}
-              >
-                <div>
-                  <div className="mb-1 text-xs uppercase tracking-wide text-slate-300">
-                    {n.type === 'error'
-                      ? 'Error'
-                      : n.type === 'score'
-                      ? 'Ethiqia Score'
-                      : 'Sistema'}
-                  </div>
-                  <div className="text-slate-50">{n.message}</div>
-                  <div className="mt-1 text-[11px] text-slate-400">
-                    {new Date(n.createdAt).toLocaleString('es-ES', {
-                      day: '2-digit',
-                      month: '2-digit',
-                      year: '2-digit',
-                      hour: '2-digit',
-                      minute: '2-digit',
-                    })}
-                    {n.read ? ' · leída' : ' · no leída'}
-                  </div>
-                </div>
+        <div className="bg-neutral-900 border border-neutral-800 rounded-2xl p-4">
+          <div className="flex items-center justify-between mb-3">
+            <button
+              type="button"
+              onClick={loadAll}
+              className="text-xs text-neutral-400 hover:text-emerald-400"
+              disabled={loading}
+            >
+              {loading ? "Actualizando…" : "Actualizar"}
+            </button>
+          </div>
 
-                {!n.read && (
+          {error ? (
+            <div className="text-xs text-red-400">{error}</div>
+          ) : loading ? (
+            <div className="text-xs text-neutral-400">Cargando…</div>
+          ) : items.length === 0 ? (
+            <div className="text-xs text-neutral-500">Aún no hay notificaciones.</div>
+          ) : (
+            <div className="space-y-2">
+              {items.map((n) => {
+                const title = n.payload?.title || n.type;
+                const body = n.payload?.body || "";
+                return (
                   <button
-                    onClick={() => handleMarkAsRead(n.id)}
-                    className="mt-1 rounded-full border border-slate-500 px-3 py-1 text-[11px] text-slate-200 hover:border-emerald-400 hover:text-emerald-300"
+                    key={n.id}
+                    type="button"
+                    onClick={() => !n.read_at && markOneRead(n.id)}
+                    className={`w-full text-left rounded-xl border px-3 py-3 ${
+                      n.read_at
+                        ? "border-neutral-800 bg-black"
+                        : "border-emerald-700/40 bg-emerald-500/10"
+                    }`}
+                    title={n.read_at ? "Leída" : "Click para marcar como leída"}
                   >
-                    Marcar como leída
+                    <div className="text-xs font-semibold text-white">{title}</div>
+                    {body ? <div className="text-xs text-neutral-300 mt-1">{body}</div> : null}
+                    <div className="text-[11px] text-neutral-500 mt-2">
+                      {new Date(n.created_at).toLocaleString()}
+                    </div>
                   </button>
-                )}
-              </li>
-            ))}
-          </ul>
-        )}
-      </main>
-    </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      </section>
+    </main>
   );
 }
