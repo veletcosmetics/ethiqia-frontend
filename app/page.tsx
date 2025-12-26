@@ -18,11 +18,19 @@ export default function HomePage() {
 
           <div className="flex items-center gap-2">
             <Link
+              href="/score-rules"
+              className="rounded-full border border-neutral-700 bg-black px-4 py-2 text-xs font-semibold hover:border-neutral-500"
+            >
+              Info Score
+            </Link>
+
+            <Link
               href="/login"
               className="rounded-full border border-neutral-700 bg-black px-4 py-2 text-xs font-semibold hover:border-neutral-500"
             >
               Iniciar sesión
             </Link>
+
             <Link
               href="/feed"
               className="rounded-full bg-emerald-500 hover:bg-emerald-600 px-4 py-2 text-xs font-semibold text-black"
@@ -49,7 +57,7 @@ export default function HomePage() {
             <p className="mt-4 text-neutral-300 leading-relaxed">
               Sube contenido y construye tu reputación con señales verificables.
               La plataforma analiza y etiqueta la probabilidad de IA, y te asigna
-              un score que evoluciona con tu actividad.
+              un score que evoluciona por bloques (no por spam de acciones).
             </p>
 
             <div className="mt-7 flex flex-wrap gap-3">
@@ -68,10 +76,10 @@ export default function HomePage() {
               </Link>
 
               <Link
-                href="/score"
+                href="/score-rules"
                 className="rounded-full border border-neutral-700 bg-black px-6 py-3 text-sm font-semibold hover:border-neutral-500"
               >
-                Ver Ethiqia Score
+                Reglas del Score
               </Link>
             </div>
 
@@ -107,7 +115,7 @@ export default function HomePage() {
             <ul className="mt-4 space-y-2 text-sm text-neutral-300">
               <li>• Feed tipo Instagram con posts reales.</li>
               <li>• Perfil con seguidores/siguiendo y cierre de sesión.</li>
-              <li>• Moderación + score por probabilidad de IA.</li>
+              <li>• Score por bloques (transparencia, conducta, participación).</li>
               <li>• Perfiles públicos (/u/id) navegables.</li>
             </ul>
 
@@ -127,13 +135,13 @@ export default function HomePage() {
 
               <div className="rounded-xl border border-neutral-800 bg-black p-4">
                 <div className="text-xs text-neutral-400">Acción</div>
-                <div className="mt-1 text-sm font-semibold">Explorar feed</div>
+                <div className="mt-1 text-sm font-semibold">Entender el Score</div>
                 <div className="mt-2">
                   <Link
-                    href="/feed"
+                    href="/score-rules"
                     className="text-xs text-emerald-400 hover:text-emerald-300"
                   >
-                    Ver publicaciones →
+                    Ver reglas →
                   </Link>
                 </div>
               </div>
@@ -148,7 +156,7 @@ export default function HomePage() {
 
       {/* Sección simple “Qué es” */}
       <section className="max-w-6xl mx-auto px-4 pb-14">
-        <div className="grid md:grid-cols-2 gap-8">
+        <div className="grid md:grid-cols-3 gap-8">
           <div className="rounded-2xl border border-neutral-800 bg-neutral-950/60 p-6">
             <h2 className="text-lg font-semibold">¿Qué es Ethiqia?</h2>
             <p className="mt-3 text-sm text-neutral-300 leading-relaxed">
@@ -164,6 +172,22 @@ export default function HomePage() {
               El objetivo no es “castigar”, sino aportar contexto: indicar probabilidad
               de IA, fomentar autenticidad y reducir incentivos al fraude.
             </p>
+          </div>
+
+          <div className="rounded-2xl border border-neutral-800 bg-neutral-950/60 p-6">
+            <h2 className="text-lg font-semibold">Cómo se calcula el Score</h2>
+            <p className="mt-3 text-sm text-neutral-300 leading-relaxed">
+              El Ethiqia Score empieza con una base y evoluciona por bloques: transparencia,
+              buena conducta y participación por hitos (no por actividad constante).
+            </p>
+            <div className="mt-4">
+              <Link
+                href="/score-rules"
+                className="text-xs text-emerald-400 hover:text-emerald-300"
+              >
+                Ver reglas del Score →
+              </Link>
+            </div>
           </div>
         </div>
       </section>
