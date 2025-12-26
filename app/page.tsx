@@ -55,9 +55,9 @@ export default function HomePage() {
             </h1>
 
             <p className="mt-4 text-neutral-300 leading-relaxed">
-              Sube contenido y construye tu reputación con señales verificables.
-              La plataforma analiza y etiqueta la probabilidad de IA, y te asigna
-              un score que evoluciona por bloques (no por spam de acciones).
+              Sube contenido y construye tu reputación con señales verificables. La plataforma
+              analiza y etiqueta la probabilidad de IA, y te asigna un score que evoluciona por
+              bloques (no por spam de acciones).
             </p>
 
             <div className="mt-7 flex flex-wrap gap-3">
@@ -108,9 +108,7 @@ export default function HomePage() {
               </div>
             </div>
 
-            <div className="mt-3 text-lg font-semibold">
-              Producto operativo y listo para usuarios
-            </div>
+            <div className="mt-3 text-lg font-semibold">Producto operativo y listo para usuarios</div>
 
             <ul className="mt-4 space-y-2 text-sm text-neutral-300">
               <li>• Feed tipo Instagram con posts reales.</li>
@@ -124,10 +122,7 @@ export default function HomePage() {
                 <div className="text-xs text-neutral-400">Acción</div>
                 <div className="mt-1 text-sm font-semibold">Crear cuenta</div>
                 <div className="mt-2">
-                  <Link
-                    href="/login"
-                    className="text-xs text-emerald-400 hover:text-emerald-300"
-                  >
+                  <Link href="/login" className="text-xs text-emerald-400 hover:text-emerald-300">
                     Ir a iniciar sesión →
                   </Link>
                 </div>
@@ -137,10 +132,7 @@ export default function HomePage() {
                 <div className="text-xs text-neutral-400">Acción</div>
                 <div className="mt-1 text-sm font-semibold">Entender el Score</div>
                 <div className="mt-2">
-                  <Link
-                    href="/score-rules"
-                    className="text-xs text-emerald-400 hover:text-emerald-300"
-                  >
+                  <Link href="/score-rules" className="text-xs text-emerald-400 hover:text-emerald-300">
                     Ver reglas →
                   </Link>
                 </div>
@@ -154,23 +146,23 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* Sección simple “Qué es” */}
+      {/* Sección “Qué es” */}
       <section className="max-w-6xl mx-auto px-4 pb-14">
         <div className="grid md:grid-cols-3 gap-8">
           <div className="rounded-2xl border border-neutral-800 bg-neutral-950/60 p-6">
             <h2 className="text-lg font-semibold">¿Qué es Ethiqia?</h2>
             <p className="mt-3 text-sm text-neutral-300 leading-relaxed">
-              Ethiqia es una capa de reputación digital diseñada para un entorno con
-              contenido sintético, manipulación y ruido. En lugar de contar “likes”,
-              introduce señales verificables y un score comprensible.
+              Ethiqia es una capa de reputación digital diseñada para un entorno con contenido sintético,
+              manipulación y ruido. En lugar de contar “likes”, introduce señales verificables y un score
+              comprensible.
             </p>
           </div>
 
           <div className="rounded-2xl border border-neutral-800 bg-neutral-950/60 p-6">
             <h2 className="text-lg font-semibold">Transparencia frente a IA</h2>
             <p className="mt-3 text-sm text-neutral-300 leading-relaxed">
-              El objetivo no es “castigar”, sino aportar contexto: indicar probabilidad
-              de IA, fomentar autenticidad y reducir incentivos al fraude.
+              El objetivo no es “castigar”, sino aportar contexto: indicar probabilidad de IA,
+              fomentar autenticidad y reducir incentivos al fraude.
             </p>
           </div>
 
@@ -181,10 +173,7 @@ export default function HomePage() {
               buena conducta y participación por hitos (no por actividad constante).
             </p>
             <div className="mt-4">
-              <Link
-                href="/score-rules"
-                className="text-xs text-emerald-400 hover:text-emerald-300"
-              >
+              <Link href="/score-rules" className="text-xs text-emerald-400 hover:text-emerald-300">
                 Ver reglas del Score →
               </Link>
             </div>
