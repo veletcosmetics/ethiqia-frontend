@@ -572,11 +572,7 @@ export default function ProfilePage() {
               <div className="text-sm font-semibold">Ethiqia Score</div>
 
               <div className="flex items-center gap-3">
-                {/* ✅ NUEVO: enlace a reglas */}
-                <Link
-                  href="/score-rules"
-                  className="text-xs text-neutral-400 hover:text-emerald-400"
-                >
+                <Link href="/score-rules" className="text-xs text-neutral-400 hover:text-emerald-400">
                   Ver reglas
                 </Link>
 
@@ -620,7 +616,17 @@ export default function ProfilePage() {
                 Notificaciones{" "}
                 {unreadCount > 0 ? <span className="text-emerald-400">({unreadCount})</span> : null}
               </div>
-              <div className="flex items-center gap-2">
+
+              <div className="flex items-center gap-3">
+                {/* ✅ NUEVO: acceso directo a todas */}
+                <Link
+                  href="/notifications"
+                  className="text-xs text-neutral-400 hover:text-emerald-400"
+                  title="Ver todas las notificaciones"
+                >
+                  Ver todas
+                </Link>
+
                 <button
                   type="button"
                   onClick={loadNotifications}
@@ -629,6 +635,7 @@ export default function ProfilePage() {
                 >
                   {loadingNotifications ? "Actualizando…" : "Actualizar"}
                 </button>
+
                 <button
                   type="button"
                   onClick={markAllRead}
@@ -646,37 +653,51 @@ export default function ProfilePage() {
               ) : notifications.length === 0 ? (
                 <p className="text-xs text-neutral-500">Aún no hay notificaciones.</p>
               ) : (
-                notifications.slice(0, 3).map((n) => {
-                  const title = n.payload?.title || n.title || n.type;
-                  const body =
-                    n.payload?.body ||
-                    n.body ||
-                    (typeof n.payload?.points_awarded === "number"
-                      ? `Has ganado +${n.payload.points_awarded} puntos.`
-                      : typeof n.points_awarded !== "undefined" && n.points_awarded !== null
-                      ? `Has ganado +${n.points_awarded} puntos.`
-                      : "");
+                <>
+                  {notifications.slice(0, 3).map((n) => {
+                    const title = n.payload?.title || n.title || n.type;
+                    const body =
+                      n.payload?.body ||
+                      n.body ||
+                      (typeof n.payload?.points_awarded === "number"
+                        ? `Has ganado +${n.payload.points_awarded} puntos.`
+                        : typeof n.points_awarded !== "undefined" && n.points_awarded !== null
+                        ? `Has ganado +${n.points_awarded} puntos.`
+                        : "");
 
-                  return (
-                    <button
-                      key={n.id}
-                      type="button"
-                      onClick={() => !n.read_at && markOneRead(n.id)}
-                      className={`w-full text-left rounded-xl border px-3 py-3 ${
-                        n.read_at
-                          ? "border-neutral-800 bg-black"
-                          : "border-emerald-700/40 bg-emerald-500/10"
-                      }`}
-                      title={n.read_at ? "Leída" : "Click para marcar como leída"}
-                    >
-                      <div className="text-xs font-semibold text-white">{title}</div>
-                      {body ? <div className="text-xs text-neutral-300 mt-1">{body}</div> : null}
-                      <div className="text-[11px] text-neutral-500 mt-2">
-                        {new Date(n.created_at).toLocaleString()}
-                      </div>
-                    </button>
-                  );
-                })
+                    return (
+                      <button
+                        key={n.id}
+                        type="button"
+                        onClick={() => !n.read_at && markOneRead(n.id)}
+                        className={`w-full text-left rounded-xl border px-3 py-3 ${
+                          n.read_at
+                            ? "border-neutral-800 bg-black"
+                            : "border-emerald-700/40 bg-emerald-500/10"
+                        }`}
+                        title={n.read_at ? "Leída" : "Click para marcar como leída"}
+                      >
+                        <div className="text-xs font-semibold text-white">{title}</div>
+                        {body ? <div className="text-xs text-neutral-300 mt-1">{body}</div> : null}
+                        <div className="text-[11px] text-neutral-500 mt-2">
+                          {new Date(n.created_at).toLocaleString()}
+                        </div>
+                      </button>
+                    );
+                  })}
+
+                  {/* ✅ NUEVO: si hay más, CTA claro */}
+                  {notifications.length > 3 && (
+                    <div className="pt-2">
+                      <Link
+                        href="/notifications"
+                        className="text-xs text-emerald-400 hover:underline"
+                      >
+                        Ver todas las notificaciones →
+                      </Link>
+                    </div>
+                  )}
+                </>
               )}
             </div>
           </div>
