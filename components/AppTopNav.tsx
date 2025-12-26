@@ -26,12 +26,7 @@ type NotificationRow = {
 
 function BellIcon({ className = "" }: { className?: string }) {
   return (
-    <svg
-      className={className}
-      viewBox="0 0 24 24"
-      fill="none"
-      aria-hidden="true"
-    >
+    <svg className={className} viewBox="0 0 24 24" fill="none" aria-hidden="true">
       <path
         d="M15 17H9m10-2.5V11a7 7 0 10-14 0v3.5L3 17h18l-2-2.5z"
         stroke="currentColor"
@@ -52,7 +47,7 @@ function BellIcon({ className = "" }: { className?: string }) {
 export default function AppTopNav() {
   const pathname = usePathname();
 
-  // Ocultar en landing (/) y /investors (tal como comentaste en layout)
+  // Ocultar en landing (/) y /investors
   const hidden = useMemo(() => {
     if (!pathname) return false;
     return pathname === "/" || pathname.startsWith("/investors");
@@ -133,7 +128,7 @@ export default function AppTopNav() {
     await loadNotifications();
   };
 
-  // Cargar contador al entrar + refresco ligero
+  // Cargar contador al entrar + refresco
   useEffect(() => {
     if (hidden) return;
 
@@ -145,7 +140,6 @@ export default function AppTopNav() {
     document.addEventListener("visibilitychange", onVis);
 
     const t = window.setInterval(() => {
-      // refresco moderado
       loadNotifications();
     }, 30000);
 
@@ -166,6 +160,20 @@ export default function AppTopNav() {
     document.addEventListener("mousedown", onDown);
     return () => document.removeEventListener("mousedown", onDown);
   }, [open]);
+
+  // ✅ Cerrar con ESC
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, []);
+
+  // ✅ Si cambia la ruta, cerramos el panel (evita “panel colgado”)
+  useEffect(() => {
+    setOpen(false);
+  }, [pathname]);
 
   if (hidden) return null;
 
@@ -196,7 +204,6 @@ export default function AppTopNav() {
           <button
             type="button"
             onClick={async () => {
-              // al abrir, refrescamos para “vistazo rápido” real
               const next = !open;
               setOpen(next);
               if (next) await loadNotifications();
@@ -219,10 +226,11 @@ export default function AppTopNav() {
 
           {/* Panel rápido */}
           {open && (
-            <div className="absolute right-0 mt-2 w-[340px] rounded-2xl border border-neutral-800 bg-neutral-950 shadow-lg overflow-hidden">
+            <div className="absolute right-0 mt-2 w-[92vw] max-w-[360px] rounded-2xl border border-neutral-800 bg-neutral-950 shadow-lg overflow-hidden">
               <div className="px-4 py-3 border-b border-neutral-800 flex items-center justify-between">
                 <div className="text-sm font-semibold">
-                  Notificaciones {unread > 0 ? <span className="text-emerald-400">({unread})</span> : null}
+                  Notificaciones{" "}
+                  {unread > 0 ? <span className="text-emerald-400">({unread})</span> : null}
                 </div>
                 <button
                   type="button"
