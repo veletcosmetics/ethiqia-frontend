@@ -102,7 +102,6 @@ export default function FeedPage() {
         const list = (data.posts ?? []) as Post[];
         setPosts(list);
 
-        // cargar mini perfiles (nombre + avatar) para autores
         const ids = Array.from(new Set(list.map((p) => p.user_id).filter(Boolean)));
         if (ids.length > 0) {
           const { data: profs, error } = await supabaseBrowser
@@ -260,9 +259,7 @@ export default function FeedPage() {
       <main className="min-h-screen bg-black text-white flex items-center justify-center">
         <div className="text-center space-y-3">
           <h1 className="text-2xl font-semibold">Ethiqia</h1>
-          <p className="text-sm text-gray-400">
-            Debes iniciar sesión para ver y publicar en el feed.
-          </p>
+          <p className="text-sm text-gray-400">Debes iniciar sesión para ver y publicar en el feed.</p>
           <a
             href="/login"
             className="inline-flex items-center justify-center rounded-full bg-emerald-500 hover:bg-emerald-600 px-6 py-2 text-sm font-semibold"
@@ -287,10 +284,7 @@ export default function FeedPage() {
             </p>
           </div>
 
-          <Link
-            href="/profile"
-            className="text-xs text-neutral-300 hover:text-emerald-400 transition-colors"
-          >
+          <Link href="/profile" className="text-xs text-neutral-300 hover:text-emerald-400 transition-colors">
             Mi perfil →
           </Link>
         </div>
@@ -348,9 +342,7 @@ export default function FeedPage() {
           {posts.map((post) => {
             const isMine = myId && post.user_id === myId;
             const profile = profilesMap[post.user_id];
-            const authorName = isMine
-              ? currentUserName
-              : profile?.full_name?.trim() || "Usuario Ethiqia";
+            const authorName = isMine ? currentUserName : profile?.full_name?.trim() || "Usuario Ethiqia";
             const authorAvatarUrl = profile?.avatar_url ?? null;
 
             return (
@@ -358,6 +350,7 @@ export default function FeedPage() {
                 key={post.id}
                 post={post}
                 authorName={authorName}
+                authorId={post.user_id}
                 authorAvatarUrl={authorAvatarUrl}
               />
             );
