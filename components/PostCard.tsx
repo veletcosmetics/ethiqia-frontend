@@ -11,19 +11,15 @@ export type Post = {
   caption?: string | null;
   created_at?: string | null;
 
-  // Moderación / scoring (opcionales según tu tabla)
   ai_probability?: number | null; // 0..1
-  global_score?: number | null;
+  global_score?: number | null; // NO lo mostramos como badge
 
-  // Contadores (si existen en tu SELECT)
   likes_count?: number | null;
   comments_count?: number | null;
 
-  // Flags opcionales
   blocked?: boolean | null;
   reason?: string | null;
 
-  // Permite campos extra sin romper TS
   [k: string]: any;
 };
 
@@ -31,7 +27,7 @@ type Props = {
   post: Post;
   authorName?: string;
   authorAvatarUrl?: string;
-  authorId?: string; // para link a /u/[id]
+  authorId?: string; // link a /u/[id]
 };
 
 function formatDate(iso?: string | null) {
@@ -125,22 +121,34 @@ export default function PostCard({ post, authorName, authorAvatarUrl, authorId }
     ((post as any).imageUrl as string | null | undefined) ??
     null;
 
-  // Contadores “seguros”
   const initialLikes = Number(post.likes_count ?? (post as any).likes ?? 0) || 0;
   const initialComments = Number(post.comments_count ?? (post as any).comments ?? 0) || 0;
 
-  // UI local (no rompe aunque no exista backend)
   const [liked, setLiked] = useState(false);
   const [likesUi, setLikesUi] = useState(initialLikes);
 
-  const toggleLikeUi = () => {
-    // Solo UI. Si luego quieres persistir, aquí conectamos a /api/likes o lo que uses.
+  const toggleLikeUi = async () => {
+    // Optimista siempre (no rompe UI)
     setLiked((prev) => {
       const next = !prev;
       setLikesUi((n) => (next ? n + 1 : Math.max(0, n - 1)));
       return next;
     });
+
+    // Persistencia “best effort” (si existe /api/likes en tu proyecto)
+    try {
+      const method = !liked ? "POST" : "DELETE";
+      await fetch("/api/likes", {
+        method,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ postId: post.id }),
+      });
+    } catch {
+      // No hacemos nada: si no existe endpoint, no rompemos.
+    }
   };
+
+  const postUrl = typeof window !== "undefined" ? `${window.location.origin}/p/${post.id}` : "";
 
   return (
     <article className="rounded-2xl border border-neutral-800 bg-neutral-950 overflow-hidden">
@@ -152,7 +160,9 @@ export default function PostCard({ post, authorName, authorAvatarUrl, authorId }
               // eslint-disable-next-line @next/next/no-img-element
               <img src={authorAvatarUrl} alt={displayName} className="h-full w-full object-cover" />
             ) : (
-              <span className="text-sm font-semibold">{(displayName?.[0] || "U").toUpperCase()}</span>
+              <span className="text-sm font-semibold">
+                {(displayName?.[0] || "U").toUpperCase()}
+              </span>
             )}
           </div>
 
@@ -164,13 +174,14 @@ export default function PostCard({ post, authorName, authorAvatarUrl, authorId }
             ) : (
               <div className="text-sm font-semibold truncate">{displayName}</div>
             )}
-
             {created ? <div className="text-[11px] text-neutral-500">{created}</div> : null}
           </div>
         </div>
 
-        {/* Derecha: IA% (discreto) */}
-        <div className="text-[11px] text-neutral-500 shrink-0">{aiProbPct !== null ? <>IA: {aiProbPct}%</> : null}</div>
+        {/* Derecha: IA% (discreto). Ojo: NO mostramos 100/100 ni score */}
+        <div className="text-[11px] text-neutral-500 shrink-0">
+          {aiProbPct !== null ? <>IA: {aiProbPct}%</> : null}
+        </div>
       </div>
 
       {/* Imagen */}
@@ -183,6 +194,7 @@ export default function PostCard({ post, authorName, authorAvatarUrl, authorId }
             className="w-full max-h-[560px] object-cover"
             loading="lazy"
           />
+          {/* IMPORTANTE: aquí NO hay badge de score */}
         </div>
       ) : (
         <div className="p-6 text-sm text-neutral-500">Sin imagen</div>
@@ -205,27 +217,22 @@ export default function PostCard({ post, authorName, authorAvatarUrl, authorId }
               <span className="hidden sm:inline">Me gusta</span>
             </button>
 
-            <button
-              type="button"
-              onClick={() => {
-                // Si ya tienes modal de comentarios, lo conectamos aquí.
-                // Por ahora: no rompe y mantiene la UI.
-                alert("Comentarios: pendiente de conectar a tu sistema real.");
-              }}
+            <Link
+              href={`/p/${post.id}`}
               className="inline-flex items-center gap-2 text-xs font-semibold text-neutral-200 hover:text-white"
               aria-label="Comentar"
               title="Comentar"
             >
               <ChatIcon className="h-5 w-5" />
               <span className="hidden sm:inline">Comentar</span>
-            </button>
+            </Link>
 
             <button
               type="button"
               onClick={async () => {
                 try {
-                  await navigator.clipboard.writeText(`${window.location.origin}/feed`);
-                  // Si luego tienes URL real por post, lo cambiamos a /p/{id}
+                  const url = postUrl || `${window.location.origin}/feed`;
+                  await navigator.clipboard.writeText(url);
                 } catch {}
               }}
               className="inline-flex items-center gap-2 text-xs font-semibold text-neutral-200 hover:text-white"
@@ -237,7 +244,7 @@ export default function PostCard({ post, authorName, authorAvatarUrl, authorId }
             </button>
           </div>
 
-          {/* Contadores a la derecha */}
+          {/* Contadores */}
           <div className="text-[11px] text-neutral-500 flex items-center gap-3">
             <span>
               <span className="text-neutral-200 font-semibold">{likesUi}</span> me gusta
@@ -259,7 +266,9 @@ export default function PostCard({ post, authorName, authorAvatarUrl, authorId }
           {post.blocked ? (
             <div className="text-xs rounded-xl border border-red-900/40 bg-red-500/10 p-3 text-red-200">
               Contenido marcado como rechazado.
-              {post.reason ? <div className="text-[11px] text-neutral-300 mt-1">Motivo: {post.reason}</div> : null}
+              {post.reason ? (
+                <div className="text-[11px] text-neutral-300 mt-1">Motivo: {post.reason}</div>
+              ) : null}
             </div>
           ) : null}
         </div>
