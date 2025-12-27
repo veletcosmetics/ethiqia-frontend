@@ -165,3 +165,161 @@ export default function AppTopNav() {
     }, 30000);
 
     return () => {
+      document.removeEventListener("visibilitychange", onVis);
+      window.clearInterval(t);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hidden]);
+
+  // Cerrar panel al click fuera
+  useEffect(() => {
+    const onDown = (e: MouseEvent) => {
+      if (!open) return;
+      if (!panelRef.current) return;
+      if (!panelRef.current.contains(e.target as any)) setOpen(false);
+    };
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, [open]);
+
+  if (hidden) return null;
+
+  return (
+    <div className="sticky top-0 z-50 border-b border-neutral-800 bg-black/90 backdrop-blur">
+      <div className="max-w-5xl mx-auto px-4 h-14 flex items-center justify-between">
+        {/* Izquierda: Logo + enlaces */}
+        <div className="flex items-center gap-4">
+          <Link href="/feed" className="font-semibold text-sm hover:text-emerald-400">
+            Ethiqia
+          </Link>
+
+          <nav className="hidden sm:flex items-center gap-3 text-xs text-neutral-300">
+            <Link href="/feed" className="hover:text-white">
+              Feed
+            </Link>
+            <Link href="/profile" className="hover:text-white">
+              Mi perfil
+            </Link>
+            <Link href="/score-rules" className="hover:text-white">
+              Info Score
+            </Link>
+          </nav>
+        </div>
+
+        {/* Derecha: Buscar + Campana */}
+        <div className="flex items-center gap-2">
+          {/* Buscar / Explore */}
+          <Link
+            href="/explore"
+            className="rounded-full border border-neutral-800 bg-black px-3 py-2 text-xs text-neutral-200 hover:border-neutral-600 inline-flex items-center gap-2"
+            aria-label="Buscar usuarios"
+            title="Buscar usuarios"
+          >
+            <SearchIcon className="h-4 w-4" />
+            <span className="hidden sm:inline">Buscar</span>
+          </Link>
+
+          {/* Campana */}
+          <div className="relative" ref={panelRef}>
+            <button
+              type="button"
+              onClick={async () => {
+                const next = !open;
+                setOpen(next);
+                if (next) await loadNotifications();
+              }}
+              className="relative rounded-full border border-neutral-800 bg-black px-3 py-2 text-xs text-neutral-200 hover:border-neutral-600"
+              aria-label="Notificaciones"
+              title="Notificaciones"
+            >
+              <div className="flex items-center gap-2">
+                <BellIcon className="h-4 w-4" />
+                <span className="hidden sm:inline">Notificaciones</span>
+              </div>
+
+              {authed && unread > 0 && (
+                <span className="absolute -top-2 -right-2 min-w-[18px] h-[18px] px-1 rounded-full bg-emerald-500 text-black text-[11px] font-bold flex items-center justify-center">
+                  {unread > 99 ? "99+" : unread}
+                </span>
+              )}
+            </button>
+
+            {/* Panel rápido */}
+            {open && (
+              <div className="absolute right-0 mt-2 w-[340px] rounded-2xl border border-neutral-800 bg-neutral-950 shadow-lg overflow-hidden">
+                <div className="px-4 py-3 border-b border-neutral-800 flex items-center justify-between">
+                  <div className="text-sm font-semibold">
+                    Notificaciones {unread > 0 ? <span className="text-emerald-400">({unread})</span> : null}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={markAllRead}
+                    className="text-xs text-neutral-400 hover:text-white disabled:opacity-50"
+                    disabled={!authed || items.length === 0 || loading}
+                  >
+                    Marcar todo leído
+                  </button>
+                </div>
+
+                <div className="max-h-[360px] overflow-y-auto">
+                  {!authed ? (
+                    <div className="px-4 py-4 text-xs text-neutral-400">
+                      Inicia sesión para ver notificaciones.
+                    </div>
+                  ) : loading ? (
+                    <div className="px-4 py-4 text-xs text-neutral-400">Cargando…</div>
+                  ) : items.length === 0 ? (
+                    <div className="px-4 py-4 text-xs text-neutral-500">Aún no hay notificaciones.</div>
+                  ) : (
+                    <div className="p-2 space-y-2">
+                      {items.slice(0, 6).map((n) => {
+                        const title = n.payload?.title || n.type;
+                        const body = n.payload?.body || "";
+                        return (
+                          <button
+                            key={n.id}
+                            type="button"
+                            onClick={() => {
+                              if (!n.read_at) markOneRead(n.id);
+                            }}
+                            className={`w-full text-left rounded-xl border px-3 py-3 ${
+                              n.read_at ? "border-neutral-800 bg-black" : "border-emerald-700/40 bg-emerald-500/10"
+                            }`}
+                            title={n.read_at ? "Leída" : "Click para marcar como leída"}
+                          >
+                            <div className="text-xs font-semibold text-white">{title}</div>
+                            {body ? <div className="text-xs text-neutral-300 mt-1">{body}</div> : null}
+                            <div className="text-[11px] text-neutral-500 mt-2">
+                              {new Date(n.created_at).toLocaleString()}
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+
+                <div className="px-3 py-3 border-t border-neutral-800 flex items-center justify-between">
+                  <Link
+                    href="/notifications"
+                    className="text-xs text-emerald-400 hover:underline"
+                    onClick={() => setOpen(false)}
+                  >
+                    Ver todas
+                  </Link>
+                  <button
+                    type="button"
+                    onClick={() => setOpen(false)}
+                    className="text-xs text-neutral-400 hover:text-white"
+                  >
+                    Cerrar
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
