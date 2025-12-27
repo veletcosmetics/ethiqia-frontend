@@ -48,18 +48,15 @@ function SearchIcon({ className = "" }: { className?: string }) {
   return (
     <svg className={className} viewBox="0 0 24 24" fill="none" aria-hidden="true">
       <path
-        d="M10.5 18a7.5 7.5 0 115.3-12.8A7.5 7.5 0 0110.5 18z"
+        d="M10.5 18a7.5 7.5 0 1 1 0-15 7.5 7.5 0 0 1 0 15Z"
         stroke="currentColor"
         strokeWidth="1.6"
-        strokeLinecap="round"
-        strokeLinejoin="round"
       />
       <path
-        d="M16.8 16.8L21 21"
+        d="M16.5 16.5 21 21"
         stroke="currentColor"
         strokeWidth="1.6"
         strokeLinecap="round"
-        strokeLinejoin="round"
       />
     </svg>
   );
@@ -68,7 +65,6 @@ function SearchIcon({ className = "" }: { className?: string }) {
 export default function AppTopNav() {
   const pathname = usePathname();
 
-  // Ocultar en landing (/) y /investors
   const hidden = useMemo(() => {
     if (!pathname) return false;
     return pathname === "/" || pathname.startsWith("/investors");
@@ -126,10 +122,7 @@ export default function AppTopNav() {
     if (!token) return;
     await fetch("/api/notifications", {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-      },
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
       body: JSON.stringify({ id }),
     });
     await loadNotifications();
@@ -140,16 +133,12 @@ export default function AppTopNav() {
     if (!token) return;
     await fetch("/api/notifications", {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-      },
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
       body: JSON.stringify({ markAllRead: true }),
     });
     await loadNotifications();
   };
 
-  // Cargar contador al entrar + refresco moderado
   useEffect(() => {
     if (hidden) return;
 
@@ -160,9 +149,7 @@ export default function AppTopNav() {
     };
     document.addEventListener("visibilitychange", onVis);
 
-    const t = window.setInterval(() => {
-      loadNotifications();
-    }, 30000);
+    const t = window.setInterval(() => loadNotifications(), 30000);
 
     return () => {
       document.removeEventListener("visibilitychange", onVis);
@@ -171,7 +158,6 @@ export default function AppTopNav() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hidden]);
 
-  // Cerrar panel al click fuera
   useEffect(() => {
     const onDown = (e: MouseEvent) => {
       if (!open) return;
@@ -187,7 +173,6 @@ export default function AppTopNav() {
   return (
     <div className="sticky top-0 z-50 border-b border-neutral-800 bg-black/90 backdrop-blur">
       <div className="max-w-5xl mx-auto px-4 h-14 flex items-center justify-between">
-        {/* Izquierda: Logo + enlaces */}
         <div className="flex items-center gap-4">
           <Link href="/feed" className="font-semibold text-sm hover:text-emerald-400">
             Ethiqia
@@ -197,26 +182,30 @@ export default function AppTopNav() {
             <Link href="/feed" className="hover:text-white">
               Feed
             </Link>
+            <Link href="/explore" className="hover:text-white">
+              Explorar
+            </Link>
             <Link href="/profile" className="hover:text-white">
               Mi perfil
             </Link>
             <Link href="/score-rules" className="hover:text-white">
-              Info Score
+              Info Score (Reglas)
             </Link>
           </nav>
         </div>
 
-        {/* Derecha: Buscar + Campana */}
         <div className="flex items-center gap-2">
-          {/* Buscar / Explore */}
+          {/* Lupa */}
           <Link
             href="/explore"
-            className="rounded-full border border-neutral-800 bg-black px-3 py-2 text-xs text-neutral-200 hover:border-neutral-600 inline-flex items-center gap-2"
+            className="rounded-full border border-neutral-800 bg-black px-3 py-2 text-xs text-neutral-200 hover:border-neutral-600"
             aria-label="Buscar usuarios"
             title="Buscar usuarios"
           >
-            <SearchIcon className="h-4 w-4" />
-            <span className="hidden sm:inline">Buscar</span>
+            <div className="flex items-center gap-2">
+              <SearchIcon className="h-4 w-4" />
+              <span className="hidden sm:inline">Buscar</span>
+            </div>
           </Link>
 
           {/* Campana */}
@@ -244,12 +233,12 @@ export default function AppTopNav() {
               )}
             </button>
 
-            {/* Panel rápido */}
             {open && (
               <div className="absolute right-0 mt-2 w-[340px] rounded-2xl border border-neutral-800 bg-neutral-950 shadow-lg overflow-hidden">
                 <div className="px-4 py-3 border-b border-neutral-800 flex items-center justify-between">
                   <div className="text-sm font-semibold">
-                    Notificaciones {unread > 0 ? <span className="text-emerald-400">({unread})</span> : null}
+                    Notificaciones{" "}
+                    {unread > 0 ? <span className="text-emerald-400">({unread})</span> : null}
                   </div>
                   <button
                     type="button"
@@ -283,7 +272,9 @@ export default function AppTopNav() {
                               if (!n.read_at) markOneRead(n.id);
                             }}
                             className={`w-full text-left rounded-xl border px-3 py-3 ${
-                              n.read_at ? "border-neutral-800 bg-black" : "border-emerald-700/40 bg-emerald-500/10"
+                              n.read_at
+                                ? "border-neutral-800 bg-black"
+                                : "border-emerald-700/40 bg-emerald-500/10"
                             }`}
                             title={n.read_at ? "Leída" : "Click para marcar como leída"}
                           >
