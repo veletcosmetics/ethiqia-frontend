@@ -1,138 +1,147 @@
 "use client";
 
-import Link from "next/link";
 import React, { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { supabaseBrowser } from "@/lib/supabaseBrowserClient";
+import PostCard, { Post } from "@/components/PostCard";
 
 type ProfileRow = {
   id: string;
   full_name: string | null;
   username: string | null;
-  bio: string | null;
-  location: string | null;
   avatar_url: string | null;
 };
 
-function Avatar({
-  name,
-  url,
-}: {
-  name: string;
-  url?: string | null;
-}) {
-  if (url) {
-    // eslint-disable-next-line @next/next/no-img-element
-    return <img src={url} alt={name} className="h-10 w-10 rounded-full object-cover" />;
-  }
-  const letter = (name?.[0] || "U").toUpperCase();
-  return (
-    <div className="h-10 w-10 rounded-full bg-neutral-800 border border-neutral-700 flex items-center justify-center font-semibold">
-      {letter}
-    </div>
-  );
-}
-
-function sanitizeQuery(q: string) {
-  // Evita romper el .or(...) con comas o % raros
-  return (q || "").trim().replace(/[%]/g, "").replace(/,/g, " ");
-}
+type FeedItem = {
+  post: Post;
+  authorName: string;
+  authorAvatarUrl: string;
+};
 
 export default function ExplorePage() {
-  const [q, setQ] = useState("");
+  const [authChecked, setAuthChecked] = useState(false);
+  const [authed, setAuthed] = useState(false);
+
   const [loading, setLoading] = useState(false);
-  const [rows, setRows] = useState<ProfileRow[]>([]);
-  const [error, setError] = useState<string | null>(null);
+  const [items, setItems] = useState<FeedItem[]>([]);
+  const [selectedPost, setSelectedPost] = useState<FeedItem | null>(null);
 
-  const query = useMemo(() => sanitizeQuery(q), [q]);
+  const getAccessToken = async (): Promise<string | null> => {
+    const { data } = await supabaseBrowser.auth.getSession();
+    return data.session?.access_token ?? null;
+  };
 
-  const loadSuggested = async () => {
+  const loadExplore = async () => {
     setLoading(true);
-    setError(null);
     try {
-      const { data, error } = await supabaseBrowser
-        .from("profiles")
-        .select("id, full_name, username, bio, location, avatar_url")
-        .order("updated_at", { ascending: false })
-        .limit(24);
+      const token = await getAccessToken();
+      if (!token) {
+        // Explore puede ser público, pero tu API /api/posts exige auth.
+        // Así que si no hay sesión, mostramos CTA a login.
+        setItems([]);
+        setAuthed(false);
+        return;
+      }
+      setAuthed(true);
 
-      if (error) {
-        console.error("Explore suggested error:", error);
-        setRows([]);
-        setError("No se han podido cargar usuarios (RLS o permisos).");
+      // 1) Traer posts recientes (no "mine")
+      const res = await fetch(`/api/posts`, {
+        headers: { Authorization: `Bearer ${token}` },
+        cache: "no-store",
+      });
+
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        console.error("Explore /api/posts error:", json);
+        setItems([]);
         return;
       }
 
-      setRows((data as ProfileRow[]) ?? []);
+      const posts = (json?.posts ?? []) as Post[];
+
+      // 2) Resolver autores (profiles) en una sola query
+      const userIds = Array.from(
+        new Set(posts.map((p: any) => p.user_id).filter(Boolean))
+      );
+
+      let profilesMap = new Map<string, ProfileRow>();
+      if (userIds.length > 0) {
+        const { data: profs, error } = await supabaseBrowser
+          .from("profiles")
+          .select("id, full_name, username, avatar_url")
+          .in("id", userIds);
+
+        if (error) {
+          console.error("Explore load profiles error:", error);
+        } else {
+          (profs ?? []).forEach((r: any) => profilesMap.set(r.id, r as ProfileRow));
+        }
+      }
+
+      const merged: FeedItem[] = posts.map((p: any) => {
+        const pr = profilesMap.get(p.user_id);
+        const name =
+          pr?.full_name?.trim() ||
+          (pr?.username ? `@${String(pr.username).replace(/^@+/, "")}` : "") ||
+          "Usuario Ethiqia";
+
+        return {
+          post: p,
+          authorName: name,
+          authorAvatarUrl: pr?.avatar_url ?? "",
+        };
+      });
+
+      setItems(merged);
     } finally {
       setLoading(false);
     }
   };
 
-  const search = async (term: string) => {
-    const t = sanitizeQuery(term);
-    if (!t) {
-      await loadSuggested();
-      return;
-    }
-
-    setLoading(true);
-    setError(null);
-    try {
-      // OR: full_name ilike %t% o username ilike %t%
-      const pattern = `%${t}%`;
-
-      const { data, error } = await supabaseBrowser
-        .from("profiles")
-        .select("id, full_name, username, bio, location, avatar_url")
-        .or(`full_name.ilike.${pattern},username.ilike.${pattern}`)
-        .limit(24);
-
-      if (error) {
-        console.error("Explore search error:", error);
-        setRows([]);
-        setError("No se ha podido buscar (RLS o permisos).");
-        return;
-      }
-
-      setRows((data as ProfileRow[]) ?? []);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // Carga inicial: sugeridos
   useEffect(() => {
-    loadSuggested();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    const init = async () => {
+      try {
+        // No forzamos redirect aquí; Explore lo puedes permitir con login requerido si tu API lo exige.
+        const { data } = await supabaseBrowser.auth.getUser();
+        setAuthed(Boolean(data?.user));
+      } catch {
+        setAuthed(false);
+      } finally {
+        setAuthChecked(true);
+      }
+    };
+    init();
   }, []);
 
-  // Debounce de búsqueda
   useEffect(() => {
-    const t = window.setTimeout(() => {
-      search(query);
-    }, 250);
-    return () => window.clearTimeout(t);
+    if (!authChecked) return;
+    loadExplore();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [query]);
+  }, [authChecked]);
+
+  const count = items.length;
 
   return (
     <main className="min-h-screen bg-black text-white">
-      <section className="max-w-5xl mx-auto px-4 py-8">
+      <section className="max-w-6xl mx-auto px-4 py-8">
         <div className="flex items-center justify-between gap-3 mb-6">
           <div>
-            <h1 className="text-lg font-semibold">Buscar usuarios</h1>
-            <p className="text-xs text-neutral-400 mt-1">
-              Encuentra perfiles por nombre o @username.
-            </p>
+            <h1 className="text-lg font-semibold">Explorar</h1>
+            <div className="text-xs text-neutral-400 mt-1">
+              {loading ? "Cargando…" : `${count} publicaciones`}
+            </div>
           </div>
 
           <div className="flex items-center gap-2">
-            <Link
-              href="/score-rules"
-              className="rounded-full border border-neutral-800 bg-black px-4 py-2 text-xs font-semibold text-white hover:border-neutral-600"
+            <button
+              type="button"
+              onClick={loadExplore}
+              className="rounded-full border border-neutral-800 bg-black px-4 py-2 text-xs font-semibold text-white hover:border-neutral-600 disabled:opacity-50"
+              disabled={loading}
             >
-              Info Score
-            </Link>
+              {loading ? "Actualizando…" : "Actualizar"}
+            </button>
+
             <Link
               href="/feed"
               className="rounded-full border border-neutral-800 bg-black px-4 py-2 text-xs font-semibold text-white hover:border-neutral-600"
@@ -142,97 +151,77 @@ export default function ExplorePage() {
           </div>
         </div>
 
-        <div className="bg-neutral-900 border border-neutral-800 rounded-2xl p-4">
-          <label className="text-xs text-neutral-400 block mb-2">
-            Buscar
-          </label>
-          <input
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-            placeholder="Ej: david, velet, @davidguirao…"
-            className="w-full rounded-xl bg-black border border-neutral-700 px-4 py-3 text-sm text-white placeholder:text-neutral-600 focus:outline-none focus:border-neutral-500"
-          />
+        {!authed ? (
+          <div className="rounded-2xl border border-neutral-800 bg-neutral-950 p-6">
+            <div className="text-sm font-semibold">Necesitas iniciar sesión</div>
+            <div className="text-sm text-neutral-400 mt-2">
+              Ahora mismo tu API de posts requiere sesión. Inicia sesión para explorar publicaciones.
+            </div>
+            <div className="mt-4">
+              <Link
+                href="/login"
+                className="rounded-full bg-emerald-500 hover:bg-emerald-600 px-5 py-2 text-xs font-semibold text-black"
+              >
+                Ir a login
+              </Link>
+            </div>
+          </div>
+        ) : loading ? (
+          <div className="text-sm text-neutral-400">Cargando publicaciones…</div>
+        ) : items.length === 0 ? (
+          <div className="text-sm text-neutral-500">Aún no hay publicaciones para explorar.</div>
+        ) : (
+          <div className="grid grid-cols-2 gap-2 sm:gap-3 md:grid-cols-3 lg:grid-cols-4">
+            {items.map((it) => (
+              <button
+                key={it.post.id}
+                type="button"
+                onClick={() => setSelectedPost(it)}
+                className="relative aspect-square overflow-hidden rounded-2xl border border-neutral-800 bg-black hover:border-neutral-600"
+                title="Ver publicación"
+              >
+                {(it.post as any).image_url ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={(it.post as any).image_url}
+                    alt="Post"
+                    className="h-full w-full object-cover"
+                    loading="lazy"
+                  />
+                ) : (
+                  <div className="h-full w-full flex items-center justify-center text-xs text-neutral-500">
+                    Sin imagen
+                  </div>
+                )}
+              </button>
+            ))}
+          </div>
+        )}
+      </section>
 
-          <div className="mt-3 flex items-center justify-between">
-            <div className="text-xs text-neutral-500">
-              {loading ? "Buscando…" : rows.length ? `${rows.length} resultados` : "Sin resultados"}
+      {/* Modal ver post */}
+      {selectedPost && (
+        <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center px-4">
+          <div className="w-full max-w-3xl rounded-2xl border border-neutral-800 bg-neutral-950 p-4">
+            <div className="flex items-center justify-between mb-3">
+              <div className="text-sm font-semibold">Publicación</div>
+              <button
+                type="button"
+                onClick={() => setSelectedPost(null)}
+                className="text-xs text-neutral-400 hover:text-neutral-200"
+              >
+                Cerrar
+              </button>
             </div>
 
-            <button
-              type="button"
-              onClick={() => {
-                setQ("");
-                loadSuggested();
-              }}
-              className="text-xs text-neutral-400 hover:text-emerald-400"
-              disabled={loading}
-            >
-              Limpiar
-            </button>
+            <PostCard
+              post={selectedPost.post}
+              authorName={selectedPost.authorName}
+              authorAvatarUrl={selectedPost.authorAvatarUrl}
+            />
           </div>
         </div>
-
-        <div className="mt-5">
-          {error ? (
-            <div className="rounded-2xl border border-red-900/40 bg-red-500/10 p-4 text-sm text-red-200">
-              {error}
-              <div className="text-xs text-neutral-400 mt-2">
-                Si esto pasa, es casi seguro que tu RLS de <span className="text-white">profiles</span> no permite SELECT.
-              </div>
-            </div>
-          ) : loading ? (
-            <p className="text-sm text-neutral-400">Cargando…</p>
-          ) : rows.length === 0 ? (
-            <p className="text-sm text-neutral-500">
-              No hay usuarios para mostrar.
-            </p>
-          ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              {rows.map((u) => {
-                const name =
-                  u.full_name?.trim() ||
-                  (u.username ? `@${u.username}` : "Usuario Ethiqia");
-
-                const username = (u.username || "").trim().replace(/^@+/, "");
-                const showUsername = username ? `@${username}` : "";
-
-                return (
-                  <Link
-                    key={u.id}
-                    href={`/u/${u.id}`}
-                    className="block rounded-2xl border border-neutral-800 bg-neutral-950 hover:border-neutral-600 transition-colors p-4"
-                  >
-                    <div className="flex items-start gap-3">
-                      <Avatar name={name} url={u.avatar_url} />
-                      <div className="min-w-0 flex-1">
-                        <div className="text-sm font-semibold truncate">{name}</div>
-                        {showUsername ? (
-                          <div className="text-xs text-neutral-400 truncate">{showUsername}</div>
-                        ) : (
-                          <div className="text-xs text-neutral-600 truncate">{u.id}</div>
-                        )}
-
-                        {(u.location || u.bio) ? (
-                          <div className="mt-2 text-xs text-neutral-300">
-                            {u.location ? <div className="truncate">📍 {u.location}</div> : null}
-                            {u.bio ? (
-                              <div className="text-neutral-400 mt-1 line-clamp-2 whitespace-pre-line">
-                                {u.bio}
-                              </div>
-                            ) : null}
-                          </div>
-                        ) : null}
-                      </div>
-
-                      <div className="text-xs text-emerald-400 shrink-0">Ver →</div>
-                    </div>
-                  </Link>
-                );
-              })}
-            </div>
-          )}
-        </div>
-      </section>
+      )}
     </main>
   );
 }
