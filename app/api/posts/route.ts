@@ -18,6 +18,19 @@ function uuid(): string {
   return crypto.randomUUID();
 }
 
+function getMonthWindowUTC(now = new Date()) {
+  const y = now.getUTCFullYear();
+  const m = now.getUTCMonth(); // 0-11
+  const start = new Date(Date.UTC(y, m, 1, 0, 0, 0, 0));
+  const next = new Date(Date.UTC(y, m + 1, 1, 0, 0, 0, 0));
+  return {
+    year: y,
+    month: m + 1, // 1-12 para metadata
+    startIso: start.toISOString(),
+    nextIso: next.toISOString(),
+  };
+}
+
 // GET /api/posts -> auth + filtros opcionales:
 //   /api/posts?mine=1
 //   /api/posts?user_id=UUID
@@ -68,7 +81,7 @@ export async function GET(req: NextRequest) {
   }
 }
 
-// POST /api/posts -> crea post + reputation_events + notificación puntos
+// POST /api/posts -> crea post + (hito mensual) reputation_events + notificación
 export async function POST(req: NextRequest) {
   try {
     const token = getBearerToken(req);
@@ -108,6 +121,7 @@ export async function POST(req: NextRequest) {
     const disclosed = Boolean(aiDisclosed);
 
     const moderationStatus = isBlocked ? "rejected" : "approved";
+    const nowIso = new Date().toISOString();
 
     // 1) Insertar post
     const { data: post, error: postErr } = await supabaseAdmin
@@ -123,7 +137,7 @@ export async function POST(req: NextRequest) {
         reason: reason ?? null,
 
         moderation_status: moderationStatus,
-        moderation_decided_at: new Date().toISOString(),
+        moderation_decided_at: nowIso,
         moderation_decided_by: "ai-v1",
         moderation_labels: null,
       })
@@ -138,74 +152,103 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // 2) reputation_events
-    const pointsBase = 3;
-    const pointsDisclosure = disclosed ? 1 : 0;
-    const pointsAwarded = pointsBase + pointsDisclosure;
+    // 2) Score por HITO (anti-farm):
+    // +1 SOLO el primer post APROBADO de cada mes (mes activo)
+    // “He usado IA” se registra, pero NO suma puntos por ahora (evita farm).
+    let awarded = false;
+    let pointsAwarded = 0;
 
-    const events: any[] = [
-      {
-        subject_type: "user",
-        subject_id: userId,
-        actor_user_id: userId,
-        event_type: "post_created",
-        points: pointsBase,
-        metadata: {
-          post_id: post.id,
-          ai_probability: aiProb,
-          global_score: gScore,
-          blocked: isBlocked,
-        },
-      },
-    ];
+    // Solo consideramos mes activo si el post ha sido aprobado
+    if (!isBlocked) {
+      const { year, month, startIso, nextIso } = getMonthWindowUTC(new Date());
 
-    if (disclosed) {
-      events.push({
-        subject_type: "user",
-        subject_id: userId,
-        actor_user_id: userId,
-        event_type: "ai_disclosed",
-        points: pointsDisclosure,
-        metadata: { post_id: post.id },
+      const { data: already, error: existsErr } = await supabaseAdmin
+        .from("reputation_events")
+        .select("id")
+        .eq("subject_type", "user")
+        .eq("subject_id", userId)
+        .eq("event_type", "active_month_awarded")
+        .gte("created_at", startIso)
+        .lt("created_at", nextIso)
+        .limit(1);
+
+      if (existsErr) {
+        console.error("Error comprobando hito mensual:", existsErr);
+      } else {
+        const hasAwardedThisMonth = Array.isArray(already) && already.length > 0;
+
+        if (!hasAwardedThisMonth) {
+          awarded = true;
+          pointsAwarded = 1;
+
+          const eventRow = {
+            subject_type: "user",
+            subject_id: userId,
+            actor_user_id: userId,
+            event_type: "active_month_awarded",
+            points: pointsAwarded,
+            metadata: {
+              rule: "active_months",
+              year,
+              month, // 1-12
+              post_id: post.id,
+              ai_disclosed: disclosed,
+              ai_probability: aiProb,
+              global_score: gScore,
+            },
+          };
+
+          const { error: evErr } = await supabaseAdmin
+            .from("reputation_events")
+            .insert([eventRow]);
+
+          if (evErr) {
+            console.error("Error insertando reputation_event (active_month_awarded):", evErr);
+            // no bloqueamos el post; simplemente no damos puntos
+            awarded = false;
+            pointsAwarded = 0;
+          }
+        }
+      }
+    }
+
+    // 3) Notificación SOLO si hay puntos
+    if (awarded && pointsAwarded > 0) {
+      const payload = {
+        title: "Mes activo",
+        body: disclosed
+          ? `Has ganado +${pointsAwarded} punto por estar activo este mes. (Marcado “He usado IA” registrado, sin puntos).`
+          : `Has ganado +${pointsAwarded} punto por estar activo este mes.`,
+        points_awarded: pointsAwarded,
+        post_id: post.id,
+        ai_disclosed: disclosed,
+        ai_probability: aiProb,
+        global_score: gScore,
+      };
+
+      const { error: nErr } = await supabaseAdmin.from("notifications").insert({
+        id: uuid(),
+        user_id: userId,
+        type: "points_awarded",
+        payload,
+        read_at: null,
+        created_at: nowIso,
       });
+
+      if (nErr) {
+        console.error("Error insertando notification:", nErr);
+        // no bloqueamos el post
+      }
     }
 
-    const { error: evErr } = await supabaseAdmin.from("reputation_events").insert(events);
-    if (evErr) {
-      console.error("Error insertando reputation_events:", evErr);
-      // no bloqueamos el post
-    }
-
-    // 3) Notificación (esquema real: id, user_id, type, payload, read_at, created_at)
-    const nowIso = new Date().toISOString();
-
-    const payload = {
-      title: "Publicación creada",
-      body: disclosed
-        ? `Has ganado +${pointsAwarded} puntos (+3 por publicar, +1 por transparencia IA).`
-        : `Has ganado +${pointsAwarded} puntos por publicar.`,
-      points_awarded: pointsAwarded,
-      post_id: post.id,
-      ai_disclosed: disclosed,
-      ai_probability: aiProb,
-      global_score: gScore,
-    };
-
-    const { error: nErr } = await supabaseAdmin.from("notifications").insert({
-      id: uuid(),
-      user_id: userId,
-      type: "points_awarded",
-      payload,
-      read_at: null,
-      created_at: nowIso,
-    });
-
-    if (nErr) {
-      console.error("Error insertando notification:", nErr);
-      // no bloqueamos el post
-    }
-
-    return NextResponse.json({ post, points_awarded: pointsAwarded }, { status: 201 });
+    return NextResponse.json(
+      {
+        post,
+        awarded,
+        points_awarded: pointsAwarded,
+      },
+      { status: 201 }
+    );
   } catch (err) {
     console.error("Error inesperado en POST /api/posts:", err);
     return NextResponse.json(
