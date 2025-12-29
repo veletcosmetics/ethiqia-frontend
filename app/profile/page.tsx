@@ -60,6 +60,13 @@ type NotificationRow = {
   created_at: string;
 };
 
+// ✅ EMPRESA: tipo mínimo para listar empresas del owner
+type CompanyMini = {
+  id: string;
+  handle: string;
+  display_name: string | null;
+};
+
 function normalizeUrl(url: string) {
   const u = (url || "").trim();
   if (!u) return "";
@@ -123,6 +130,10 @@ export default function ProfilePage() {
   const displayName = useMemo(() => {
     return profile?.full_name?.trim() || userEmail || "Usuario Ethiqia";
   }, [profile?.full_name, userEmail]);
+
+  // ✅ EMPRESA: lista de empresas del usuario
+  const [companies, setCompanies] = useState<CompanyMini[]>([]);
+  const [loadingCompanies, setLoadingCompanies] = useState(false);
 
   const getAccessToken = async (): Promise<string | null> => {
     const { data } = await supabaseBrowser.auth.getSession();
@@ -456,6 +467,32 @@ export default function ProfilePage() {
     }
   };
 
+  // ✅ EMPRESA: cargar empresas del owner (si existen)
+  const loadMyCompanies = async (targetId: string) => {
+    setLoadingCompanies(true);
+    try {
+      const { data, error } = await supabaseBrowser
+        .from("company_profiles")
+        .select("id, handle, display_name")
+        .eq("owner_user_id", targetId)
+        .order("created_at", { ascending: false });
+
+      if (error) {
+        // Si la tabla/policies aún no están, no rompemos la UI
+        console.warn("No se pudieron cargar empresas:", error.message);
+        setCompanies([]);
+        return;
+      }
+
+      setCompanies(((data ?? []) as any[]) as CompanyMini[]);
+    } catch (e) {
+      console.warn("Error loadMyCompanies:", e);
+      setCompanies([]);
+    } finally {
+      setLoadingCompanies(false);
+    }
+  };
+
   useEffect(() => {
     // Banner flash desde localStorage
     try {
@@ -489,6 +526,9 @@ export default function ProfilePage() {
 
         await loadScore();
         await loadNotifications();
+
+        // ✅ EMPRESA
+        await loadMyCompanies(user.id);
       } catch (e) {
         console.error("Error init profile:", e);
       } finally {
@@ -525,7 +565,29 @@ export default function ProfilePage() {
             ← Volver al feed
           </Link>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
+            {/* ✅ EMPRESA: botón crear empresa */}
+            <Link
+              href="/company/new"
+              className="rounded-full border border-neutral-700 bg-black px-4 py-2 text-xs font-semibold text-white hover:border-neutral-500"
+              title="Crear un perfil de empresa"
+            >
+              Crear empresa
+            </Link>
+
+            {/* ✅ EMPRESA: acceso rápido a la primera empresa si existe */}
+            {loadingCompanies ? (
+              <span className="text-xs text-neutral-400 px-2">Cargando empresas…</span>
+            ) : companies.length > 0 ? (
+              <Link
+                href={`/company/${companies[0].handle}/edit`}
+                className="rounded-full border border-neutral-700 bg-black px-4 py-2 text-xs font-semibold text-white hover:border-neutral-500"
+                title="Ir al panel de tu empresa"
+              >
+                Panel empresa
+              </Link>
+            ) : null}
+
             <button
               type="button"
               onClick={handleOpenEdit}
@@ -564,6 +626,31 @@ export default function ProfilePage() {
             </div>
           </div>
         )}
+
+        {/* ✅ EMPRESA: listado simple de empresas (si hay) */}
+        {companies.length > 0 ? (
+          <div className="mb-6 bg-neutral-900 border border-neutral-800 rounded-2xl p-5">
+            <div className="flex items-center justify-between">
+              <div className="text-sm font-semibold">Tus empresas</div>
+              <Link href="/company/new" className="text-xs text-neutral-400 hover:text-emerald-400">
+                + Crear otra
+              </Link>
+            </div>
+
+            <div className="mt-3 flex flex-wrap gap-2">
+              {companies.map((c) => (
+                <Link
+                  key={c.id}
+                  href={`/company/${c.handle}/edit`}
+                  className="rounded-full border border-neutral-700 bg-black px-4 py-2 text-xs font-semibold text-white hover:border-neutral-500"
+                  title={`Abrir panel de ${c.display_name ?? c.handle}`}
+                >
+                  {c.display_name ?? c.handle}
+                </Link>
+              ))}
+            </div>
+          </div>
+        ) : null}
 
         {/* Score + Notifications */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
@@ -981,7 +1068,7 @@ export default function ProfilePage() {
                     value={instagramUrl}
                     onChange={(e) => setInstagramUrl(e.target.value)}
                     className="w-full rounded-lg bg-black border border-neutral-700 px-3 py-2 text-sm"
-                    placeholder="https://instagram.com/tuusuario"
+                    placeholder Reed="\https://instagram.com/tuusuario"
                   />
                 </div>
 
