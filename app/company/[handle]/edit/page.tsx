@@ -7,22 +7,27 @@ import type { User } from "@supabase/supabase-js";
 
 type CompanyRow = {
   id: string;
-  owner_user_id: string;
+  owner_user_id: string | null;
   handle: string;
+
   legal_name: string | null;
   display_name: string | null;
-  website: string | null;
+
   country: string | null;
   jurisdiction: string | null;
+
+  website: string | null;
   sector: string | null;
   company_type: string | null;
-  founded_year: number | null;
   size_range: string | null;
+
   logo_url: string | null;
   bio: string | null;
-  verified: boolean;
+
+  verified: boolean | null;
   verification_level: string | null;
   ethq_score: number | null;
+
   created_at?: string | null;
   updated_at?: string | null;
 };
@@ -49,7 +54,7 @@ export default function CompanyEditPage({ params }: { params: { handle: string }
 
   const [saving, setSaving] = useState(false);
 
-  // Campos editables
+  // Campos editables (alineados con tu schema REAL)
   const [displayName, setDisplayName] = useState("");
   const [legalName, setLegalName] = useState("");
   const [website, setWebsite] = useState("");
@@ -58,7 +63,6 @@ export default function CompanyEditPage({ params }: { params: { handle: string }
   const [sector, setSector] = useState("");
   const [companyType, setCompanyType] = useState("");
   const [sizeRange, setSizeRange] = useState("");
-  const [foundedYear, setFoundedYear] = useState<string>("");
   const [bio, setBio] = useState("");
   const [logoUrl, setLogoUrl] = useState("");
 
@@ -72,30 +76,10 @@ export default function CompanyEditPage({ params }: { params: { handle: string }
       const { data, error } = await supabaseBrowser
         .from("company_profiles")
         .select(
-          [
-            "id",
-            "owner_user_id",
-            "handle",
-            "legal_name",
-            "display_name",
-            "website",
-            "country",
-            "jurisdiction",
-            "sector",
-            "company_type",
-            "founded_year",
-            "size_range",
-            "logo_url",
-            "bio",
-            "verified",
-            "verification_level",
-            "ethq_score",
-            "created_at",
-            "updated_at",
-          ].join(",")
+          "id, owner_user_id, handle, legal_name, display_name, country, jurisdiction, website, sector, company_type, size_range, logo_url, bio, verified, verification_level, ethq_score, created_at, updated_at"
         )
         .eq("handle", handle)
-        .maybeSingle<CompanyRow>(); // ✅ TIPADO CORRECTO
+        .maybeSingle();
 
       if (error) {
         console.error("Error cargando empresa:", error);
@@ -103,7 +87,7 @@ export default function CompanyEditPage({ params }: { params: { handle: string }
         return;
       }
 
-      const row = data ?? null; // ✅ ya es CompanyRow | null
+      const row = data ? ((data as unknown) as CompanyRow) : null;
       setCompany(row);
 
       setDisplayName(row?.display_name ?? "");
@@ -114,7 +98,6 @@ export default function CompanyEditPage({ params }: { params: { handle: string }
       setSector(row?.sector ?? "");
       setCompanyType(row?.company_type ?? "");
       setSizeRange(row?.size_range ?? "");
-      setFoundedYear(row?.founded_year ? String(row.founded_year) : "");
       setBio(row?.bio ?? "");
       setLogoUrl(row?.logo_url ?? "");
     } finally {
@@ -130,13 +113,6 @@ export default function CompanyEditPage({ params }: { params: { handle: string }
       return;
     }
 
-    const fy = foundedYear.trim();
-    const fyNum = fy ? Number(fy) : null;
-    if (fy && (!Number.isFinite(fyNum) || (fyNum as number) < 1800 || (fyNum as number) > 2100)) {
-      alert("Año de fundación inválido (usa un año entre 1800 y 2100).");
-      return;
-    }
-
     setSaving(true);
     try {
       const payload: Partial<CompanyRow> = {
@@ -148,7 +124,6 @@ export default function CompanyEditPage({ params }: { params: { handle: string }
         sector: sector.trim() || null,
         company_type: companyType.trim() || null,
         size_range: sizeRange.trim() || null,
-        founded_year: fyNum,
         bio: bio.trim() || null,
         logo_url: logoUrl.trim() ? normalizeUrl(logoUrl) : null,
       };
@@ -160,7 +135,9 @@ export default function CompanyEditPage({ params }: { params: { handle: string }
 
       if (error) {
         console.error("Error guardando empresa:", error);
-        alert("No se ha podido guardar. Si pone RLS/policy, hay que ajustar policies en Supabase.");
+        alert(
+          "No se ha podido guardar. Esto casi seguro es RLS/policies en Supabase. Revisa las policies que te pasé y vuelve a probar."
+        );
         return;
       }
 
@@ -223,12 +200,10 @@ export default function CompanyEditPage({ params }: { params: { handle: string }
           <div className="mt-6 bg-neutral-900 border border-neutral-800 rounded-2xl p-6">
             <div className="text-lg font-semibold">Empresa no encontrada</div>
             <div className="text-sm text-neutral-400 mt-2">
-              No existe ninguna empresa con handle{" "}
-              <span className="text-neutral-200">{handle}</span>.
+              No existe ninguna empresa con handle <span className="text-neutral-200">{handle}</span>.
             </div>
             <div className="text-xs text-neutral-500 mt-3">
-              Si estás seguro de que existe, esto suele ser un tema de RLS (policies) o de que el handle
-              no coincide exactamente.
+              Si sabes que existe, el 90% de las veces es RLS (policies) impidiendo el SELECT en sesión.
             </div>
           </div>
         </section>
@@ -273,15 +248,13 @@ export default function CompanyEditPage({ params }: { params: { handle: string }
                 <img src={logoUrl} alt="logo" className="h-full w-full object-cover" />
               ) : (
                 <span className="text-xl font-semibold">
-                  {(company.display_name?.[0] || "E").toUpperCase()}
+                  {(company.display_name?.[0] || company.handle?.[0] || "E").toUpperCase()}
                 </span>
               )}
             </div>
 
             <div className="min-w-0">
-              <div className="text-xl font-semibold truncate">
-                {company.display_name ?? company.handle}
-              </div>
+              <div className="text-xl font-semibold truncate">{company.display_name ?? company.handle}</div>
               <div className="text-sm text-neutral-400 truncate">@{company.handle}</div>
               {!isOwner ? (
                 <div className="text-xs text-amber-300 mt-1">
@@ -332,95 +305,3 @@ export default function CompanyEditPage({ params }: { params: { handle: string }
                 onChange={(e) => setCountry(e.target.value)}
                 className="w-full rounded-lg bg-black border border-neutral-700 px-3 py-2 text-sm"
                 placeholder="España"
-                disabled={!isOwner}
-              />
-            </div>
-
-            <div>
-              <label className="text-xs text-neutral-400 block mb-1">Jurisdicción</label>
-              <input
-                value={jurisdiction}
-                onChange={(e) => setJurisdiction(e.target.value)}
-                className="w-full rounded-lg bg-black border border-neutral-700 px-3 py-2 text-sm"
-                placeholder="Comunidad Valenciana"
-                disabled={!isOwner}
-              />
-            </div>
-
-            <div>
-              <label className="text-xs text-neutral-400 block mb-1">Sector</label>
-              <input
-                value={sector}
-                onChange={(e) => setSector(e.target.value)}
-                className="w-full rounded-lg bg-black border border-neutral-700 px-3 py-2 text-sm"
-                placeholder="Cosmética profesional"
-                disabled={!isOwner}
-              />
-            </div>
-
-            <div>
-              <label className="text-xs text-neutral-400 block mb-1">Tipo de empresa</label>
-              <input
-                value={companyType}
-                onChange={(e) => setCompanyType(e.target.value)}
-                className="w-full rounded-lg bg-black border border-neutral-700 px-3 py-2 text-sm"
-                placeholder="Pyme / Cooperativa"
-                disabled={!isOwner}
-              />
-            </div>
-
-            <div>
-              <label className="text-xs text-neutral-400 block mb-1">Tamaño</label>
-              <input
-                value={sizeRange}
-                onChange={(e) => setSizeRange(e.target.value)}
-                className="w-full rounded-lg bg-black border border-neutral-700 px-3 py-2 text-sm"
-                placeholder="1-10"
-                disabled={!isOwner}
-              />
-            </div>
-
-            <div>
-              <label className="text-xs text-neutral-400 block mb-1">Año fundación</label>
-              <input
-                value={foundedYear}
-                onChange={(e) => setFoundedYear(e.target.value.replace(/[^\d]/g, ""))}
-                className="w-full rounded-lg bg-black border border-neutral-700 px-3 py-2 text-sm"
-                placeholder="2020"
-                disabled={!isOwner}
-              />
-            </div>
-
-            <div className="sm:col-span-2">
-              <label className="text-xs text-neutral-400 block mb-1">Logo URL</label>
-              <input
-                value={logoUrl}
-                onChange={(e) => setLogoUrl(e.target.value)}
-                className="w-full rounded-lg bg-black border border-neutral-700 px-3 py-2 text-sm"
-                placeholder="https://.../logo.png"
-                disabled={!isOwner}
-              />
-            </div>
-
-            <div className="sm:col-span-2">
-              <label className="text-xs text-neutral-400 block mb-1">Bio</label>
-              <textarea
-                value={bio}
-                onChange={(e) => setBio(e.target.value)}
-                className="w-full rounded-lg bg-black border border-neutral-700 px-3 py-2 text-sm"
-                rows={5}
-                placeholder="Descripción de la empresa…"
-                disabled={!isOwner}
-              />
-            </div>
-          </div>
-
-          <div className="mt-6 text-xs text-neutral-500">
-            Nota: Este panel edita solo campos reales de <span className="font-mono">company_profiles</span>.
-            Si algo vuelve a “Empresa no encontrada” con la empresa existiendo, el culpable es RLS (policies).
-          </div>
-        </div>
-      </section>
-    </main>
-  );
-}
