@@ -386,7 +386,9 @@ export default function ProfilePage() {
 
     const u = username.trim().replace(/^@+/, "");
     if (u && !/^[a-zA-Z0-9._-]{3,24}$/.test(u)) {
-      alert("El @username debe tener 3–24 caracteres y solo letras, números, punto, guion o guion bajo.");
+      alert(
+        "El @username debe tener 3–24 caracteres y solo letras, números, punto, guion o guion bajo."
+      );
       return;
     }
 
@@ -561,7 +563,10 @@ export default function ProfilePage() {
     <main className="min-h-screen bg-black text-white">
       <section className="max-w-5xl mx-auto px-4 py-8">
         <div className="flex items-center justify-between mb-6">
-          <Link href="/feed" className="text-xs text-neutral-300 hover:text-emerald-400 transition-colors">
+          <Link
+            href="/feed"
+            className="text-xs text-neutral-300 hover:text-emerald-400 transition-colors"
+          >
             ← Volver al feed
           </Link>
 
@@ -660,10 +665,7 @@ export default function ProfilePage() {
 
               <div className="flex items-center gap-3">
                 {/* ✅ NUEVO: enlace a reglas */}
-                <Link
-                  href="/score-rules"
-                  className="text-xs text-neutral-400 hover:text-emerald-400"
-                >
+                <Link href="/score-rules" className="text-xs text-neutral-400 hover:text-emerald-400">
                   Ver reglas
                 </Link>
 
@@ -776,11 +778,7 @@ export default function ProfilePage() {
               <div className="h-16 w-16 rounded-full overflow-hidden bg-neutral-800 border border-neutral-700 flex items-center justify-center">
                 {profile?.avatar_url ? (
                   // eslint-disable-next-line @next/next/no-img-element
-                  <img
-                    src={profile.avatar_url}
-                    alt={displayName}
-                    className="h-full w-full object-cover"
-                  />
+                  <img src={profile.avatar_url} alt={displayName} className="h-full w-full object-cover" />
                 ) : (
                   <span className="text-xl font-semibold">
                     {(displayName?.[0] || "U").toUpperCase()}
@@ -1068,7 +1066,7 @@ export default function ProfilePage() {
                     value={instagramUrl}
                     onChange={(e) => setInstagramUrl(e.target.value)}
                     className="w-full rounded-lg bg-black border border-neutral-700 px-3 py-2 text-sm"
-                    placeholder Reed="\https://instagram.com/tuusuario"
+                    placeholder="https://instagram.com/tuusuario"
                   />
                 </div>
 
