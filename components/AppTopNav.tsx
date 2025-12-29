@@ -155,7 +155,6 @@ export default function AppTopNav() {
     }
     setSearching(true);
     try {
-      // NO requiere auth si tu endpoint es público; si lo haces con Bearer, añade token aquí
       const token = await getAccessToken();
       const res = await fetch(`/api/search-users?q=${encodeURIComponent(s)}&limit=8`, {
         headers: token ? { Authorization: `Bearer ${token}` } : undefined,
@@ -264,7 +263,7 @@ export default function AppTopNav() {
           </button>
 
           {openSearch && (
-            <div className="absolute right-[172px] mt-2 w-[360px] rounded-2xl border border-neutral-800 bg-neutral-950 shadow-lg overflow-hidden">
+            <div className="absolute right-[172px] top-full mt-2 w-[360px] rounded-2xl border border-neutral-800 bg-neutral-950 shadow-lg overflow-hidden">
               <div className="px-4 py-3 border-b border-neutral-800">
                 <div className="text-sm font-semibold">Buscar usuarios</div>
                 <div className="mt-2">
@@ -363,7 +362,7 @@ export default function AppTopNav() {
           </button>
 
           {openActivity && (
-            <div className="absolute right-0 mt-2 w-[340px] rounded-2xl border border-neutral-800 bg-neutral-950 shadow-lg overflow-hidden">
+            <div className="absolute right-0 top-full mt-2 w-[340px] rounded-2xl border border-neutral-800 bg-neutral-950 shadow-lg overflow-hidden">
               <div className="px-4 py-3 border-b border-neutral-800 flex items-center justify-between">
                 <div className="text-sm font-semibold">
                   Actividad {unread > 0 ? <span className="text-emerald-400">({unread})</span> : null}
@@ -391,7 +390,6 @@ export default function AppTopNav() {
                       const title = n.payload?.title || n.type;
                       const body = n.payload?.body || "";
 
-                      // Etiquetas “tipo” (likes/comentarios/strike/puntos, etc.)
                       const kind =
                         n.type.includes("strike") || title.toLowerCase().includes("strike")
                           ? "STRIKE"
@@ -420,7 +418,9 @@ export default function AppTopNav() {
                             <div className="text-[10px] text-neutral-500 shrink-0">{kind}</div>
                           </div>
                           {body ? <div className="text-xs text-neutral-300 mt-1">{body}</div> : null}
-                          <div className="text-[11px] text-neutral-500 mt-2">{new Date(n.created_at).toLocaleString()}</div>
+                          <div className="text-[11px] text-neutral-500 mt-2">
+                            {new Date(n.created_at).toLocaleString()}
+                          </div>
                         </button>
                       );
                     })}
@@ -429,10 +429,18 @@ export default function AppTopNav() {
               </div>
 
               <div className="px-3 py-3 border-t border-neutral-800 flex items-center justify-between">
-                <Link href="/notifications" className="text-xs text-emerald-400 hover:underline" onClick={() => setOpenActivity(false)}>
+                <Link
+                  href="/notifications"
+                  className="text-xs text-emerald-400 hover:underline"
+                  onClick={() => setOpenActivity(false)}
+                >
                   Ver todas
                 </Link>
-                <button type="button" onClick={() => setOpenActivity(false)} className="text-xs text-neutral-400 hover:text-white">
+                <button
+                  type="button"
+                  onClick={() => setOpenActivity(false)}
+                  className="text-xs text-neutral-400 hover:text-white"
+                >
                   Cerrar
                 </button>
               </div>
