@@ -9,12 +9,22 @@ type CompanyRow = {
   id: string;
   owner_user_id: string;
   handle: string;
+  legal_name: string | null;
   display_name: string | null;
   website: string | null;
-  bio: string | null;
-  location: string | null;
+  country: string | null;
+  jurisdiction: string | null;
+  sector: string | null;
+  company_type: string | null;
+  founded_year: number | null;
+  size_range: string | null;
   logo_url: string | null;
+  bio: string | null;
+  verified: boolean;
+  verification_level: string | null;
+  ethq_score: number | null;
   created_at?: string | null;
+  updated_at?: string | null;
 };
 
 function normalizeUrl(url: string) {
@@ -25,6 +35,7 @@ function normalizeUrl(url: string) {
 }
 
 function safeHandle(input: string) {
+  // no tocamos underscores; solo limpiamos espacios y @
   return (input || "").trim().toLowerCase().replace(/^@+/, "");
 }
 
@@ -39,10 +50,16 @@ export default function CompanyEditPage({ params }: { params: { handle: string }
 
   const [saving, setSaving] = useState(false);
 
-  // campos editables
+  // Campos editables (alineados con schema real)
   const [displayName, setDisplayName] = useState("");
+  const [legalName, setLegalName] = useState("");
   const [website, setWebsite] = useState("");
-  const [location, setLocation] = useState("");
+  const [country, setCountry] = useState("");
+  const [jurisdiction, setJurisdiction] = useState("");
+  const [sector, setSector] = useState("");
+  const [companyType, setCompanyType] = useState("");
+  const [sizeRange, setSizeRange] = useState("");
+  const [foundedYear, setFoundedYear] = useState<string>(""); // input text -> parse int
   const [bio, setBio] = useState("");
   const [logoUrl, setLogoUrl] = useState("");
 
@@ -55,7 +72,29 @@ export default function CompanyEditPage({ params }: { params: { handle: string }
     try {
       const { data, error } = await supabaseBrowser
         .from("company_profiles")
-        .select("id, owner_user_id, handle, display_name, website, bio, location, logo_url, created_at")
+        .select(
+          [
+            "id",
+            "owner_user_id",
+            "handle",
+            "legal_name",
+            "display_name",
+            "website",
+            "country",
+            "jurisdiction",
+            "sector",
+            "company_type",
+            "founded_year",
+            "size_range",
+            "logo_url",
+            "bio",
+            "verified",
+            "verification_level",
+            "ethq_score",
+            "created_at",
+            "updated_at",
+          ].join(",")
+        )
         .eq("handle", handle)
         .maybeSingle();
 
@@ -69,8 +108,14 @@ export default function CompanyEditPage({ params }: { params: { handle: string }
       setCompany(row);
 
       setDisplayName(row?.display_name ?? "");
+      setLegalName(row?.legal_name ?? "");
       setWebsite(row?.website ?? "");
-      setLocation(row?.location ?? "");
+      setCountry(row?.country ?? "");
+      setJurisdiction(row?.jurisdiction ?? "");
+      setSector(row?.sector ?? "");
+      setCompanyType(row?.company_type ?? "");
+      setSizeRange(row?.size_range ?? "");
+      setFoundedYear(row?.founded_year ? String(row.founded_year) : "");
       setBio(row?.bio ?? "");
       setLogoUrl(row?.logo_url ?? "");
     } finally {
@@ -86,22 +131,38 @@ export default function CompanyEditPage({ params }: { params: { handle: string }
       return;
     }
 
+    const fy = foundedYear.trim();
+    const fyNum = fy ? Number(fy) : null;
+    if (fy && (!Number.isFinite(fyNum) || fyNum < 1800 || fyNum > 2100)) {
+      alert("Año de fundación inválido (usa un año entre 1800 y 2100).");
+      return;
+    }
+
     setSaving(true);
     try {
+      // SOLO columnas reales de company_profiles
       const payload: Partial<CompanyRow> = {
-        id: company.id,
         display_name: displayName.trim() || null,
+        legal_name: legalName.trim() || null,
         website: website.trim() ? normalizeUrl(website) : null,
-        location: location.trim() || null,
+        country: country.trim() || null,
+        jurisdiction: jurisdiction.trim() || null,
+        sector: sector.trim() || null,
+        company_type: companyType.trim() || null,
+        size_range: sizeRange.trim() || null,
+        founded_year: fyNum as any, // null o number
         bio: bio.trim() || null,
         logo_url: logoUrl.trim() ? normalizeUrl(logoUrl) : null,
       };
 
-      const { error } = await supabaseBrowser.from("company_profiles").update(payload).eq("id", company.id);
+      const { error } = await supabaseBrowser
+        .from("company_profiles")
+        .update(payload)
+        .eq("id", company.id);
 
       if (error) {
         console.error("Error guardando empresa:", error);
-        alert("No se ha podido guardar. Si ves RLS/policy, hay que ajustar policies en Supabase.");
+        alert("No se ha podido guardar. Si pone RLS/policy, hay que ajustar policies en Supabase.");
         return;
       }
 
@@ -164,7 +225,12 @@ export default function CompanyEditPage({ params }: { params: { handle: string }
           <div className="mt-6 bg-neutral-900 border border-neutral-800 rounded-2xl p-6">
             <div className="text-lg font-semibold">Empresa no encontrada</div>
             <div className="text-sm text-neutral-400 mt-2">
-              No existe ninguna empresa con handle <span className="text-neutral-200">{handle}</span>.
+              No existe ninguna empresa con handle{" "}
+              <span className="text-neutral-200">{handle}</span>.
+            </div>
+            <div className="text-xs text-neutral-500 mt-3">
+              Si estás seguro de que existe, esto suele ser un tema de RLS (policies) o de que el handle
+              no coincide exactamente.
             </div>
           </div>
         </section>
@@ -208,12 +274,16 @@ export default function CompanyEditPage({ params }: { params: { handle: string }
                 // eslint-disable-next-line @next/next/no-img-element
                 <img src={logoUrl} alt="logo" className="h-full w-full object-cover" />
               ) : (
-                <span className="text-xl font-semibold">{(company.display_name?.[0] || "E").toUpperCase()}</span>
+                <span className="text-xl font-semibold">
+                  {(company.display_name?.[0] || "E").toUpperCase()}
+                </span>
               )}
             </div>
 
             <div className="min-w-0">
-              <div className="text-xl font-semibold truncate">{company.display_name ?? company.handle}</div>
+              <div className="text-xl font-semibold truncate">
+                {company.display_name ?? company.handle}
+              </div>
               <div className="text-sm text-neutral-400 truncate">@{company.handle}</div>
               {!isOwner ? (
                 <div className="text-xs text-amber-300 mt-1">
@@ -236,6 +306,17 @@ export default function CompanyEditPage({ params }: { params: { handle: string }
             </div>
 
             <div className="sm:col-span-2">
+              <label className="text-xs text-neutral-400 block mb-1">Nombre legal</label>
+              <input
+                value={legalName}
+                onChange={(e) => setLegalName(e.target.value)}
+                className="w-full rounded-lg bg-black border border-neutral-700 px-3 py-2 text-sm"
+                placeholder="Velet.coop V"
+                disabled={!isOwner}
+              />
+            </div>
+
+            <div className="sm:col-span-2">
               <label className="text-xs text-neutral-400 block mb-1">Web</label>
               <input
                 value={website}
@@ -246,13 +327,68 @@ export default function CompanyEditPage({ params }: { params: { handle: string }
               />
             </div>
 
-            <div className="sm:col-span-2">
-              <label className="text-xs text-neutral-400 block mb-1">Ubicación</label>
+            <div>
+              <label className="text-xs text-neutral-400 block mb-1">País</label>
               <input
-                value={location}
-                onChange={(e) => setLocation(e.target.value)}
+                value={country}
+                onChange={(e) => setCountry(e.target.value)}
                 className="w-full rounded-lg bg-black border border-neutral-700 px-3 py-2 text-sm"
                 placeholder="España"
+                disabled={!isOwner}
+              />
+            </div>
+
+            <div>
+              <label className="text-xs text-neutral-400 block mb-1">Jurisdicción</label>
+              <input
+                value={jurisdiction}
+                onChange={(e) => setJurisdiction(e.target.value)}
+                className="w-full rounded-lg bg-black border border-neutral-700 px-3 py-2 text-sm"
+                placeholder="Comunidad Valenciana"
+                disabled={!isOwner}
+              />
+            </div>
+
+            <div>
+              <label className="text-xs text-neutral-400 block mb-1">Sector</label>
+              <input
+                value={sector}
+                onChange={(e) => setSector(e.target.value)}
+                className="w-full rounded-lg bg-black border border-neutral-700 px-3 py-2 text-sm"
+                placeholder="Cosmética profesional"
+                disabled={!isOwner}
+              />
+            </div>
+
+            <div>
+              <label className="text-xs text-neutral-400 block mb-1">Tipo de empresa</label>
+              <input
+                value={companyType}
+                onChange={(e) => setCompanyType(e.target.value)}
+                className="w-full rounded-lg bg-black border border-neutral-700 px-3 py-2 text-sm"
+                placeholder="Pyme / Cooperativa"
+                disabled={!isOwner}
+              />
+            </div>
+
+            <div>
+              <label className="text-xs text-neutral-400 block mb-1">Tamaño</label>
+              <input
+                value={sizeRange}
+                onChange={(e) => setSizeRange(e.target.value)}
+                className="w-full rounded-lg bg-black border border-neutral-700 px-3 py-2 text-sm"
+                placeholder="1-10"
+                disabled={!isOwner}
+              />
+            </div>
+
+            <div>
+              <label className="text-xs text-neutral-400 block mb-1">Año fundación</label>
+              <input
+                value={foundedYear}
+                onChange={(e) => setFoundedYear(e.target.value.replace(/[^\d]/g, ""))}
+                className="w-full rounded-lg bg-black border border-neutral-700 px-3 py-2 text-sm"
+                placeholder="2020"
                 disabled={!isOwner}
               />
             </div>
@@ -281,10 +417,9 @@ export default function CompanyEditPage({ params }: { params: { handle: string }
             </div>
           </div>
 
-          {/* Nota sobre integraciones/apps */}
           <div className="mt-6 text-xs text-neutral-500">
-            Integraciones (Canva/Stripe/contabilidad): las añadimos en el siguiente paso con tabla/columna dedicada.
-            Aquí solo estamos desbloqueando el panel y el público para eliminar los 404.
+            Nota: Este panel edita solo campos reales de <span className="font-mono">company_profiles</span>.
+            Si algo vuelve a “Empresa no encontrada” con la empresa existiendo, el siguiente culpable es RLS (policies).
           </div>
         </div>
       </section>
