@@ -35,7 +35,6 @@ function normalizeUrl(url: string) {
 }
 
 function safeHandle(input: string) {
-  // no tocamos underscores; solo limpiamos espacios y @
   return (input || "").trim().toLowerCase().replace(/^@+/, "");
 }
 
@@ -50,7 +49,7 @@ export default function CompanyEditPage({ params }: { params: { handle: string }
 
   const [saving, setSaving] = useState(false);
 
-  // Campos editables (alineados con schema real)
+  // Campos editables
   const [displayName, setDisplayName] = useState("");
   const [legalName, setLegalName] = useState("");
   const [website, setWebsite] = useState("");
@@ -59,7 +58,7 @@ export default function CompanyEditPage({ params }: { params: { handle: string }
   const [sector, setSector] = useState("");
   const [companyType, setCompanyType] = useState("");
   const [sizeRange, setSizeRange] = useState("");
-  const [foundedYear, setFoundedYear] = useState<string>(""); // input text -> parse int
+  const [foundedYear, setFoundedYear] = useState<string>("");
   const [bio, setBio] = useState("");
   const [logoUrl, setLogoUrl] = useState("");
 
@@ -96,7 +95,7 @@ export default function CompanyEditPage({ params }: { params: { handle: string }
           ].join(",")
         )
         .eq("handle", handle)
-        .maybeSingle();
+        .maybeSingle<CompanyRow>(); // ✅ TIPADO CORRECTO
 
       if (error) {
         console.error("Error cargando empresa:", error);
@@ -104,7 +103,7 @@ export default function CompanyEditPage({ params }: { params: { handle: string }
         return;
       }
 
-      const row = (data as CompanyRow) ?? null;
+      const row = data ?? null; // ✅ ya es CompanyRow | null
       setCompany(row);
 
       setDisplayName(row?.display_name ?? "");
@@ -133,14 +132,13 @@ export default function CompanyEditPage({ params }: { params: { handle: string }
 
     const fy = foundedYear.trim();
     const fyNum = fy ? Number(fy) : null;
-    if (fy && (!Number.isFinite(fyNum) || fyNum < 1800 || fyNum > 2100)) {
+    if (fy && (!Number.isFinite(fyNum) || (fyNum as number) < 1800 || (fyNum as number) > 2100)) {
       alert("Año de fundación inválido (usa un año entre 1800 y 2100).");
       return;
     }
 
     setSaving(true);
     try {
-      // SOLO columnas reales de company_profiles
       const payload: Partial<CompanyRow> = {
         display_name: displayName.trim() || null,
         legal_name: legalName.trim() || null,
@@ -150,7 +148,7 @@ export default function CompanyEditPage({ params }: { params: { handle: string }
         sector: sector.trim() || null,
         company_type: companyType.trim() || null,
         size_range: sizeRange.trim() || null,
-        founded_year: fyNum as any, // null o number
+        founded_year: fyNum,
         bio: bio.trim() || null,
         logo_url: logoUrl.trim() ? normalizeUrl(logoUrl) : null,
       };
@@ -419,7 +417,7 @@ export default function CompanyEditPage({ params }: { params: { handle: string }
 
           <div className="mt-6 text-xs text-neutral-500">
             Nota: Este panel edita solo campos reales de <span className="font-mono">company_profiles</span>.
-            Si algo vuelve a “Empresa no encontrada” con la empresa existiendo, el siguiente culpable es RLS (policies).
+            Si algo vuelve a “Empresa no encontrada” con la empresa existiendo, el culpable es RLS (policies).
           </div>
         </div>
       </section>
