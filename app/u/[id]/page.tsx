@@ -51,10 +51,14 @@ export default function PublicProfilePage({ params }: { params: { id: string } }
     return (s[0] || "U").toUpperCase();
   }, [displayName]);
 
+  const getAccessToken = async (): Promise<string | null> => {
+    const { data } = await supabaseBrowser.auth.getSession();
+    return data.session?.access_token ?? null;
+  };
+
   const loadProfile = async () => {
     setLoadingProfile(true);
     try {
-      // CAMBIO CLAVE: solo columnas seguras
       const { data, error } = await supabaseBrowser
         .from("profiles")
         .select("id, full_name, bio, avatar_url")
@@ -76,13 +80,33 @@ export default function PublicProfilePage({ params }: { params: { id: string } }
   const loadPosts = async () => {
     setLoadingPosts(true);
     try {
-      const res = await fetch("/api/posts");
-      const json = await res.json();
-      const all = (json?.posts ?? []) as any[];
-      const mine = all.filter((p) => p.user_id === targetId);
+      const token = await getAccessToken();
 
-      mine.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
-      setPosts(mine as Post[]);
+      // Si quieres que /u/[id] sea realmente público sin login,
+      // entonces hay que cambiar /api/posts para permitir lectura pública.
+      // Por ahora: mismo comportamiento que el feed -> requiere sesión.
+      if (!token) {
+        setPosts([]);
+        return;
+      }
+
+      const res = await fetch(`/api/posts?user_id=${encodeURIComponent(targetId)}`, {
+        headers: { Authorization: `Bearer ${token}` },
+        cache: "no-store",
+      });
+
+      const json = await res.json().catch(() => ({}));
+
+      if (!res.ok) {
+        console.error("Error cargando posts en perfil público:", res.status, json);
+        setPosts([]);
+        return;
+      }
+
+      const list = (json?.posts ?? []) as Post[];
+      // Ya vienen ordenados por la API, pero lo dejamos “seguro”
+      list.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+      setPosts(list);
     } catch (e) {
       console.error("Error cargando posts:", e);
       setPosts([]);
@@ -94,8 +118,10 @@ export default function PublicProfilePage({ params }: { params: { id: string } }
   const loadCounts = async () => {
     setLoadingCounts(true);
     try {
-      const res = await fetch(`/api/follow-stats?userId=${encodeURIComponent(targetId)}`);
-      const json = await res.json();
+      const res = await fetch(`/api/follow-stats?userId=${encodeURIComponent(targetId)}`, {
+        cache: "no-store",
+      });
+      const json = await res.json().catch(() => ({}));
       if (!res.ok) {
         console.error("Error follow-stats:", json);
         setFollowersCount(0);
@@ -308,7 +334,11 @@ export default function PublicProfilePage({ params }: { params: { id: string } }
         <div className="mt-8">
           <h2 className="text-base font-semibold mb-3">Publicaciones</h2>
 
-          {loadingPosts ? (
+          {!viewerId ? (
+            <p className="text-sm text-neutral-500">
+              Inicia sesión para ver las publicaciones de este perfil.
+            </p>
+          ) : loadingPosts ? (
             <p className="text-sm text-neutral-400">Cargando publicaciones…</p>
           ) : posts.length === 0 ? (
             <p className="text-sm text-neutral-500">Todavía no hay publicaciones.</p>
