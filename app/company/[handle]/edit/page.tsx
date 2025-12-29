@@ -124,7 +124,6 @@ export default function CompanyEditPage({ params }: { params: { handle: string }
         company_type: companyType.trim() || null,
         size_range: sizeRange.trim() || null,
         bio: bio.trim() || null,
-       රු
         logo_url: logoUrl.trim() ? normalizeUrl(logoUrl) : null,
       };
 
