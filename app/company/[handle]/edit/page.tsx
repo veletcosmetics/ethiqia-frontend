@@ -51,10 +51,9 @@ export default function CompanyEditPage({ params }: { params: { handle: string }
 
   const [company, setCompany] = useState<CompanyRow | null>(null);
   const [loadingCompany, setLoadingCompany] = useState(false);
-
   const [saving, setSaving] = useState(false);
 
-  // Campos editables (alineados con tu schema REAL)
+  // Campos editables
   const [displayName, setDisplayName] = useState("");
   const [legalName, setLegalName] = useState("");
   const [website, setWebsite] = useState("");
@@ -125,19 +124,16 @@ export default function CompanyEditPage({ params }: { params: { handle: string }
         company_type: companyType.trim() || null,
         size_range: sizeRange.trim() || null,
         bio: bio.trim() || null,
+       රු
         logo_url: logoUrl.trim() ? normalizeUrl(logoUrl) : null,
       };
 
-      const { error } = await supabaseBrowser
-        .from("company_profiles")
-        .update(payload)
-        .eq("id", company.id);
+      // IMPORTANT: si RLS está bien, esto pasa. Si no, verás el error en consola.
+      const { error } = await supabaseBrowser.from("company_profiles").update(payload).eq("id", company.id);
 
       if (error) {
         console.error("Error guardando empresa:", error);
-        alert(
-          "No se ha podido guardar. Esto casi seguro es RLS/policies en Supabase. Revisa las policies que te pasé y vuelve a probar."
-        );
+        alert("No se ha podido guardar. Esto es RLS/policies en Supabase (bloquea UPDATE).");
         return;
       }
 
@@ -149,6 +145,8 @@ export default function CompanyEditPage({ params }: { params: { handle: string }
   };
 
   useEffect(() => {
+    let cancelled = false;
+
     const init = async () => {
       try {
         const {
@@ -161,16 +159,20 @@ export default function CompanyEditPage({ params }: { params: { handle: string }
           return;
         }
 
+        if (cancelled) return;
         setUser(user);
         await loadCompany();
       } catch (e) {
         console.error("Error init company edit:", e);
       } finally {
-        setAuthChecked(true);
+        if (!cancelled) setAuthChecked(true);
       }
     };
 
     init();
+    return () => {
+      cancelled = true;
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [handle]);
 
@@ -197,13 +199,11 @@ export default function CompanyEditPage({ params }: { params: { handle: string }
           <Link href="/profile" className="text-xs text-neutral-300 hover:text-emerald-400">
             ← Volver a mi perfil
           </Link>
+
           <div className="mt-6 bg-neutral-900 border border-neutral-800 rounded-2xl p-6">
             <div className="text-lg font-semibold">Empresa no encontrada</div>
             <div className="text-sm text-neutral-400 mt-2">
               No existe ninguna empresa con handle <span className="text-neutral-200">{handle}</span>.
-            </div>
-            <div className="text-xs text-neutral-500 mt-3">
-              Si sabes que existe, el 90% de las veces es RLS (policies) impidiendo el SELECT en sesión.
             </div>
           </div>
         </section>
@@ -305,3 +305,79 @@ export default function CompanyEditPage({ params }: { params: { handle: string }
                 onChange={(e) => setCountry(e.target.value)}
                 className="w-full rounded-lg bg-black border border-neutral-700 px-3 py-2 text-sm"
                 placeholder="España"
+                disabled={!isOwner}
+              />
+            </div>
+
+            <div>
+              <label className="text-xs text-neutral-400 block mb-1">Jurisdicción</label>
+              <input
+                value={jurisdiction}
+                onChange={(e) => setJurisdiction(e.target.value)}
+                className="w-full rounded-lg bg-black border border-neutral-700 px-3 py-2 text-sm"
+                placeholder="Comunidad Valenciana"
+                disabled={!isOwner}
+              />
+            </div>
+
+            <div>
+              <label className="text-xs text-neutral-400 block mb-1">Sector</label>
+              <input
+                value={sector}
+                onChange={(e) => setSector(e.target.value)}
+                className="w-full rounded-lg bg-black border border-neutral-700 px-3 py-2 text-sm"
+                placeholder="Cosmética profesional"
+                disabled={!isOwner}
+              />
+            </div>
+
+            <div>
+              <label className="text-xs text-neutral-400 block mb-1">Tipo</label>
+              <input
+                value={companyType}
+                onChange={(e) => setCompanyType(e.target.value)}
+                className="w-full rounded-lg bg-black border border-neutral-700 px-3 py-2 text-sm"
+                placeholder="Pyme / Cooperativa"
+                disabled={!isOwner}
+              />
+            </div>
+
+            <div className="sm:col-span-2">
+              <label className="text-xs text-neutral-400 block mb-1">Tamaño</label>
+              <input
+                value={sizeRange}
+                onChange={(e) => setSizeRange(e.target.value)}
+                className="w-full rounded-lg bg-black border border-neutral-700 px-3 py-2 text-sm"
+                placeholder="1-10"
+                disabled={!isOwner}
+              />
+            </div>
+
+            <div className="sm:col-span-2">
+              <label className="text-xs text-neutral-400 block mb-1">Logo URL</label>
+              <input
+                value={logoUrl}
+                onChange={(e) => setLogoUrl(e.target.value)}
+                className="w-full rounded-lg bg-black border border-neutral-700 px-3 py-2 text-sm"
+                placeholder="https://.../logo.png"
+                disabled={!isOwner}
+              />
+            </div>
+
+            <div className="sm:col-span-2">
+              <label className="text-xs text-neutral-400 block mb-1">Bio</label>
+              <textarea
+                value={bio}
+                onChange={(e) => setBio(e.target.value)}
+                className="w-full rounded-lg bg-black border border-neutral-700 px-3 py-2 text-sm"
+                rows={5}
+                placeholder="Descripción de la empresa…"
+                disabled={!isOwner}
+              />
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+  );
+}
