@@ -28,6 +28,11 @@ type CompanyRow = {
   verification_level: string | null;
   ethq_score: number | null;
 
+  // DNS verification
+  domain?: string | null;
+  domain_verification_token?: string | null;
+  domain_verified?: boolean | null;
+
   created_at?: string | null;
   updated_at?: string | null;
 };
@@ -41,6 +46,14 @@ function normalizeUrl(url: string) {
 
 function safeHandle(input: string) {
   return (input || "").trim().toLowerCase().replace(/^@+/, "");
+}
+
+function normalizeDomain(input: string) {
+  return (input || "")
+    .trim()
+    .toLowerCase()
+    .replace(/^https?:\/\//, "")
+    .replace(/\/.*$/, "");
 }
 
 export default function CompanyEditPage({ params }: { params: { handle: string } }) {
@@ -65,6 +78,13 @@ export default function CompanyEditPage({ params }: { params: { handle: string }
   const [bio, setBio] = useState("");
   const [logoUrl, setLogoUrl] = useState("");
 
+  // DNS Verification UI
+  const [domain, setDomain] = useState("");
+  const [domainToken, setDomainToken] = useState<string | null>(null);
+  const [domainVerified, setDomainVerified] = useState<boolean>(false);
+  const [domainMsg, setDomainMsg] = useState<string | null>(null);
+  const [domainLoading, setDomainLoading] = useState(false);
+
   const isOwner = useMemo(() => {
     return !!(user?.id && company?.owner_user_id && user.id === company.owner_user_id);
   }, [user?.id, company?.owner_user_id]);
@@ -75,7 +95,29 @@ export default function CompanyEditPage({ params }: { params: { handle: string }
       const { data, error } = await supabaseBrowser
         .from("company_profiles")
         .select(
-          "id, owner_user_id, handle, legal_name, display_name, country, jurisdiction, website, sector, company_type, size_range, logo_url, bio, verified, verification_level, ethq_score, created_at, updated_at"
+          [
+            "id",
+            "owner_user_id",
+            "handle",
+            "legal_name",
+            "display_name",
+            "country",
+            "jurisdiction",
+            "website",
+            "sector",
+            "company_type",
+            "size_range",
+            "logo_url",
+            "bio",
+            "verified",
+            "verification_level",
+            "ethq_score",
+            "domain",
+            "domain_verification_token",
+            "domain_verified",
+            "created_at",
+            "updated_at",
+          ].join(",")
         )
         .eq("handle", handle)
         .maybeSingle();
@@ -99,6 +141,11 @@ export default function CompanyEditPage({ params }: { params: { handle: string }
       setSizeRange(row?.size_range ?? "");
       setBio(row?.bio ?? "");
       setLogoUrl(row?.logo_url ?? "");
+
+      const d = normalizeDomain((row?.domain ?? "") as string);
+      setDomain(d);
+      setDomainToken((row?.domain_verification_token ?? null) as string | null);
+      setDomainVerified(!!row?.domain_verified);
     } finally {
       setLoadingCompany(false);
     }
@@ -127,12 +174,11 @@ export default function CompanyEditPage({ params }: { params: { handle: string }
         logo_url: logoUrl.trim() ? normalizeUrl(logoUrl) : null,
       };
 
-      // IMPORTANT: si RLS está bien, esto pasa. Si no, verás el error en consola.
       const { error } = await supabaseBrowser.from("company_profiles").update(payload).eq("id", company.id);
 
       if (error) {
         console.error("Error guardando empresa:", error);
-        alert("No se ha podido guardar. Esto es RLS/policies en Supabase (bloquea UPDATE).");
+        alert("No se ha podido guardar. Esto suele ser RLS/policies en Supabase (bloquea UPDATE).");
         return;
       }
 
@@ -142,6 +188,91 @@ export default function CompanyEditPage({ params }: { params: { handle: string }
       setSaving(false);
     }
   };
+
+  async function generateDomainToken() {
+    if (!user?.id || !company?.id) return;
+    if (!isOwner) {
+      alert("Solo el owner puede generar verificación de dominio.");
+      return;
+    }
+
+    setDomainMsg(null);
+    setDomainLoading(true);
+
+    try {
+      const d = normalizeDomain(domain);
+      if (!d || !d.includes(".")) {
+        setDomainMsg("Dominio inválido. Ejemplo: veletcosmetics.com");
+        return;
+      }
+
+      const res = await fetch("/api/company/domain/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ companyId: company.id, domain: d, userId: user.id }),
+      });
+
+      const json = await res.json();
+
+      if (!json.ok) {
+        setDomainMsg(json.error || "Error generando token.");
+        return;
+      }
+
+      setDomain(d);
+      setDomainToken(json.txtValue);
+      setDomainVerified(false);
+
+      setDomainMsg(`TXT generado. Crea un TXT en tu DNS y luego pulsa "Comprobar verificación".`);
+      await loadCompany();
+    } catch (e: any) {
+      setDomainMsg(e?.message ?? "Error generando token.");
+    } finally {
+      setDomainLoading(false);
+    }
+  }
+
+  async function checkDomainVerification() {
+    if (!user?.id || !company?.id) return;
+    if (!isOwner) {
+      alert("Solo el owner puede comprobar la verificación.");
+      return;
+    }
+
+    setDomainMsg(null);
+    setDomainLoading(true);
+
+    try {
+      const res = await fetch("/api/company/domain/check", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ companyId: company.id, userId: user.id }),
+      });
+
+      const json = await res.json();
+
+      if (!json.ok) {
+        setDomainMsg(json.error || "Error comprobando DNS.");
+        return;
+      }
+
+      if (json.verified) {
+        setDomainVerified(true);
+        setDomainMsg(`Verificado correctamente. Host comprobado: ${json.checkedHost}`);
+      } else {
+        setDomainVerified(false);
+        setDomainMsg(
+          `Aún no verificado. Host: ${json.checkedHost}. Si acabas de crear el TXT, espera propagación DNS y vuelve a probar.`
+        );
+      }
+
+      await loadCompany();
+    } catch (e: any) {
+      setDomainMsg(e?.message ?? "Error comprobando DNS.");
+    } finally {
+      setDomainLoading(false);
+    }
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -374,6 +505,73 @@ export default function CompanyEditPage({ params }: { params: { handle: string }
                 disabled={!isOwner}
               />
             </div>
+          </div>
+
+          {/* DNS TXT Verification */}
+          <div className="mt-6 border-t border-neutral-800 pt-6">
+            <div className="text-sm font-semibold">Verificación de dominio (DNS TXT)</div>
+            <div className="text-xs text-neutral-400 mt-1">
+              Esto sirve para demostrar que controlas el dominio. Es verificación “fuerte” y vendible.
+            </div>
+
+            <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="sm:col-span-2">
+                <label className="text-xs text-neutral-400 block mb-1">Dominio</label>
+                <input
+                  value={domain}
+                  onChange={(e) => setDomain(e.target.value)}
+                  className="w-full rounded-lg bg-black border border-neutral-700 px-3 py-2 text-sm"
+                  placeholder="veletcosmetics.com"
+                  disabled={!isOwner}
+                />
+              </div>
+
+              <button
+                type="button"
+                onClick={generateDomainToken}
+                disabled={!isOwner || domainLoading}
+                className="rounded-full border border-neutral-700 bg-black px-4 py-2 text-xs font-semibold hover:border-neutral-500 disabled:opacity-60"
+              >
+                {domainLoading ? "Procesando…" : "Generar TXT"}
+              </button>
+
+              <button
+                type="button"
+                onClick={checkDomainVerification}
+                disabled={!isOwner || domainLoading}
+                className="rounded-full bg-emerald-500 hover:bg-emerald-600 px-4 py-2 text-xs font-semibold text-black disabled:opacity-60"
+              >
+                {domainLoading ? "Comprobando…" : "Comprobar verificación"}
+              </button>
+            </div>
+
+            <div className="mt-4 text-xs text-neutral-400">
+              Estado:{" "}
+              <span className={domainVerified ? "text-emerald-300" : "text-neutral-200"}>
+                {domainVerified ? "VERIFICADO" : "NO verificado"}
+              </span>
+            </div>
+
+            {domainToken ? (
+              <div className="mt-3 text-xs text-neutral-300">
+                <div className="opacity-80">En Plesk crea un TXT así:</div>
+                <div className="mt-2 rounded-xl border border-neutral-800 bg-black p-3">
+                  <div>
+                    <span className="opacity-70">Tipo:</span> TXT
+                  </div>
+                  <div>
+                    <span className="opacity-70">Nombre/Host:</span>{" "}
+                    <span className="font-mono">ethiqia-verify</span>
+                  </div>
+                  <div>
+                    <span className="opacity-70">Valor:</span>{" "}
+                    <span className="font-mono break-all">{domainToken}</span>
+                  </div>
+                </div>
+              </div>
+            ) : null}
+
+            {domainMsg ? <div className="mt-3 text-xs text-neutral-300 opacity-90">{domainMsg}</div> : null}
           </div>
         </div>
       </section>
