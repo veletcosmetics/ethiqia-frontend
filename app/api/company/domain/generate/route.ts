@@ -2,12 +2,6 @@ import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import crypto from "crypto";
 
-function getAdminClient() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-  const service = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-  return createClient(url, service, { auth: { persistSession: false } });
-}
-
 function normalizeDomain(input: string) {
   return (input || "")
     .trim()
@@ -16,47 +10,63 @@ function normalizeDomain(input: string) {
     .replace(/\/.*$/, "");
 }
 
+function getEnv(name: string) {
+  const v = process.env[name];
+  if (!v) throw new Error(`Missing env var: ${name}`);
+  return v;
+}
+
 export async function POST(req: Request) {
   try {
-    const body = await req.json();
-    const companyId = String(body.companyId || "");
-    const domainRaw = String(body.domain || "");
-    const userId = String(body.userId || "");
+    const body = await req.json().catch(() => ({}));
+    const companyId = String(body.companyId || "").trim();
+    const domainRaw = String(body.domain || "").trim();
+    const userId = String(body.userId || "").trim();
 
     if (!companyId || !domainRaw || !userId) {
-      return NextResponse.json({ ok: false, error: "Faltan datos." }, { status: 400 });
+      return NextResponse.json({ ok: false, error: "Faltan campos: companyId, domain, userId." }, { status: 400 });
     }
 
     const domain = normalizeDomain(domainRaw);
-    if (!domain.includes(".") || domain.length < 4) {
+    if (!domain || !domain.includes(".")) {
       return NextResponse.json({ ok: false, error: "Dominio inválido." }, { status: 400 });
     }
 
-    const supabase = getAdminClient();
+    const supabaseUrl = getEnv("NEXT_PUBLIC_SUPABASE_URL");
+    const serviceRole = getEnv("SUPABASE_SERVICE_ROLE_KEY");
 
-    // Verificar que el user es owner (seguridad server-side)
-    const { data: cp, error: cpErr } = await supabase
+    const supabaseAdmin = createClient(supabaseUrl, serviceRole, {
+      auth: { persistSession: false },
+    });
+
+    // 1) Comprobar que el userId es owner de esa company
+    const { data: cp, error: cpErr } = await supabaseAdmin
       .from("company_profiles")
-      .select("id, owner_user_id")
+      .select("id, owner_user_id, handle")
       .eq("id", companyId)
-      .single();
+      .maybeSingle();
 
-    if (cpErr || !cp) {
+    if (cpErr) {
+      return NextResponse.json({ ok: false, error: cpErr.message }, { status: 500 });
+    }
+    if (!cp) {
       return NextResponse.json({ ok: false, error: "Empresa no encontrada." }, { status: 404 });
     }
     if (cp.owner_user_id !== userId) {
-      return NextResponse.json({ ok: false, error: "No autorizado." }, { status: 403 });
+      return NextResponse.json({ ok: false, error: "No autorizado. No eres el owner." }, { status: 403 });
     }
 
-    // Token único
+    // 2) Generar token TXT
+    // Formato: ethiqia-verify=<companyId>_<random>
     const rand = crypto.randomBytes(16).toString("hex");
-    const token = `ethiqia-verify=${companyId}_${rand}`;
+    const txtValue = `ethiqia-verify=${companyId}_${rand}`;
 
-    const { error: upErr } = await supabase
+    // 3) Guardar dominio + token y reset de verificación
+    const { error: upErr } = await supabaseAdmin
       .from("company_profiles")
       .update({
         domain,
-        domain_verification_token: token,
+        domain_verification_token: txtValue,
         domain_verified: false,
         domain_verified_at: null,
       })
@@ -68,9 +78,16 @@ export async function POST(req: Request) {
 
     return NextResponse.json({
       ok: true,
+      companyId,
+      handle: cp.handle,
       domain,
-      txtHost: "ethiqia-verify",
-      txtValue: token,
+      host: "ethiqia-verify",
+      txtValue,
+      instructions: {
+        recordType: "TXT",
+        host: "ethiqia-verify",
+        value: txtValue,
+      },
     });
   } catch (e: any) {
     return NextResponse.json({ ok: false, error: e?.message ?? "Error" }, { status: 500 });
