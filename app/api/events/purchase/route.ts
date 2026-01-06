@@ -1,116 +1,155 @@
+// app/api/events/purchase/route.ts
 import { NextResponse } from "next/server";
 import crypto from "crypto";
-import { supabaseAdmin } from "@/lib/supabaseAdmin"; // tienes que tenerlo (service role)
+import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
-function getRawBody(req: Request): Promise<string> {
-  return req.text();
-}
+type PurchaseEventBody = {
+  // Quién compra (usuario Ethiqia)
+  user_id: string;
 
-function timingSafeEqual(a: string, b: string) {
-  const ab = Buffer.from(a);
-  const bb = Buffer.from(b);
-  if (ab.length !== bb.length) return false;
-  return crypto.timingSafeEqual(ab, bb);
+  // En qué empresa (company_profiles.id)
+  company_id: string;
+
+  // Datos de compra
+  amount_cents?: number;
+  currency?: string; // "EUR"
+  order_id?: string; // ID externo (Redsys/Shopify/etc.)
+  metadata?: Record<string, any>;
+
+  // Firma (opcional): HMAC SHA256 del body RAW
+  signature?: string;
+};
+
+/**
+ * Firma HMAC recomendada:
+ * - En Velet generas: signature = HMAC_SHA256(rawBody, ETHIQIA_EVENTS_SECRET)
+ * - En Ethiqia la verificamos para que nadie falsifique compras.
+ */
+function verifySignature(rawBody: string, signature?: string | null) {
+  const secret = process.env.ETHIQIA_EVENTS_SECRET;
+  if (!secret) {
+    // Si no defines el secreto, no bloqueamos (modo dev).
+    return { ok: true, mode: "no-secret" as const };
+  }
+
+  if (!signature) return { ok: false, reason: "missing-signature" as const };
+
+  const expected = crypto.createHmac("sha256", secret).update(rawBody).digest("hex");
+
+  // timingSafeEqual requiere buffers de misma longitud
+  const a = Buffer.from(expected, "hex");
+  const b = Buffer.from(signature, "hex");
+  if (a.length !== b.length) return { ok: false, reason: "bad-signature" as const };
+
+  const ok = crypto.timingSafeEqual(a, b);
+  return ok ? { ok: true, mode: "hmac" as const } : { ok: false, reason: "bad-signature" as const };
 }
 
 export async function POST(req: Request) {
   try {
-    const secret = process.env.ETHIQIA_EVENTS_SECRET;
-    if (!secret) {
-      return NextResponse.json({ ok: false, error: "Missing ETHIQIA_EVENTS_SECRET" }, { status: 500 });
+    const rawBody = await req.text();
+    let body: PurchaseEventBody | null = null;
+
+    try {
+      body = JSON.parse(rawBody) as PurchaseEventBody;
+    } catch {
+      return NextResponse.json({ ok: false, error: "invalid-json" }, { status: 400 });
     }
 
-    const signature = req.headers.get("x-ethiqia-signature") || "";
-    const raw = await getRawBody(req);
+    const sigHeader =
+      req.headers.get("x-ethiqia-signature") ||
+      req.headers.get("x-signature") ||
+      body.signature ||
+      null;
 
-    const expected = crypto.createHmac("sha256", secret).update(raw).digest("hex");
-    if (!signature || !timingSafeEqual(signature, expected)) {
-      return NextResponse.json({ ok: false, error: "Invalid signature" }, { status: 401 });
+    const sigCheck = verifySignature(rawBody, sigHeader);
+    if (!sigCheck.ok) {
+      return NextResponse.json(
+        { ok: false, error: "signature-invalid", reason: sigCheck.reason },
+        { status: 401 }
+      );
     }
 
-    const body = JSON.parse(raw);
-
-    /**
-     * body esperado:
-     * {
-     *   event_id: "unique-id-from-velet",
-     *   buyer_user_id: "ethiqia-user-uuid",
-     *   company_id: "company-uuid",
-     *   amount_cents: 12345,
-     *   currency: "EUR",
-     *   order_ref: "VELET-ORDER-123",
-     *   purchased_at: "ISO date",
-     *   metadata: { vegan: true, eco: true }
-     * }
-     */
-
-    // Idempotencia: no duplicar si event_id ya existe
-    const { data: existing, error: exErr } = await supabaseAdmin
-      .from("purchase_events")
-      .select("id")
-      .eq("event_id", body.event_id)
-      .maybeSingle();
-
-    if (exErr) {
-      return NextResponse.json({ ok: false, error: exErr.message }, { status: 500 });
-    }
-    if (existing) {
-      return NextResponse.json({ ok: true, duplicated: true });
+    const user_id = (body.user_id || "").trim();
+    const company_id = (body.company_id || "").trim();
+    if (!user_id || !company_id) {
+      return NextResponse.json(
+        { ok: false, error: "missing-fields", required: ["user_id", "company_id"] },
+        { status: 400 }
+      );
     }
 
-    // 1) Guardar evento
-    const { data: ins, error: insErr } = await supabaseAdmin
+    const amount_cents = typeof body.amount_cents === "number" ? body.amount_cents : null;
+    const currency = (body.currency || "EUR").trim();
+    const order_id = body.order_id ? String(body.order_id) : null;
+    const metadata = body.metadata ?? null;
+
+    // 1) Guardar evento (tabla recomendada)
+    // Crea luego esta tabla: purchase_events (id uuid, created_at, user_id, company_id, amount_cents, currency, order_id, metadata jsonb)
+    const { data: ev, error: evErr } = await supabaseAdmin
       .from("purchase_events")
       .insert({
-        event_id: body.event_id,
-        buyer_user_id: body.buyer_user_id,
-        company_id: body.company_id,
-        amount_cents: body.amount_cents,
-        currency: body.currency || "EUR",
-        order_ref: body.order_ref,
-        purchased_at: body.purchased_at || new Date().toISOString(),
-        metadata: body.metadata || {},
+        user_id,
+        company_id,
+        amount_cents,
+        currency,
+        order_id,
+        metadata,
       })
-      .select("id")
+      .select("id, created_at")
       .single();
 
-    if (insErr) {
-      return NextResponse.json({ ok: false, error: insErr.message }, { status: 500 });
+    if (evErr) {
+      console.error("[purchase] insert purchase_events error:", evErr);
+      return NextResponse.json(
+        { ok: false, error: "db-insert-failed", details: evErr.message },
+        { status: 500 }
+      );
     }
 
-    // 2) Calcular puntos (ejemplo simple)
-    const vegan = !!body?.metadata?.vegan;
-    const eco = !!body?.metadata?.eco;
+    // 2) Crear notificación (si tienes tabla notifications ya en tu sistema)
+    // Ajusta los campos si tu esquema es distinto.
+    const title = "Compra registrada";
+    const euros =
+      typeof amount_cents === "number" ? (amount_cents / 100).toFixed(2) : null;
 
-    let points = 0;
-    points += 5; // base por compra verificada
-    if (vegan) points += 3;
-    if (eco) points += 2;
+    const bodyText = euros
+      ? `Se ha registrado una compra de ${euros} ${currency}.`
+      : "Se ha registrado una compra.";
 
-    // 3) Crear notificación
-    await supabaseAdmin.from("notifications").insert({
-      user_id: body.buyer_user_id,
-      type: "purchase_verified",
+    // Ejemplo: dar puntos (placeholder). Más adelante lo conectamos a reglas (vegano/ecológico, etc.)
+    const points_awarded = 2;
+
+    const { error: nErr } = await supabaseAdmin.from("notifications").insert({
+      user_id,
+      type: "purchase",
+      title,
+      body: bodyText,
+      points_awarded,
+      post_id: null,
       payload: {
-        title: "Compra verificada",
-        body: `Compra verificada en empresa (${body.order_ref || "pedido"}). +${points} puntos.`,
-        points_awarded: points,
-        company_id: body.company_id,
-        order_ref: body.order_ref,
+        company_id,
+        order_id,
+        amount_cents,
+        currency,
+        points_awarded,
       },
-      created_at: new Date().toISOString(),
     });
 
-    // 4) Sumar puntos al score (si usas scoring_events)
-    await supabaseAdmin.from("scoring_events").insert({
-      user_id: body.buyer_user_id,
-      event_type: "purchase_verified",
-      points_awarded: points,
-      metadata: { company_id: body.company_id, order_ref: body.order_ref, vegan, eco },
-    });
+    if (nErr) {
+      // No rompemos el endpoint si falla la notificación
+      console.warn("[purchase] insert notification warning:", nErr.message);
+    }
 
-    return NextResponse.json({ ok: true, points_awarded: points, purchase_event_id: ins.id });
+    return NextResponse.json({
+      ok: true,
+      event_id: ev.id,
+      created_at: ev.created_at,
+      signature_mode: sigCheck.mode,
+      points_awarded,
+    });
   } catch (e: any) {
-    return NextResponse.json({ ok: false, error: e?.message || "Unknown error" }, { status: 500 });
+    console.error("[purchase] unexpected error:", e);
+    return NextResponse.json({ ok: false, error: "unexpected", details: String(e?.message || e) }, { status: 500 });
   }
 }
