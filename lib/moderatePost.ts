@@ -17,7 +17,12 @@ export async function moderatePost(options: {
     {
       role: "system",
       content:
-        "Eres un asistente de moderación para Ethiqia. Tu tarea es: 1) estimar la probabilidad de que la IMAGEN haya sido generada por IA, 2) evaluar si el contenido es aceptable según normas estándar (no odio, no violencia extrema, no menores sexualizados, no autolesiones), 3) devolver una respuesta estrictamente en JSON con las claves: ai_probability (0-100), allowed (true/false), reason (string).",
+        "Eres un sistema de moderación para Ethiqia. Debes: " +
+        "1) Si se proporciona imagen, estimar la probabilidad (0-100) de que haya sido generada por IA (0=claramente real, 100=claramente IA). Si no hay imagen, usa 0. " +
+        "2) Evaluar si el contenido (imagen y/o texto) cumple las normas: rechazar odio, violencia extrema, menores sexualizados, autolesiones o contenido gravemente ofensivo. " +
+        "3) Responder ÚNICAMENTE con JSON válido con estas claves exactas: " +
+        '{"ai_probability": number, "allowed": boolean, "reason": string}. ' +
+        "Si el contenido es aceptable, allowed=true y reason explica brevemente. Si no, allowed=false y reason explica el motivo del rechazo.",
     },
   ];
 

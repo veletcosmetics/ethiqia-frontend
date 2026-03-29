@@ -20,6 +20,7 @@ export default function FeedPage() {
   const [loadingPosts, setLoadingPosts] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const [messageIsError, setMessageIsError] = useState(false);
 
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [currentUserName, setCurrentUserName] = useState<string>("Usuario Ethiqia");
@@ -90,6 +91,7 @@ export default function FeedPage() {
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setMessage(null);
+    setMessageIsError(false);
 
     if (!currentUser) {
       setMessage("Debes iniciar sesión para publicar.");
@@ -146,9 +148,18 @@ export default function FeedPage() {
       const moderation = await moderationRes.json();
       console.log("Respuesta moderación:", moderation);
 
-      const aiProbability = moderation.aiProbability ?? 0;
-      const blocked = moderation.blocked ?? false;
-      const reason = moderation.reason ?? null;
+      const aiProbability: number = moderation.aiProbability ?? 0;
+      const blocked: boolean = moderation.blocked ?? !moderation.allowed ?? false;
+      const reason: string | null = moderation.reason ?? null;
+
+      // Si la IA rechaza el contenido, detenemos aquí y no guardamos el post
+      if (blocked) {
+        setMessageIsError(true);
+        setMessage(
+          `Tu publicación ha sido rechazada por la moderación IA.\n${reason ?? "Contenido no permitido según las normas de Ethiqia."}`
+        );
+        return;
+      }
 
       const globalScore = Math.max(
         0,
@@ -185,13 +196,13 @@ export default function FeedPage() {
       // 4) Añadir al estado sin recargar
       setPosts((prev) => [post as Post, ...prev]);
       setNewPost({ caption: "", file: null });
+      setMessageIsError(false);
       setMessage(
-        `Publicación creada correctamente. Probabilidad estimada de IA: ${Math.round(
-          aiProbability
-        )}%`
+        `Publicación creada correctamente. Probabilidad estimada de IA: ${Math.round(aiProbability)}%`
       );
     } catch (err) {
       console.error("Error creando publicación:", err);
+      setMessageIsError(true);
       setMessage("Ha ocurrido un error al crear la publicación.");
     } finally {
       setSubmitting(false);
@@ -253,7 +264,7 @@ export default function FeedPage() {
           </div>
 
           {message && (
-            <p className="text-sm text-emerald-400 whitespace-pre-line">
+            <p className={`text-sm whitespace-pre-line ${messageIsError ? "text-red-400" : "text-emerald-400"}`}>
               {message}
             </p>
           )}
