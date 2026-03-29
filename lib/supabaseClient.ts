@@ -2,8 +2,8 @@
 
 import { createClient } from "@supabase/supabase-js";
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "";
 
 if (!supabaseUrl || !supabaseAnonKey) {
   console.warn(
@@ -11,11 +11,11 @@ if (!supabaseUrl || !supabaseAnonKey) {
   );
 }
 
-// Cliente principal para usar en el frontend
-export const supabaseClient = createClient(supabaseUrl, supabaseAnonKey);
+const client =
+  supabaseUrl && supabaseAnonKey
+    ? createClient(supabaseUrl, supabaseAnonKey)
+    : (null as any);
 
-// Alias para no romper código antiguo que hacía `import { supabase } ...`
-export const supabase = supabaseClient;
-
-// Opcionalmente, export por defecto
-export default supabaseClient;
+export const supabaseClient = client;
+export const supabase = client;
+export default client;

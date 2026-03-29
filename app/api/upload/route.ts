@@ -23,7 +23,9 @@ export async function POST(req: Request) {
     const bucketName =
       process.env.SUPABASE_BUCKET_NAME || "post-images";
 
-    const { data, error } = await supabaseServer.storage
+    const client = supabaseServer();
+
+    const { data, error } = await client.storage
       .from(bucketName)
       .upload(filePath, file, {
         contentType: file.type || "application/octet-stream",
@@ -39,7 +41,7 @@ export async function POST(req: Request) {
       );
     }
 
-    const { data: publicData } = supabaseServer.storage
+    const { data: publicData } = client.storage
       .from(bucketName)
       .getPublicUrl(filePath);
 
