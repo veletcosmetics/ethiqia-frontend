@@ -81,7 +81,7 @@ export async function POST(req: NextRequest) {
     }
 
     // Actualizar contador en posts (best-effort)
-    await supabaseAdmin.rpc("increment_comments_count", { post_id: postId }).catch(() => null);
+    try { await supabaseAdmin.rpc("increment_comments_count", { post_id: postId }); } catch { /* no-op */ }
 
     return NextResponse.json({ comment }, { status: 201 });
   } catch (e) {
