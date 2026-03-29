@@ -1,8 +1,11 @@
-// lib/moderatePost.ts
-import { openai } from "./openai";
+import Anthropic from "@anthropic-ai/sdk";
+
+const anthropic = new Anthropic({
+  apiKey: process.env.ANTHROPIC_API_KEY!,
+});
 
 export type ModerationResult = {
-  aiProbability: number;   // 0–100
+  aiProbability: number; // 0–100
   allowed: boolean;
   reason: string;
 };
@@ -13,68 +16,81 @@ export async function moderatePost(options: {
 }): Promise<ModerationResult> {
   const { text, imageUrl } = options;
 
-  const messages: any[] = [
-    {
-      role: "system",
-      content:
-        "Eres un sistema de moderación para Ethiqia. Debes: " +
-        "1) Si se proporciona imagen, estimar la probabilidad (0-100) de que haya sido generada por IA (0=claramente real, 100=claramente IA). Si no hay imagen, usa 0. " +
-        "2) Evaluar si el contenido (imagen y/o texto) cumple las normas: rechazar odio, violencia extrema, menores sexualizados, autolesiones o contenido gravemente ofensivo. " +
-        "3) Responder ÚNICAMENTE con JSON válido con estas claves exactas: " +
-        '{"ai_probability": number, "allowed": boolean, "reason": string}. ' +
-        "Si el contenido es aceptable, allowed=true y reason explica brevemente. Si no, allowed=false y reason explica el motivo del rechazo.",
-    },
-  ];
-
-  const userContent: any[] = [];
+  const userContent: Anthropic.MessageParam["content"] = [];
 
   if (imageUrl) {
     userContent.push({
-      type: "image_url",
-      image_url: { url: imageUrl },
-    });
+      type: "image",
+      source: {
+        type: "url",
+        url: imageUrl,
+      },
+    } as any);
   }
 
   userContent.push({
     type: "text",
-    text:
-      "Texto del post (puede estar vacío): " +
-      (text?.slice(0, 2000) || "N/A"),
+    text: `Texto del post: ${text?.slice(0, 2000) || "(sin texto)"}`,
   });
 
-  messages.push({
-    role: "user",
-    content: userContent,
+  const message = await anthropic.messages.create({
+    model: "claude-sonnet-4-6",
+    max_tokens: 256,
+    system: `Eres el sistema de moderación de contenido de Ethiqia, una red social de autenticidad.
+Analiza el contenido (imagen y/o texto) y devuelve una evaluación de moderación.
+
+RECHAZA el contenido (allowed: false) si contiene:
+- Odio o discriminación por raza, género, religión, orientación sexual u otras características
+- Bullying, acoso o humillación dirigida a personas reales
+- Amenazas, violencia explícita o incitación al daño
+- Contenido sexual con menores
+- Apología del suicidio o autolesiones
+- Desinformación dañina o spam malicioso
+
+Si hay imagen, estima la probabilidad de que sea generada por IA:
+- 0 = claramente fotografía real
+- 100 = claramente generada por IA (Midjourney, DALL-E, Stable Diffusion, etc.)
+
+Responde ÚNICAMENTE con JSON válido, sin texto adicional antes ni después:
+{"ai_probability": number, "allowed": boolean, "reason": string}
+
+El campo reason debe estar en el mismo idioma que el texto del post (español o inglés).
+Si el contenido es aceptable: allowed=true, reason breve confirmación.
+Si no es aceptable: allowed=false, reason explica el motivo con claridad.`,
+    messages: [
+      {
+        role: "user",
+        content: userContent,
+      },
+    ],
   });
 
-  const completion = await openai.chat.completions.create({
-    model: "gpt-4o-mini",
-    messages,
-    temperature: 0,
-    response_format: { type: "json_object" },
-  });
-
-  const raw = completion.choices[0].message.content || "{}";
+  const raw =
+    message.content[0].type === "text" ? message.content[0].text : "{}";
 
   let parsed: any;
   try {
     parsed = JSON.parse(raw);
   } catch {
-    parsed = { ai_probability: 0, allowed: true, reason: "fallback" };
+    // Extrae el JSON si Claude añadió texto alrededor
+    const match = raw.match(/\{[\s\S]*\}/);
+    try {
+      parsed = match ? JSON.parse(match[0]) : null;
+    } catch {
+      parsed = null;
+    }
+    if (!parsed) {
+      parsed = { ai_probability: 0, allowed: true, reason: "fallback" };
+    }
   }
 
   const aiProbability = Math.max(
     0,
     Math.min(100, Number(parsed.ai_probability ?? 0))
   );
-
   const allowed = parsed.allowed !== false;
   const reason =
     typeof parsed.reason === "string" ? parsed.reason : "Sin motivo detallado";
 
-  return {
-    aiProbability,
-    allowed,
-    reason,
-  };
+  return { aiProbability, allowed, reason };
 }

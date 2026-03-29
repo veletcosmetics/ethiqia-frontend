@@ -3,11 +3,11 @@ import { moderatePost } from '@/lib/moderatePost';
 
 export async function POST(req: NextRequest) {
   console.log('[/api/moderate-post] llamada recibida');
-  console.log('[/api/moderate-post] OPENAI_API_KEY presente:', !!process.env.OPENAI_API_KEY);
+  console.log('[/api/moderate-post] ANTHROPIC_API_KEY presente:', !!process.env.ANTHROPIC_API_KEY);
 
-  const apiKey = process.env.OPENAI_API_KEY;
+  const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) {
-    console.error('[/api/moderate-post] OPENAI_API_KEY no configurada — modo degradado');
+    console.error('[/api/moderate-post] ANTHROPIC_API_KEY no configurada — modo degradado');
     return NextResponse.json({
       allowed: true,
       blocked: false,
