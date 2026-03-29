@@ -3,9 +3,12 @@ import { createClient } from "@supabase/supabase-js";
 
 export const runtime = "nodejs";
 
-const supabaseUrl = process.env.SUPABASE_URL!;
-const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey);
+function getSupabaseAdmin() {
+  return createClient(
+    process.env.SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!
+  );
+}
 
 function getBearerToken(req: NextRequest): string | null {
   const h = req.headers.get("authorization") || "";
@@ -26,7 +29,7 @@ function locationOk(loc: any) {
   return typeof loc === "string" && loc.trim().length >= 2;
 }
 
-async function requireUser(req: NextRequest) {
+async function requireUser(req: NextRequest, supabaseAdmin: ReturnType<typeof getSupabaseAdmin>) {
   const token = getBearerToken(req);
   if (!token) return { user: null, error: "Missing Authorization Bearer token" };
 
@@ -40,8 +43,9 @@ async function requireUser(req: NextRequest) {
 // Otorga +2 UNA sola vez si el perfil cumple:
 // email verificado + full_name + avatar_url + location + bio(min 40)
 export async function POST(req: NextRequest) {
+  const supabaseAdmin = getSupabaseAdmin();
   try {
-    const { user, error } = await requireUser(req);
+    const { user, error } = await requireUser(req, supabaseAdmin);
     if (!user) return NextResponse.json({ error }, { status: 401 });
 
     // Email verificado (supabase devuelve campos distintos según versión)
