@@ -200,7 +200,7 @@ export default function FeedPage() {
       console.log("Respuesta moderación:", moderation);
 
       const aiProbability: number = moderation.aiProbability ?? 0;
-      const blocked: boolean = moderation.blocked ?? !moderation.allowed ?? false;
+      const blocked: boolean = moderation.blocked ?? !moderation.allowed;
       const reason: string | null = moderation.reason ?? null;
 
       if (blocked) {
