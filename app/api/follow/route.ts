@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
-const supabaseUrl = process.env.SUPABASE_URL!;
-const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-
-// Cliente con privilegios (solo servidor)
-const supabase = createClient(supabaseUrl, supabaseServiceRoleKey);
+function getSupabaseAdmin() {
+  return createClient(
+    process.env.SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!
+  );
+}
 
 /**
  * POST /api/follow
@@ -14,6 +15,7 @@ const supabase = createClient(supabaseUrl, supabaseServiceRoleKey);
  * - Si action no viene, toggle: si existe => unfollow; si no => follow
  */
 export async function POST(req: NextRequest) {
+  const supabase = getSupabaseAdmin();
   try {
     const body = await req.json();
     const { followerId, followingId, action } = body ?? {};

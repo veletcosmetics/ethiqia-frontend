@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
-const supabaseUrl = process.env.SUPABASE_URL!;
-const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-
-// Cliente con privilegios (solo en servidor). NO exponer en NEXT_PUBLIC_*
-const supabase = createClient(supabaseUrl, supabaseServiceRoleKey);
+function getSupabaseAdmin() {
+  return createClient(
+    process.env.SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!
+  );
+}
 
 /**
  * POST /api/likes
@@ -14,6 +15,7 @@ const supabase = createClient(supabaseUrl, supabaseServiceRoleKey);
  * - Si action no viene, hacemos "toggle": si existe like => borra; si no => crea
  */
 export async function POST(req: NextRequest) {
+  const supabase = getSupabaseAdmin();
   try {
     const body = await req.json();
     const { postId, userId, action } = body ?? {};

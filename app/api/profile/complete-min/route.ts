@@ -3,9 +3,14 @@ import { createClient } from "@supabase/supabase-js";
 
 export const runtime = "nodejs";
 
-const supabaseUrl = process.env.SUPABASE_URL!;
-const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey);
+import { SupabaseClient } from "@supabase/supabase-js";
+
+function getSupabaseAdmin() {
+  return createClient(
+    process.env.SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!
+  );
+}
 
 function getBearerToken(req: NextRequest): string | null {
   const h = req.headers.get("authorization") || "";
@@ -13,7 +18,7 @@ function getBearerToken(req: NextRequest): string | null {
   return h.slice(7).trim() || null;
 }
 
-async function requireUser(req: NextRequest) {
+async function requireUser(req: NextRequest, supabaseAdmin: SupabaseClient) {
   const token = getBearerToken(req);
   if (!token) return { user: null as any, error: "Missing Authorization Bearer token" };
 
@@ -43,8 +48,9 @@ function computeMissing(profile: any) {
 // - Comprueba “perfil mínimo completo”
 // - Si cumple y no se ha premiado antes: inserta reputation_events(profile_completed_min +2) + notifications(points_awarded)
 export async function POST(req: NextRequest) {
+  const supabaseAdmin = getSupabaseAdmin();
   try {
-    const { user, error } = await requireUser(req);
+    const { user, error } = await requireUser(req, supabaseAdmin);
     if (!user) return NextResponse.json({ error }, { status: 401 });
 
     // 1) Leer perfil

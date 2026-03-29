@@ -35,6 +35,7 @@ export default function FeedPage() {
   const [loadingPosts, setLoadingPosts] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const [messageIsError, setMessageIsError] = useState(false);
   const [lastPoints, setLastPoints] = useState<number | null>(null);
 
   const [currentUser, setCurrentUser] = useState<User | null>(null);
@@ -143,6 +144,7 @@ export default function FeedPage() {
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setMessage(null);
+    setMessageIsError(false);
     setLastPoints(null);
 
     if (!currentUser) {
@@ -195,9 +197,19 @@ export default function FeedPage() {
       }
 
       const moderation = await moderationRes.json();
-      const aiProbability = moderation.aiProbability ?? 0;
-      const blocked = moderation.blocked ?? false;
-      const reason = moderation.reason ?? null;
+      console.log("Respuesta moderación:", moderation);
+
+      const aiProbability: number = moderation.aiProbability ?? 0;
+      const blocked: boolean = moderation.blocked ?? !moderation.allowed ?? false;
+      const reason: string | null = moderation.reason ?? null;
+
+      if (blocked) {
+        setMessageIsError(true);
+        setMessage(
+          `Tu publicación ha sido rechazada por la moderación IA.\n${reason ?? "Contenido no permitido según las normas de Ethiqia."}`
+        );
+        return;
+      }
 
       const globalScore = computeGlobalScore(aiProbability);
 
@@ -228,11 +240,10 @@ export default function FeedPage() {
 
       setPosts((prev) => [post, ...prev]);
       setNewPost({ caption: "", file: null, aiDisclosed: false });
-
+      setMessageIsError(false);
       setLastPoints(pointsAwarded);
       setMessage(`Publicación creada correctamente.\nHas ganado +${pointsAwarded} puntos.`);
 
-      // 4) flash para /profile
       try {
         const flash = {
           title: "Publicación creada",
@@ -243,11 +254,12 @@ export default function FeedPage() {
         };
         localStorage.setItem("ethiqia_flash", JSON.stringify(flash));
       } catch (err) {
-        console.warn("No se pudo guardar ethqia_flash:", err);
+        console.warn("No se pudo guardar ethiqia_flash:", err);
       }
     } catch (err) {
       console.error("Error creando publicación:", err);
-      setMessage("Ha ocurrido un error al crear la publicación.");
+      setMessageIsError(true);
+      setMessage("Ha ocurrido un error al crear la publicación. Inténtalo de nuevo.");
     } finally {
       setSubmitting(false);
     }
@@ -314,8 +326,10 @@ export default function FeedPage() {
 
           {message && (
             <div className="space-y-2">
-              <p className="text-sm text-emerald-400 whitespace-pre-line">{message}</p>
-              {typeof lastPoints === "number" && (
+              <p className={`text-sm whitespace-pre-line ${messageIsError ? "text-red-400" : "text-emerald-400"}`}>
+                {message}
+              </p>
+              {!messageIsError && typeof lastPoints === "number" && (
                 <Link href="/profile" className="inline-flex text-xs text-neutral-300 hover:text-emerald-400">
                   Ver mi perfil y notificaciones →
                 </Link>

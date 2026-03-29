@@ -3,9 +3,14 @@ import { createClient } from "@supabase/supabase-js";
 
 export const runtime = "nodejs";
 
-const supabaseUrl = process.env.SUPABASE_URL!;
-const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey);
+import { SupabaseClient } from "@supabase/supabase-js";
+
+function getSupabaseAdmin() {
+  return createClient(
+    process.env.SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!
+  );
+}
 
 function getBearerToken(req: NextRequest): string | null {
   const h = req.headers.get("authorization") || "";
@@ -13,7 +18,7 @@ function getBearerToken(req: NextRequest): string | null {
   return h.slice(7).trim() || null;
 }
 
-async function requireUser(req: NextRequest) {
+async function requireUser(req: NextRequest, supabaseAdmin: SupabaseClient) {
   const token = getBearerToken(req);
   if (!token) return { user: null, error: "Missing Authorization Bearer token" };
 
@@ -26,8 +31,9 @@ async function requireUser(req: NextRequest) {
 // GET /api/notifications -> lista últimas notificaciones del usuario (unread primero)
 // Devuelve title/body "aplanados" desde payload para que la UI lo tenga fácil.
 export async function GET(req: NextRequest) {
+  const supabaseAdmin = getSupabaseAdmin();
   try {
-    const { user, error } = await requireUser(req);
+    const { user, error } = await requireUser(req, supabaseAdmin);
     if (!user) return NextResponse.json({ error }, { status: 401 });
 
     const url = new URL(req.url);
@@ -75,8 +81,9 @@ export async function GET(req: NextRequest) {
 
 // POST /api/notifications -> marcar como leída (id / ids / all)
 export async function POST(req: NextRequest) {
+  const supabaseAdmin = getSupabaseAdmin();
   try {
-    const { user, error } = await requireUser(req);
+    const { user, error } = await requireUser(req, supabaseAdmin);
     if (!user) return NextResponse.json({ error }, { status: 401 });
 
     const body = await req.json().catch(() => ({}));
