@@ -6,7 +6,11 @@ export function middleware(req: NextRequest) {
   if (!previewPass) return NextResponse.next(); // sin protección si no hay clave
 
   const { pathname } = req.nextUrl;
-  if (pathname.startsWith('/_next') || pathname.startsWith('/robots.txt')) {
+  if (
+    pathname.startsWith('/_next') ||
+    pathname.startsWith('/api/') ||
+    pathname.startsWith('/robots.txt')
+  ) {
     return NextResponse.next();
   }
 
