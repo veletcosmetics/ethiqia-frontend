@@ -140,6 +140,23 @@ $$;
 GRANT EXECUTE ON FUNCTION public.increment_comments_count(uuid) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.increment_comments_count(uuid) TO service_role;
 
+-- 10b) FUNCION RPC decrement_comments_count
+-- La API la llama despues de borrar un comentario.
+CREATE OR REPLACE FUNCTION public.decrement_comments_count(p_post_id uuid)
+RETURNS void
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+BEGIN
+  UPDATE public.posts
+  SET comments_count = GREATEST(0, comments_count - 1)
+  WHERE id = p_post_id;
+END;
+$$;
+
+GRANT EXECUTE ON FUNCTION public.decrement_comments_count(uuid) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.decrement_comments_count(uuid) TO service_role;
+
 -- 11) VERIFICACION: comprobar que todo esta bien
 -- Ejecuta esto despues para confirmar:
 SELECT

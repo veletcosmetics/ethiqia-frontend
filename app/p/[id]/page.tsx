@@ -34,13 +34,16 @@ export default function PostDetailPage() {
   const [message, setMessage] = useState<string | null>(null);
   const [messageIsError, setMessageIsError] = useState(false);
   const [token, setToken] = useState<string | null>(null);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [authorName, setAuthorName] = useState<string>("Usuario Ethiqia");
   const [authorAvatar, setAuthorAvatar] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   useEffect(() => {
     const init = async () => {
       const { data } = await supabaseBrowser.auth.getSession();
       setToken(data.session?.access_token ?? null);
+      setCurrentUserId(data.session?.user?.id ?? null);
     };
     init();
   }, []);
@@ -91,6 +94,25 @@ export default function PostDetailPage() {
     };
     loadComments();
   }, [id]);
+
+  const handleDelete = async (commentId: string) => {
+    if (!token) return;
+    setDeletingId(commentId);
+    try {
+      const res = await fetch("/api/comments", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ commentId }),
+      });
+      if (res.ok) {
+        setComments((prev) => prev.filter((c) => c.id !== commentId));
+      }
+    } catch {
+      // silencioso
+    } finally {
+      setDeletingId(null);
+    }
+  };
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -191,11 +213,24 @@ export default function PostDetailPage() {
                       )}
                     </div>
                     <div className="flex-1 min-w-0">
-                      <div className="flex items-baseline gap-2">
+                      <div className="flex items-center gap-2">
                         <span className="text-xs font-semibold text-neutral-200">
                           {c.profiles?.full_name ?? "Usuario Ethiqia"}
                         </span>
                         <span className="text-[10px] text-neutral-600">{formatDate(c.created_at)}</span>
+                        {currentUserId && c.user_id === currentUserId && (
+                          <button
+                            type="button"
+                            onClick={() => handleDelete(c.id)}
+                            disabled={deletingId === c.id}
+                            className="ml-auto text-neutral-600 hover:text-red-400 transition-colors disabled:opacity-50"
+                            title="Borrar comentario"
+                          >
+                            <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                              <path d="M3 6h18M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2m3 0v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6h14z" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+                            </svg>
+                          </button>
+                        )}
                       </div>
                       <p className="text-sm text-neutral-300 whitespace-pre-line mt-0.5">{c.content}</p>
                     </div>

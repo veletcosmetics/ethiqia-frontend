@@ -145,16 +145,26 @@ export default function PostCard({ post, authorName, authorAvatarUrl, authorId }
     null;
 
   const initialLikes = Number(post.likes_count ?? (post as any).likes ?? 0) || 0;
-  const initialComments = Number(post.comments_count ?? (post as any).comments ?? 0) || 0;
 
   const [liked, setLiked] = useState(Boolean(post.liked_by_me));
   const [likesUi, setLikesUi] = useState(initialLikes);
+  const [commentsCount, setCommentsCount] = useState<number>(
+    Number(post.comments_count ?? (post as any).comments ?? 0) || 0
+  );
   const [copied, setCopied] = useState(false);
 
   // Sincronizar si la prop cambia (e.g. al recargar datos)
   useEffect(() => {
     setLiked(Boolean(post.liked_by_me));
   }, [post.liked_by_me]);
+
+  // Cargar conteo real de comentarios
+  useEffect(() => {
+    fetch(`/api/comments?postId=${post.id}&count=1`)
+      .then((r) => r.json())
+      .then((d) => { if (typeof d.count === "number") setCommentsCount(d.count); })
+      .catch(() => {});
+  }, [post.id]);
 
   const getAccessToken = useCallback(async (): Promise<string | null> => {
     try {
@@ -284,7 +294,7 @@ export default function PostCard({ post, authorName, authorAvatarUrl, authorId }
               title="Comentar"
             >
               <ChatIcon className="h-5 w-5" />
-              <span>{initialComments}</span>
+              <span>{commentsCount}</span>
             </Link>
 
             <button
@@ -339,12 +349,12 @@ export default function PostCard({ post, authorName, authorAvatarUrl, authorId }
         ) : null}
 
         {/* Link a comentarios */}
-        {initialComments > 0 ? (
+        {commentsCount > 0 ? (
           <Link
             href={`/p/${post.id}`}
             className="block mt-2 text-xs text-neutral-500 hover:text-neutral-300 transition-colors"
           >
-            Ver los {initialComments} comentarios
+            Ver los {commentsCount} comentarios
           </Link>
         ) : null}
       </div>

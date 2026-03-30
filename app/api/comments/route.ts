@@ -4,6 +4,62 @@ import { moderatePost } from "@/lib/moderatePost";
 
 export const runtime = "nodejs";
 
+// --- Moderacion basica por palabras clave (fallback sin IA) ---
+
+const BLOCKED_WORDS = [
+  // Español - insultos y odio
+  "puta", "puto", "perra", "perro", "hijo de puta", "hdp", "hijueputa",
+  "mierda", "imbecil", "imbécil", "idiota", "estupido", "estúpido",
+  "subnormal", "retrasado", "mongolo", "mongólico",
+  "maricón", "maricon", "marica", "bollera",
+  "negro de mierda", "sudaca", "moro de mierda",
+  "te voy a matar", "ojalá te mueras", "ojala te mueras",
+  "vete a morir", "matate", "mátate", "suicidate", "suicídate",
+  "zorra", "guarra", "gilipollas", "capullo", "cabrón", "cabron",
+  "basura humana", "escoria",
+  // Ingles - insultos y odio
+  "fuck you", "fucking", "motherfucker", "asshole", "piece of shit",
+  "bitch", "slut", "whore", "cunt",
+  "retard", "retarded",
+  "faggot", "fag", "dyke",
+  "nigger", "nigga", "spic", "chink", "wetback", "kike",
+  "kill yourself", "kys", "go die",
+  "i will kill you", "gonna kill you",
+];
+
+function moderateByKeywords(text: string): { blocked: boolean; reason: string | null } {
+  const normalized = text
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  for (const word of BLOCKED_WORDS) {
+    const normalizedWord = word
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/[^a-z0-9\s]/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+
+    if (normalized.includes(normalizedWord)) {
+      return {
+        blocked: true,
+        reason:
+          "Tu comentario contiene lenguaje que no esta permitido en Ethiqia. " +
+          "Revisalo e intenta expresarte de forma respetuosa.",
+      };
+    }
+  }
+
+  return { blocked: false, reason: null };
+}
+
+// --- Supabase helpers ---
+
 function getSupabaseAdmin() {
   const url = process.env.SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL;
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -27,9 +83,23 @@ function getBearerToken(req: NextRequest): string | null {
 export async function GET(req: NextRequest) {
   try {
     const supabaseAdmin = getSupabaseAdmin();
-    const postId = new URL(req.url).searchParams.get("postId");
+    const url = new URL(req.url);
+    const postId = url.searchParams.get("postId");
     if (!postId) {
       return NextResponse.json({ error: "Missing postId" }, { status: 400 });
+    }
+
+    // Si solo piden el conteo
+    if (url.searchParams.get("count") === "1") {
+      const { count, error } = await supabaseAdmin
+        .from("comments")
+        .select("id", { count: "exact", head: true })
+        .eq("post_id", postId);
+
+      if (error) {
+        return NextResponse.json({ count: 0 });
+      }
+      return NextResponse.json({ count: count ?? 0 });
     }
 
     const { data, error } = await supabaseAdmin
@@ -47,7 +117,8 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    return NextResponse.json({ comments: data ?? [] }, { status: 200 });
+    const comments = data ?? [];
+    return NextResponse.json({ comments, count: comments.length }, { status: 200 });
   } catch (e: any) {
     console.error("Unexpected error GET /api/comments:", e);
     return NextResponse.json(
@@ -86,8 +157,18 @@ export async function POST(req: NextRequest) {
     const userId = userData.user.id;
     const cleanText = text.trim().slice(0, 1000);
 
-    // Moderacion IA antes de insertar
-    console.log("[comments] Iniciando moderacion para comentario de user:", userId);
+    // 1) Moderacion por palabras clave (siempre activa)
+    const keywordCheck = moderateByKeywords(cleanText);
+    if (keywordCheck.blocked) {
+      console.log("[comments] Bloqueado por palabras clave, user:", userId);
+      return NextResponse.json(
+        { error: "Comentario rechazado por moderacion", reason: keywordCheck.reason },
+        { status: 403 }
+      );
+    }
+
+    // 2) Moderacion IA (si esta disponible)
+    console.log("[comments] Iniciando moderacion IA, user:", userId);
     console.log("[comments] ANTHROPIC_API_KEY presente:", !!process.env.ANTHROPIC_API_KEY);
     try {
       console.log("[comments] Llamando a moderatePost con texto de", cleanText.length, "chars");
@@ -95,19 +176,18 @@ export async function POST(req: NextRequest) {
       console.log("[comments] Resultado moderacion:", JSON.stringify(modResult));
 
       if (!modResult.allowed) {
-        console.log("[comments] Comentario RECHAZADO:", modResult.reason);
+        console.log("[comments] Comentario RECHAZADO por IA:", modResult.reason);
         return NextResponse.json(
           { error: "Comentario rechazado por moderacion", reason: modResult.reason },
           { status: 403 }
         );
       }
-      console.log("[comments] Comentario APROBADO por moderacion");
+      console.log("[comments] Comentario APROBADO por IA");
     } catch (modErr: any) {
-      console.error("[comments] ERROR en moderacion:", modErr?.message ?? modErr);
-      console.error("[comments] Stack:", modErr?.stack);
-      // Si la moderacion falla, dejamos pasar para no bloquear funcionalidad
+      console.error("[comments] ERROR en moderacion IA (se usa solo filtro por palabras):", modErr?.message ?? modErr);
     }
 
+    // 3) Insertar comentario
     const { data: comment, error: insertErr } = await supabaseAdmin
       .from("comments")
       .insert({
@@ -153,6 +233,68 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ comment: commentWithProfile }, { status: 201 });
   } catch (e: any) {
     console.error("Unexpected error POST /api/comments:", e);
+    return NextResponse.json(
+      { error: "Unexpected error", details: e?.message ?? String(e) },
+      { status: 500 }
+    );
+  }
+}
+
+// DELETE /api/comments  body: { commentId }
+export async function DELETE(req: NextRequest) {
+  try {
+    const supabaseAdmin = getSupabaseAdmin();
+
+    const token = getBearerToken(req);
+    if (!token) {
+      return NextResponse.json({ error: "Missing Authorization Bearer token" }, { status: 401 });
+    }
+
+    const { data: userData, error: userErr } = await supabaseAdmin.auth.getUser(token);
+    if (userErr || !userData?.user) {
+      return NextResponse.json({ error: "Invalid session" }, { status: 401 });
+    }
+
+    const body = await req.json().catch(() => ({}));
+    const { commentId } = body ?? {};
+
+    if (!commentId) {
+      return NextResponse.json({ error: "commentId es obligatorio" }, { status: 400 });
+    }
+
+    // Verificar que el comentario pertenece al usuario
+    const { data: existing, error: fetchErr } = await supabaseAdmin
+      .from("comments")
+      .select("id, post_id, user_id")
+      .eq("id", commentId)
+      .maybeSingle();
+
+    if (fetchErr || !existing) {
+      return NextResponse.json({ error: "Comentario no encontrado" }, { status: 404 });
+    }
+
+    if (existing.user_id !== userData.user.id) {
+      return NextResponse.json({ error: "No puedes borrar comentarios de otros usuarios" }, { status: 403 });
+    }
+
+    const { error: delErr } = await supabaseAdmin
+      .from("comments")
+      .delete()
+      .eq("id", commentId);
+
+    if (delErr) {
+      console.error("Error deleting comment:", delErr);
+      return NextResponse.json({ error: "Error borrando comentario" }, { status: 500 });
+    }
+
+    // Decrementar contador (best-effort)
+    try {
+      await supabaseAdmin.rpc("decrement_comments_count", { p_post_id: existing.post_id });
+    } catch { /* no-op */ }
+
+    return NextResponse.json({ deleted: true }, { status: 200 });
+  } catch (e: any) {
+    console.error("Unexpected error DELETE /api/comments:", e);
     return NextResponse.json(
       { error: "Unexpected error", details: e?.message ?? String(e) },
       { status: 500 }
