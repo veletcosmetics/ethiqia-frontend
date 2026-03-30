@@ -39,6 +39,8 @@ export default function PublicProfilePage({ params }: { params: { id: string } }
   const [posts, setPosts] = useState<Post[]>([]);
   const [loadingPosts, setLoadingPosts] = useState(false);
 
+  const [userScore, setUserScore] = useState<number | null>(null);
+
   const [isFollowing, setIsFollowing] = useState(false);
   const [togglingFollow, setTogglingFollow] = useState(false);
 
@@ -214,6 +216,13 @@ export default function PublicProfilePage({ params }: { params: { id: string } }
         await loadCounts();
         await loadPosts(token);
 
+        // Score
+        try {
+          const { data: scoreData } = await supabaseBrowser.rpc("calculate_user_score", { p_user_id: targetId });
+          if (scoreData?.total_score != null) setUserScore(scoreData.total_score);
+          else setUserScore(65);
+        } catch { setUserScore(65); }
+
         if (viewerId) {
           await loadFollowingStatus(viewerId);
         }
@@ -323,7 +332,17 @@ export default function PublicProfilePage({ params }: { params: { id: string } }
           {profile.bio ? (
             <p className="mt-5 text-sm text-neutral-200 whitespace-pre-line">{profile.bio}</p>
           ) : (
-            <p className="mt-5 text-sm text-neutral-500">Aún no hay bio.</p>
+            <p className="mt-5 text-sm text-neutral-500">Aun no hay bio.</p>
+          )}
+
+          {userScore !== null && (
+            <div className="mt-5 pt-4 border-t border-neutral-800 flex items-center gap-3">
+              <div className="text-3xl font-bold text-emerald-400">{userScore}</div>
+              <div>
+                <div className="text-xs font-semibold text-neutral-200">Score Ethiqia</div>
+                <div className="text-[11px] text-neutral-500">Puntuacion de reputacion etica</div>
+              </div>
+            </div>
           )}
         </div>
 

@@ -243,7 +243,7 @@ export default function PostCard({ post, authorName, authorAvatarUrl, authorId, 
       {imageUrl && (
         <Link href={`/p/${post.id}`} className="block">
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={imageUrl} alt={post.caption || "Publicacion"} className="w-full h-[210px] object-cover" loading="lazy" />
+          <img src={imageUrl} alt={post.caption || "Publicacion"} className="w-full max-h-[320px] object-contain bg-black" loading="lazy" />
         </Link>
       )}
 
