@@ -421,6 +421,10 @@ export default function ProfilePage() {
                 authorName={profile?.full_name ?? name}
                 authorId={currentUser?.id}
                 authorAvatarUrl={profile?.avatar_url ?? undefined}
+                onDelete={(postId) => {
+                  setMyPosts((prev) => prev.filter((p) => p.id !== postId));
+                  setPostCount((c) => Math.max(0, c - 1));
+                }}
               />
             ))}
           </div>

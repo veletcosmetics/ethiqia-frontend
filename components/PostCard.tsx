@@ -31,6 +31,7 @@ type Props = {
   authorName?: string;
   authorAvatarUrl?: string;
   authorId?: string;
+  onDelete?: (postId: string) => void;
 };
 
 function formatDate(iso?: string | null) {
@@ -120,7 +121,8 @@ function BookmarkIcon({ className = "" }: { className?: string }) {
   );
 }
 
-export default function PostCard({ post, authorName, authorAvatarUrl, authorId }: Props) {
+export default function PostCard({ post, authorName, authorAvatarUrl, authorId, onDelete }: Props) {
+  const [deleting, setDeleting] = useState(false);
   const displayName = useMemo(() => {
     const s = (authorName || "").trim();
     return s || "Usuario Ethiqia";
@@ -252,6 +254,38 @@ export default function PostCard({ post, authorName, authorAvatarUrl, authorId }
               IA {aiProbPct}%
             </span>
           ) : null}
+          {onDelete && (
+            <button
+              type="button"
+              disabled={deleting}
+              onClick={async () => {
+                if (!window.confirm("Seguro que quieres eliminar esta publicacion?")) return;
+                setDeleting(true);
+                try {
+                  const token = await getAccessToken();
+                  const res = await fetch("/api/posts", {
+                    method: "DELETE",
+                    headers: {
+                      "Content-Type": "application/json",
+                      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+                    },
+                    body: JSON.stringify({ postId: post.id }),
+                  });
+                  if (res.ok) {
+                    onDelete(post.id);
+                  }
+                } catch { /* no-op */ } finally {
+                  setDeleting(false);
+                }
+              }}
+              className="text-neutral-600 hover:text-red-400 transition-colors p-1 rounded-lg hover:bg-neutral-800/50 disabled:opacity-50"
+              title="Eliminar publicacion"
+            >
+              <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <path d="M3 6h18M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2m3 0v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6h14z" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </button>
+          )}
         </div>
       </div>
 

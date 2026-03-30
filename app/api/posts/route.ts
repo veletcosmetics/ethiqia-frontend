@@ -254,3 +254,64 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Unexpected error" }, { status: 500 });
   }
 }
+
+// DELETE /api/posts  body: { postId }
+export async function DELETE(req: NextRequest) {
+  const supabaseAdmin = getSupabaseAdmin();
+
+  try {
+    const token = getBearerToken(req);
+    if (!token) {
+      return NextResponse.json({ error: "Missing Authorization Bearer token" }, { status: 401 });
+    }
+
+    const { data: userData, error: userErr } = await supabaseAdmin.auth.getUser(token);
+    if (userErr || !userData?.user) {
+      return NextResponse.json({ error: "Invalid session" }, { status: 401 });
+    }
+
+    const body = await req.json().catch(() => ({}));
+    const { postId } = body ?? {};
+
+    if (!postId) {
+      return NextResponse.json({ error: "postId es obligatorio" }, { status: 400 });
+    }
+
+    // Verificar que el post pertenece al usuario
+    const { data: existing, error: fetchErr } = await supabaseAdmin
+      .from("posts")
+      .select("id, user_id")
+      .eq("id", postId)
+      .maybeSingle();
+
+    if (fetchErr || !existing) {
+      return NextResponse.json({ error: "Post no encontrado" }, { status: 404 });
+    }
+
+    if (existing.user_id !== userData.user.id) {
+      return NextResponse.json({ error: "No puedes borrar posts de otros usuarios" }, { status: 403 });
+    }
+
+    // Borrar comentarios asociados primero
+    await supabaseAdmin.from("comments").delete().eq("post_id", postId);
+
+    // Borrar likes asociados
+    await supabaseAdmin.from("post_likes").delete().eq("post_id", postId);
+
+    // Borrar el post
+    const { error: delErr } = await supabaseAdmin
+      .from("posts")
+      .delete()
+      .eq("id", postId);
+
+    if (delErr) {
+      console.error("Error deleting post:", delErr);
+      return NextResponse.json({ error: "Error borrando post" }, { status: 500 });
+    }
+
+    return NextResponse.json({ deleted: true }, { status: 200 });
+  } catch (err) {
+    console.error("Error inesperado en DELETE /api/posts:", err);
+    return NextResponse.json({ error: "Unexpected error" }, { status: 500 });
+  }
+}
