@@ -16,9 +16,11 @@ type Profile = {
   profession: string | null;
   location: string | null;
   website: string | null;
-  instagram: string | null;
-  linkedin: string | null;
-  twitter: string | null;
+  instagram_url: string | null;
+  linkedin_url: string | null;
+  twitter_url: string | null;
+  tiktok_url: string | null;
+  youtube_url: string | null;
 };
 
 type UserScore = {
@@ -47,7 +49,8 @@ export default function ProfilePage() {
   const [editing, setEditing] = useState(false);
   const [editForm, setEditForm] = useState({
     full_name: "", bio: "", profession: "", location: "",
-    website: "", instagram: "", linkedin: "", twitter: "",
+    website: "", instagram_url: "", linkedin_url: "", twitter_url: "",
+    tiktok_url: "", youtube_url: "",
   });
   const [saving, setSaving] = useState(false);
 
@@ -73,7 +76,7 @@ export default function ProfilePage() {
         // Perfil
         const { data: profileData } = await supabaseBrowser
           .from("profiles")
-          .select("id, full_name, bio, avatar_url, profession, location, website, instagram, linkedin, twitter")
+          .select("id, full_name, bio, avatar_url, profession, location, website, instagram_url, linkedin_url, twitter_url, tiktok_url, youtube_url")
           .eq("id", user.id)
           .single();
 
@@ -269,9 +272,11 @@ export default function ProfilePage() {
                         profession: profile?.profession ?? "",
                         location: profile?.location ?? "",
                         website: profile?.website ?? "",
-                        instagram: profile?.instagram ?? "",
-                        linkedin: profile?.linkedin ?? "",
-                        twitter: profile?.twitter ?? "",
+                        instagram_url: profile?.instagram_url ?? "",
+                        linkedin_url: profile?.linkedin_url ?? "",
+                        twitter_url: profile?.twitter_url ?? "",
+                        tiktok_url: profile?.tiktok_url ?? "",
+                        youtube_url: profile?.youtube_url ?? "",
                       });
                     }
                     setEditing(!editing);
@@ -294,19 +299,29 @@ export default function ProfilePage() {
                     {profile.website.replace(/^https?:\/\//, "")}
                   </a>
                 )}
-                {profile?.instagram && (
-                  <a href={`https://instagram.com/${profile.instagram.replace("@", "")}`} target="_blank" rel="noopener noreferrer" className="hover:text-emerald-400 transition-colors">
-                    @{profile.instagram.replace("@", "")}
+                {profile?.instagram_url && (
+                  <a href={profile.instagram_url.startsWith("http") ? profile.instagram_url : `https://instagram.com/${profile.instagram_url.replace("@", "")}`} target="_blank" rel="noopener noreferrer" className="hover:text-emerald-400 transition-colors">
+                    Instagram
                   </a>
                 )}
-                {profile?.linkedin && (
-                  <a href={profile.linkedin.startsWith("http") ? profile.linkedin : `https://linkedin.com/in/${profile.linkedin}`} target="_blank" rel="noopener noreferrer" className="hover:text-emerald-400 transition-colors">
+                {profile?.linkedin_url && (
+                  <a href={profile.linkedin_url.startsWith("http") ? profile.linkedin_url : `https://linkedin.com/in/${profile.linkedin_url}`} target="_blank" rel="noopener noreferrer" className="hover:text-emerald-400 transition-colors">
                     LinkedIn
                   </a>
                 )}
-                {profile?.twitter && (
-                  <a href={`https://x.com/${profile.twitter.replace("@", "")}`} target="_blank" rel="noopener noreferrer" className="hover:text-emerald-400 transition-colors">
-                    @{profile.twitter.replace("@", "")}
+                {profile?.twitter_url && (
+                  <a href={profile.twitter_url.startsWith("http") ? profile.twitter_url : `https://x.com/${profile.twitter_url.replace("@", "")}`} target="_blank" rel="noopener noreferrer" className="hover:text-emerald-400 transition-colors">
+                    Twitter/X
+                  </a>
+                )}
+                {profile?.tiktok_url && (
+                  <a href={profile.tiktok_url.startsWith("http") ? profile.tiktok_url : `https://tiktok.com/@${profile.tiktok_url.replace("@", "")}`} target="_blank" rel="noopener noreferrer" className="hover:text-emerald-400 transition-colors">
+                    TikTok
+                  </a>
+                )}
+                {profile?.youtube_url && (
+                  <a href={profile.youtube_url.startsWith("http") ? profile.youtube_url : `https://youtube.com/${profile.youtube_url}`} target="_blank" rel="noopener noreferrer" className="hover:text-emerald-400 transition-colors">
+                    YouTube
                   </a>
                 )}
               </div>
@@ -346,15 +361,23 @@ export default function ProfilePage() {
                 </div>
                 <div>
                   <label className="text-[11px] text-neutral-500 mb-1 block">Instagram</label>
-                  <input className="w-full rounded-lg bg-black border border-neutral-700 px-3 py-1.5 text-sm text-white focus:outline-none focus:ring-1 focus:ring-emerald-500" value={editForm.instagram} onChange={(e) => setEditForm((f) => ({ ...f, instagram: e.target.value }))} placeholder="@usuario" />
+                  <input className="w-full rounded-lg bg-black border border-neutral-700 px-3 py-1.5 text-sm text-white focus:outline-none focus:ring-1 focus:ring-emerald-500" value={editForm.instagram_url} onChange={(e) => setEditForm((f) => ({ ...f, instagram_url: e.target.value }))} placeholder="https://instagram.com/usuario" />
                 </div>
                 <div>
                   <label className="text-[11px] text-neutral-500 mb-1 block">LinkedIn</label>
-                  <input className="w-full rounded-lg bg-black border border-neutral-700 px-3 py-1.5 text-sm text-white focus:outline-none focus:ring-1 focus:ring-emerald-500" value={editForm.linkedin} onChange={(e) => setEditForm((f) => ({ ...f, linkedin: e.target.value }))} placeholder="linkedin.com/in/usuario" />
+                  <input className="w-full rounded-lg bg-black border border-neutral-700 px-3 py-1.5 text-sm text-white focus:outline-none focus:ring-1 focus:ring-emerald-500" value={editForm.linkedin_url} onChange={(e) => setEditForm((f) => ({ ...f, linkedin_url: e.target.value }))} placeholder="https://linkedin.com/in/usuario" />
                 </div>
                 <div>
                   <label className="text-[11px] text-neutral-500 mb-1 block">Twitter / X</label>
-                  <input className="w-full rounded-lg bg-black border border-neutral-700 px-3 py-1.5 text-sm text-white focus:outline-none focus:ring-1 focus:ring-emerald-500" value={editForm.twitter} onChange={(e) => setEditForm((f) => ({ ...f, twitter: e.target.value }))} placeholder="@usuario" />
+                  <input className="w-full rounded-lg bg-black border border-neutral-700 px-3 py-1.5 text-sm text-white focus:outline-none focus:ring-1 focus:ring-emerald-500" value={editForm.twitter_url} onChange={(e) => setEditForm((f) => ({ ...f, twitter_url: e.target.value }))} placeholder="https://x.com/usuario" />
+                </div>
+                <div>
+                  <label className="text-[11px] text-neutral-500 mb-1 block">TikTok</label>
+                  <input className="w-full rounded-lg bg-black border border-neutral-700 px-3 py-1.5 text-sm text-white focus:outline-none focus:ring-1 focus:ring-emerald-500" value={editForm.tiktok_url} onChange={(e) => setEditForm((f) => ({ ...f, tiktok_url: e.target.value }))} placeholder="https://tiktok.com/@usuario" />
+                </div>
+                <div>
+                  <label className="text-[11px] text-neutral-500 mb-1 block">YouTube</label>
+                  <input className="w-full rounded-lg bg-black border border-neutral-700 px-3 py-1.5 text-sm text-white focus:outline-none focus:ring-1 focus:ring-emerald-500" value={editForm.youtube_url} onChange={(e) => setEditForm((f) => ({ ...f, youtube_url: e.target.value }))} placeholder="https://youtube.com/@canal" />
                 </div>
               </div>
               <div>
@@ -368,18 +391,21 @@ export default function ProfilePage() {
                   if (!currentUser) return;
                   setSaving(true);
                   try {
-                    const { error } = await supabaseBrowser.from("profiles").update({
+                    const updates = {
                       full_name: editForm.full_name || null,
                       bio: editForm.bio || null,
                       profession: editForm.profession || null,
                       location: editForm.location || null,
                       website: editForm.website || null,
-                      instagram: editForm.instagram || null,
-                      linkedin: editForm.linkedin || null,
-                      twitter: editForm.twitter || null,
-                    }).eq("id", currentUser.id);
+                      instagram_url: editForm.instagram_url || null,
+                      linkedin_url: editForm.linkedin_url || null,
+                      twitter_url: editForm.twitter_url || null,
+                      tiktok_url: editForm.tiktok_url || null,
+                      youtube_url: editForm.youtube_url || null,
+                    };
+                    const { error } = await supabaseBrowser.from("profiles").update(updates).eq("id", currentUser.id);
                     if (!error) {
-                      setProfile((prev) => prev ? { ...prev, ...editForm, full_name: editForm.full_name || null, bio: editForm.bio || null, profession: editForm.profession || null, location: editForm.location || null, website: editForm.website || null, instagram: editForm.instagram || null, linkedin: editForm.linkedin || null, twitter: editForm.twitter || null } : prev);
+                      setProfile((prev) => prev ? { ...prev, ...updates } : prev);
                       setEditing(false);
                     }
                   } catch (err) {

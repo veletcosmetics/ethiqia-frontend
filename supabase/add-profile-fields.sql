@@ -1,37 +1,23 @@
 -- ============================================================
--- Ethiqia: Añadir campos extra a la tabla profiles
+-- Ethiqia: Ajustar campos de perfil en tabla profiles
 -- Ejecutar en Supabase SQL Editor
 -- ============================================================
 
--- Nuevas columnas (IF NOT EXISTS evita errores si ya existen)
+-- 1) Añadir twitter_url si no existe (las demas _url ya existen)
 DO $$
 BEGIN
-  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'profiles' AND column_name = 'profession') THEN
-    ALTER TABLE public.profiles ADD COLUMN profession text;
-  END IF;
-
-  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'profiles' AND column_name = 'location') THEN
-    ALTER TABLE public.profiles ADD COLUMN location text;
-  END IF;
-
-  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'profiles' AND column_name = 'website') THEN
-    ALTER TABLE public.profiles ADD COLUMN website text;
-  END IF;
-
-  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'profiles' AND column_name = 'instagram') THEN
-    ALTER TABLE public.profiles ADD COLUMN instagram text;
-  END IF;
-
-  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'profiles' AND column_name = 'linkedin') THEN
-    ALTER TABLE public.profiles ADD COLUMN linkedin text;
-  END IF;
-
-  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'profiles' AND column_name = 'twitter') THEN
-    ALTER TABLE public.profiles ADD COLUMN twitter text;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'profiles' AND column_name = 'twitter_url') THEN
+    ALTER TABLE public.profiles ADD COLUMN twitter_url text;
   END IF;
 END $$;
 
--- Verificacion
+-- 2) Eliminar columnas duplicadas (instagram, linkedin, twitter)
+-- que se crearon por error. Las correctas son instagram_url, linkedin_url, twitter_url.
+ALTER TABLE public.profiles DROP COLUMN IF EXISTS instagram;
+ALTER TABLE public.profiles DROP COLUMN IF EXISTS linkedin;
+ALTER TABLE public.profiles DROP COLUMN IF EXISTS twitter;
+
+-- 3) Verificacion
 SELECT column_name, data_type
 FROM information_schema.columns
 WHERE table_name = 'profiles'
