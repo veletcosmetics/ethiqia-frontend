@@ -10,7 +10,7 @@ type Comment = {
   id: string;
   post_id: string;
   user_id: string;
-  text: string;
+  content: string;
   created_at: string;
   profiles?: { full_name: string | null; avatar_url: string | null } | null;
 };
@@ -195,7 +195,7 @@ export default function PostDetailPage() {
                         </span>
                         <span className="text-[10px] text-neutral-600">{formatDate(c.created_at)}</span>
                       </div>
-                      <p className="text-sm text-neutral-300 whitespace-pre-line mt-0.5">{c.text}</p>
+                      <p className="text-sm text-neutral-300 whitespace-pre-line mt-0.5">{c.content}</p>
                     </div>
                   </li>
                 ))}

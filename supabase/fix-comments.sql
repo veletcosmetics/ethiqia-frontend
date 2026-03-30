@@ -9,7 +9,7 @@ CREATE TABLE IF NOT EXISTS public.comments (
   id         uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   post_id    uuid NOT NULL REFERENCES public.posts(id) ON DELETE CASCADE,
   user_id    uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
-  text       text NOT NULL CHECK (char_length(text) > 0 AND char_length(text) <= 1000),
+  content    text NOT NULL CHECK (char_length(content) > 0 AND char_length(content) <= 1000),
   created_at timestamptz NOT NULL DEFAULT now()
 );
 

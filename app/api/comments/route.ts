@@ -33,7 +33,7 @@ export async function GET(req: NextRequest) {
 
     const { data, error } = await supabaseAdmin
       .from("comments")
-      .select("id, post_id, user_id, text, created_at, profiles(full_name, avatar_url)")
+      .select("id, post_id, user_id, content, created_at, profiles(full_name, avatar_url)")
       .eq("post_id", postId)
       .order("created_at", { ascending: true })
       .limit(100);
@@ -92,9 +92,9 @@ export async function POST(req: NextRequest) {
       .insert({
         post_id: postId,
         user_id: userId,
-        text: cleanText,
+        content: cleanText,
       })
-      .select("id, post_id, user_id, text, created_at")
+      .select("id, post_id, user_id, content, created_at")
       .single();
 
     if (insertErr) {
