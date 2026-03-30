@@ -3,6 +3,8 @@
 
 import React, { useEffect, useState } from "react";
 import Image from "next/image";
+import Link from "next/link";
+import PostCard, { Post } from "@/components/PostCard";
 import { supabaseBrowser } from "@/lib/supabaseBrowserClient";
 import type { User } from "@supabase/supabase-js";
 
@@ -21,8 +23,9 @@ type UserScore = {
   total_score: number;
 };
 
-type PostCount = {
-  count: number;
+type FollowStats = {
+  followers: number;
+  following: number;
 };
 
 export default function ProfilePage() {
@@ -30,6 +33,9 @@ export default function ProfilePage() {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [score, setScore] = useState<UserScore | null>(null);
   const [postCount, setPostCount] = useState<number>(0);
+  const [myPosts, setMyPosts] = useState<Post[]>([]);
+  const [loadingPosts, setLoadingPosts] = useState(false);
+  const [followStats, setFollowStats] = useState<FollowStats>({ followers: 0, following: 0 });
   const [loading, setLoading] = useState(true);
   const [avatarUploading, setAvatarUploading] = useState(false);
 
@@ -97,7 +103,58 @@ export default function ProfilePage() {
     loadData();
   }, []);
 
-  // 2) Subir y guardar avatar
+  // 2) Cargar posts propios y follow stats
+  useEffect(() => {
+    if (!currentUser) return;
+    const loadPosts = async () => {
+      setLoadingPosts(true);
+      try {
+        const { data: session } = await supabaseBrowser.auth.getSession();
+        const token = session.session?.access_token;
+        if (!token) return;
+
+        const res = await fetch("/api/posts?mine=1", {
+          headers: { Authorization: `Bearer ${token}` },
+          cache: "no-store",
+        });
+        if (res.ok) {
+          const json = await res.json();
+          setMyPosts((json.posts ?? []) as Post[]);
+        }
+      } catch (e) {
+        console.error("Error cargando posts propios:", e);
+      } finally {
+        setLoadingPosts(false);
+      }
+    };
+
+    const loadFollowStats = async () => {
+      try {
+        const { data: session } = await supabaseBrowser.auth.getSession();
+        const token = session.session?.access_token;
+        if (!token) return;
+
+        const res = await fetch(`/api/follow-stats?userId=${currentUser.id}`, {
+          headers: { Authorization: `Bearer ${token}` },
+          cache: "no-store",
+        });
+        if (res.ok) {
+          const json = await res.json();
+          setFollowStats({
+            followers: json.followers ?? 0,
+            following: json.following ?? 0,
+          });
+        }
+      } catch (e) {
+        console.error("Error cargando follow stats:", e);
+      }
+    };
+
+    loadPosts();
+    loadFollowStats();
+  }, [currentUser]);
+
+  // 3) Subir y guardar avatar
   const handleAvatarChange = async (
     e: React.ChangeEvent<HTMLInputElement>
   ) => {
@@ -211,9 +268,9 @@ export default function ProfilePage() {
               </p>
             )}
             <div className="flex gap-4 text-xs text-neutral-400 mt-2">
-              <span>{postCount} publicaciones</span>
-              <span>0 seguidores</span>
-              <span>0 siguiendo</span>
+              <span><span className="text-white font-semibold">{postCount}</span> publicaciones</span>
+              <span><span className="text-white font-semibold">{followStats.followers}</span> seguidores</span>
+              <span><span className="text-white font-semibold">{followStats.following}</span> siguiendo</span>
             </div>
           </div>
 
@@ -335,7 +392,51 @@ export default function ProfilePage() {
           </p>
         </section>
 
-        {/* Tus publicaciones debajo – aquí tú ya tienes el listado de posts */}
+        {/* Publicaciones del usuario */}
+        <section className="space-y-4">
+          <div className="flex items-center justify-between">
+            <h2 className="text-lg font-semibold">Mis publicaciones</h2>
+            <Link
+              href="/feed"
+              className="text-xs text-emerald-400 hover:text-emerald-300 transition-colors"
+            >
+              Ir al feed →
+            </Link>
+          </div>
+
+          {loadingPosts && (
+            <div className="flex items-center justify-center py-8">
+              <div className="flex items-center gap-3 text-neutral-400">
+                <div className="w-5 h-5 border-2 border-neutral-600 border-t-emerald-500 rounded-full animate-spin" />
+                <span className="text-sm">Cargando publicaciones...</span>
+              </div>
+            </div>
+          )}
+
+          {!loadingPosts && myPosts.length === 0 && (
+            <div className="text-center py-10 rounded-2xl border border-neutral-800 bg-neutral-900/50">
+              <p className="text-sm text-neutral-400">Aun no tienes publicaciones.</p>
+              <Link
+                href="/feed"
+                className="inline-flex items-center justify-center mt-3 rounded-full bg-emerald-500 hover:bg-emerald-600 px-5 py-1.5 text-xs font-semibold transition-colors"
+              >
+                Crear primera publicacion
+              </Link>
+            </div>
+          )}
+
+          <div className="space-y-4">
+            {myPosts.map((post) => (
+              <PostCard
+                key={post.id}
+                post={post}
+                authorName={profile?.full_name ?? name}
+                authorId={currentUser?.id}
+                authorAvatarUrl={profile?.avatar_url ?? undefined}
+              />
+            ))}
+          </div>
+        </section>
       </section>
     </main>
   );

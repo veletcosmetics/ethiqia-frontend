@@ -35,7 +35,12 @@ export default function Navbar() {
             Mi perfil
           </Link>
 
-          {/* Más adelante aquí podemos poner: Empresas, Score, etc. */}
+          <Link
+            href="/company"
+            className="text-zinc-300 hover:text-white transition-colors"
+          >
+            Empresas
+          </Link>
         </div>
       </div>
     </nav>

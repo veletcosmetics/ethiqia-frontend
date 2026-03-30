@@ -1,294 +1,353 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
-import Image from "next/image";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { supabaseBrowser } from "@/lib/supabaseBrowserClient";
 
 export type Post = {
   id: string;
   user_id: string;
-  image_url: string | null;
-  caption: string | null;
-  created_at: string;
-  ai_probability: number | null;
-  global_score: number | null;
-  text: string | null;
-  blocked: boolean | null;
-  reason: string | null;
+
+  image_url?: string | null;
+  caption?: string | null;
+  created_at?: string | null;
+
+  ai_probability?: number | null; // 0..1
+  global_score?: number | null;
+
+  likes_count?: number | null;
+  comments_count?: number | null;
+
+  blocked?: boolean | null;
+  reason?: string | null;
+
+  liked_by_me?: boolean | null;
+
+  [k: string]: any;
 };
 
 type Props = {
   post: Post;
-  authorName: string;
+  authorName?: string;
+  authorAvatarUrl?: string;
+  authorId?: string;
 };
 
-type Comment = {
-  id: string;
-  post_id: string;
-  user_id: string | null;
-  content: string;
-  created_at: string;
-};
-
-const supabase = supabaseBrowser;
-
-export default function PostCard({ post, authorName }: Props) {
-  const [comments, setComments] = useState<Comment[]>([]);
-  const [showComments, setShowComments] = useState(false);
-  const [newComment, setNewComment] = useState("");
-  const [loadingComments, setLoadingComments] = useState(false);
-  const [sendingComment, setSendingComment] = useState(false);
-
-  // ---------- Utilidades ----------
-
-  const createdAt = post.created_at ? new Date(post.created_at) : new Date();
-
-  const formattedDate = createdAt.toLocaleString("es-ES", {
+function formatDate(iso?: string | null) {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  const now = new Date();
+  const diff = now.getTime() - d.getTime();
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return "Ahora";
+  if (mins < 60) return `Hace ${mins}m`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `Hace ${hours}h`;
+  const days = Math.floor(hours / 24);
+  if (days < 7) return `Hace ${days}d`;
+  return d.toLocaleDateString("es-ES", {
     day: "2-digit",
-    month: "2-digit",
-    year: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
+    month: "short",
+    year: d.getFullYear() !== now.getFullYear() ? "numeric" : undefined,
   });
+}
 
-  const aiProb = post.ai_probability ?? 0;
-  const score = post.global_score ?? 0;
+function clamp01(n: number) {
+  if (!Number.isFinite(n)) return 0;
+  if (n < 0) return 0;
+  if (n > 1) return 1;
+  return n;
+}
 
-  let aiLabel = "Prob. IA: baja";
-  let aiColor = "bg-emerald-600";
+function HeartIcon({ className = "", filled = false }: { className?: string; filled?: boolean }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill={filled ? "currentColor" : "none"} aria-hidden="true">
+      <path
+        d="M12 20s-7-4.6-9.2-8.5C.7 7.7 3.1 4.8 6.4 4.6c1.6-.1 3.1.6 4.1 1.8 1-1.2 2.5-1.9 4.1-1.8 3.3.2 5.7 3.1 3.6 6.9C19 15.4 12 20 12 20z"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
 
-  if (aiProb >= 70) {
-    aiLabel = "Prob. IA: muy alta";
-    aiColor = "bg-red-600";
-  } else if (aiProb >= 40) {
-    aiLabel = "Prob. IA: media";
-    aiColor = "bg-yellow-500";
-  }
+function ChatIcon({ className = "" }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path
+        d="M20 14a6 6 0 01-6 6H8l-4 3V8a6 6 0 016-6h4a6 6 0 016 6v6z"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
 
-  // ---------- Comentarios ----------
+function ShareIcon({ className = "" }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path
+        d="M12 3l4 4m-4-4L8 7m4-4v14"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M5 12v7a2 2 0 002 2h10a2 2 0 002-2v-7"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
 
-  const fetchComments = async () => {
-    setLoadingComments(true);
+function BookmarkIcon({ className = "" }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path
+        d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+export default function PostCard({ post, authorName, authorAvatarUrl, authorId }: Props) {
+  const displayName = useMemo(() => {
+    const s = (authorName || "").trim();
+    return s || "Usuario Ethiqia";
+  }, [authorName]);
+
+  const authorLink = useMemo(() => {
+    const id = (authorId || "").trim();
+    return id ? `/u/${id}` : null;
+  }, [authorId]);
+
+  const created = formatDate(post.created_at);
+
+  const aiProbPct = useMemo(() => {
+    const v = typeof post.ai_probability === "number" ? post.ai_probability : null;
+    if (v === null) return null;
+    return Math.round(clamp01(v) * 100);
+  }, [post.ai_probability]);
+
+  const imageUrl =
+    (post.image_url as string | null | undefined) ??
+    ((post as any).imageUrl as string | null | undefined) ??
+    null;
+
+  const initialLikes = Number(post.likes_count ?? (post as any).likes ?? 0) || 0;
+  const initialComments = Number(post.comments_count ?? (post as any).comments ?? 0) || 0;
+
+  const [liked, setLiked] = useState(Boolean(post.liked_by_me));
+  const [likesUi, setLikesUi] = useState(initialLikes);
+  const [copied, setCopied] = useState(false);
+
+  // Sincronizar si la prop cambia (e.g. al recargar datos)
+  useEffect(() => {
+    setLiked(Boolean(post.liked_by_me));
+  }, [post.liked_by_me]);
+
+  const getAccessToken = useCallback(async (): Promise<string | null> => {
     try {
-      const { data, error } = await supabase
-        .from("comments")
-        .select("id, post_id, user_id, content, created_at")
-        .eq("post_id", post.id)
-        .order("created_at", { ascending: true });
-
-      if (error) {
-        console.error("Error cargando comentarios", error);
-        return;
-      }
-
-      setComments((data ?? []) as Comment[]);
-    } finally {
-      setLoadingComments(false);
+      const { data } = await supabaseBrowser.auth.getSession();
+      return data.session?.access_token ?? null;
+    } catch {
+      return null;
     }
-  };
+  }, []);
 
-  const handleToggleComments = async () => {
-    const next = !showComments;
-    setShowComments(next);
+  const toggleLikeUi = async () => {
+    const wasLiked = liked;
+    // Optimista
+    setLiked(!wasLiked);
+    setLikesUi((n) => (!wasLiked ? n + 1 : Math.max(0, n - 1)));
 
-    if (next && comments.length === 0) {
-      await fetchComments();
-    }
-  };
-
-  const handleSendComment = async () => {
-    const content = newComment.trim();
-    if (!content) return;
-
-    setSendingComment(true);
     try {
-      const {
-        data: { user },
-        error: authError,
-      } = await supabase.auth.getUser();
-
-      if (authError) {
-        console.error("Error obteniendo usuario", authError);
-        alert("Error de sesión, vuelve a iniciar sesión.");
-        return;
-      }
-
-      if (!user) {
-        alert("Debes iniciar sesión para comentar.");
-        return;
-      }
-
-      const { data, error } = await supabase
-        .from("comments")
-        .insert({
-          post_id: post.id,
-          user_id: user.id,
-          content,
-        })
-        .select("id, post_id, user_id, content, created_at")
-        .single();
-
-      if (error) {
-        console.error("Error creando comentario", error);
-        alert("No se ha podido publicar el comentario.");
-        return;
-      }
-
-      if (data) {
-        setComments((prev) => [...prev, data as Comment]);
-        setNewComment("");
-      }
-    } finally {
-      setSendingComment(false);
+      const token = await getAccessToken();
+      await fetch("/api/likes", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({
+          postId: post.id,
+          action: wasLiked ? "unlike" : "like",
+        }),
+      });
+    } catch {
+      // Revertir si falla
+      setLiked(wasLiked);
+      setLikesUi((n) => (wasLiked ? n + 1 : Math.max(0, n - 1)));
     }
   };
 
-  // ---------- Render ----------
+  const postUrl = typeof window !== "undefined" ? `${window.location.origin}/p/${post.id}` : "";
+
+  const handleShare = async () => {
+    try {
+      const url = postUrl || `${window.location.origin}/feed`;
+      await navigator.clipboard.writeText(url);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      // Fallback: prompt
+      try {
+        window.prompt("Copia este enlace:", postUrl);
+      } catch { /* no-op */ }
+    }
+  };
 
   return (
-    <article className="bg-neutral-900 rounded-2xl p-4 sm:p-5 mb-4 border border-neutral-800">
-      {/* Cabecera */}
-      <header className="flex justify-between items-start gap-3">
-        <div className="flex items-center gap-3">
-          <div className="h-10 w-10 rounded-full bg-emerald-600 flex items-center justify-center text-sm font-semibold">
-            {authorName?.[0]?.toUpperCase() ?? "U"}
+    <article className="group rounded-2xl border border-neutral-800/60 bg-gradient-to-b from-neutral-900 to-neutral-950 overflow-hidden transition-all hover:border-neutral-700/60 hover:shadow-lg hover:shadow-emerald-500/5">
+      {/* Header autor */}
+      <div className="px-5 py-3.5 flex items-center justify-between gap-3">
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="h-10 w-10 rounded-full overflow-hidden bg-gradient-to-br from-emerald-600 to-emerald-800 border-2 border-neutral-700/50 flex items-center justify-center shrink-0">
+            {authorAvatarUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={authorAvatarUrl} alt={displayName} className="h-full w-full object-cover" />
+            ) : (
+              <span className="text-sm font-bold text-white">
+                {(displayName?.[0] || "U").toUpperCase()}
+              </span>
+            )}
           </div>
-          <div>
-            <div className="text-sm font-semibold">{authorName}</div>
-            <div className="text-xs text-neutral-400">{formattedDate}</div>
+
+          <div className="min-w-0">
+            {authorLink ? (
+              <Link href={authorLink} className="text-sm font-semibold truncate block hover:text-emerald-400 transition-colors">
+                {displayName}
+              </Link>
+            ) : (
+              <div className="text-sm font-semibold truncate">{displayName}</div>
+            )}
+            {created ? <div className="text-[11px] text-neutral-500 mt-0.5">{created}</div> : null}
           </div>
         </div>
 
-        <div className="text-right">
-          <div className="text-[10px] uppercase tracking-wide text-neutral-400">
-            Ethiqia Score
-          </div>
-          <div className="text-emerald-400 text-sm font-semibold">
-            {score}/100
-          </div>
+        <div className="flex items-center gap-2 shrink-0">
+          {aiProbPct !== null && aiProbPct > 0 ? (
+            <span className="inline-flex items-center gap-1 rounded-full bg-neutral-800/80 border border-neutral-700/50 px-2.5 py-1 text-[10px] text-neutral-400">
+              <span className="inline-block w-1.5 h-1.5 rounded-full bg-amber-500/80" />
+              IA {aiProbPct}%
+            </span>
+          ) : null}
         </div>
-      </header>
+      </div>
 
       {/* Imagen */}
-      {post.image_url && (
-        <div className="mt-4 relative overflow-hidden rounded-xl border border-neutral-800 bg-black">
-          <Image
-            src={post.image_url}
-            alt={post.caption ?? "Publicación"}
-            width={1200}
-            height={800}
-            className="w-full h-auto object-cover"
+      {imageUrl ? (
+        <div className="relative bg-black/50">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={imageUrl}
+            alt={post.caption || "Publicacion Ethiqia"}
+            className="w-full max-h-[600px] object-cover"
+            loading="lazy"
           />
         </div>
-      )}
+      ) : null}
 
-      {/* Texto */}
-      {post.caption && (
-        <p className="mt-3 text-sm text-neutral-100 whitespace-pre-line">
-          {post.caption}
-        </p>
-      )}
-
-      {/* Badges IA y estado */}
-      <div className="mt-3 flex flex-wrap gap-2 items-center">
-        <span
-          className={`inline-flex items-center rounded-full px-3 py-1 text-[11px] font-medium ${aiColor} text-white`}
-        >
-          {aiLabel} · {Math.round(aiProb)}%
-        </span>
-
-        {post.blocked && (
-          <span className="inline-flex items-center rounded-full px-3 py-1 text-[11px] font-medium bg-red-700/70 text-red-50">
-            Publicación bloqueada
-          </span>
-        )}
-      </div>
-
-      {/* Botones de interacción */}
-      <div className="mt-4 flex items-center gap-4 text-xs text-neutral-400">
-        <button
-          type="button"
-          onClick={handleToggleComments}
-          className="flex items-center gap-1 hover:text-emerald-400 transition-colors"
-        >
-          <span>💬</span>
-          <span>
-            Comentarios{comments.length > 0 ? ` (${comments.length})` : ""}
-          </span>
-        </button>
-      </div>
-
-      {/* Sección de comentarios */}
-      {showComments && (
-        <div className="mt-4 border-t border-neutral-800 pt-3 space-y-3">
-          {loadingComments ? (
-            <p className="text-xs text-neutral-400">
-              Cargando comentarios...
-            </p>
-          ) : comments.length === 0 ? (
-            <p className="text-xs text-neutral-500">
-              Todavía no hay comentarios. Sé el primero en comentar.
-            </p>
-          ) : (
-            <ul className="space-y-2">
-              {comments.map((comment) => {
-                const created = comment.created_at
-                  ? new Date(comment.created_at)
-                  : null;
-                const createdLabel = created
-                  ? created.toLocaleString("es-ES", {
-                      day: "2-digit",
-                      month: "2-digit",
-                      year: "2-digit",
-                      hour: "2-digit",
-                      minute: "2-digit",
-                    })
-                  : "";
-
-                return (
-                  <li
-                    key={comment.id}
-                    className="text-xs bg-neutral-950/60 border border-neutral-800 rounded-lg px-3 py-2"
-                  >
-                    <div className="flex justify-between items-baseline gap-3">
-                      <span className="font-medium text-neutral-100">
-                        Usuario Ethiqia
-                      </span>
-                      {createdLabel && (
-                        <span className="text-[10px] text-neutral-500">
-                          {createdLabel}
-                        </span>
-                      )}
-                    </div>
-                    <p className="mt-1 text-neutral-100">
-                      {comment.content}
-                    </p>
-                  </li>
-                );
-              })}
-            </ul>
-          )}
-
-          {/* Formulario nuevo comentario */}
-          <div className="flex items-center gap-2">
-            <input
-              type="text"
-              value={newComment}
-              onChange={(e) => setNewComment(e.target.value)}
-              placeholder="Escribe un comentario auténtico…"
-              className="flex-1 rounded-full bg-black border border-neutral-700 px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-500"
-            />
+      {/* Actions */}
+      <div className="px-5 pt-3 pb-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-1">
             <button
               type="button"
-              onClick={handleSendComment}
-              disabled={sendingComment || !newComment.trim()}
-              className="rounded-full bg-emerald-500 hover:bg-emerald-600 px-4 py-2 text-xs font-semibold text-white disabled:opacity-60"
+              onClick={toggleLikeUi}
+              className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition-all ${
+                liked
+                  ? "text-rose-400 bg-rose-500/10 hover:bg-rose-500/20"
+                  : "text-neutral-300 hover:text-rose-400 hover:bg-neutral-800/50"
+              }`}
+              aria-label="Me gusta"
+              title="Me gusta"
             >
-              {sendingComment ? "Enviando…" : "Publicar"}
+              <HeartIcon className="h-5 w-5" filled={liked} />
+              <span>{likesUi}</span>
+            </button>
+
+            <Link
+              href={`/p/${post.id}`}
+              className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold text-neutral-300 hover:text-white hover:bg-neutral-800/50 transition-all"
+              aria-label="Comentar"
+              title="Comentar"
+            >
+              <ChatIcon className="h-5 w-5" />
+              <span>{initialComments}</span>
+            </Link>
+
+            <button
+              type="button"
+              onClick={handleShare}
+              className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition-all ${
+                copied
+                  ? "text-emerald-400 bg-emerald-500/10"
+                  : "text-neutral-300 hover:text-white hover:bg-neutral-800/50"
+              }`}
+              aria-label="Compartir"
+              title="Compartir"
+            >
+              <ShareIcon className="h-5 w-5" />
+              <span className="hidden sm:inline">{copied ? "Copiado!" : "Compartir"}</span>
             </button>
           </div>
+
+          <button
+            type="button"
+            className="text-neutral-400 hover:text-white transition-colors p-1.5 rounded-lg hover:bg-neutral-800/50"
+            aria-label="Guardar"
+            title="Guardar"
+          >
+            <BookmarkIcon className="h-5 w-5" />
+          </button>
         </div>
-      )}
+
+        {/* Caption */}
+        {post.caption ? (
+          <div className="mt-3">
+            <p className="text-sm text-neutral-200 whitespace-pre-line leading-relaxed">
+              {authorLink ? (
+                <Link href={authorLink} className="font-semibold hover:text-emerald-400 mr-1.5 transition-colors">
+                  {displayName}
+                </Link>
+              ) : (
+                <span className="font-semibold mr-1.5">{displayName}</span>
+              )}
+              {post.caption}
+            </p>
+          </div>
+        ) : null}
+
+        {post.blocked ? (
+          <div className="mt-3 text-xs rounded-xl border border-red-900/40 bg-red-500/10 p-3 text-red-200">
+            Contenido marcado como rechazado.
+            {post.reason ? (
+              <div className="text-[11px] text-neutral-300 mt-1">Motivo: {post.reason}</div>
+            ) : null}
+          </div>
+        ) : null}
+
+        {/* Link a comentarios */}
+        {initialComments > 0 ? (
+          <Link
+            href={`/p/${post.id}`}
+            className="block mt-2 text-xs text-neutral-500 hover:text-neutral-300 transition-colors"
+          >
+            Ver los {initialComments} comentarios
+          </Link>
+        ) : null}
+      </div>
     </article>
   );
 }
