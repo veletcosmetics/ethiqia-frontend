@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { moderatePost } from "@/lib/moderatePost";
 
 export const runtime = "nodejs";
 
@@ -86,19 +87,25 @@ export async function POST(req: NextRequest) {
     const cleanText = text.trim().slice(0, 1000);
 
     // Moderacion IA antes de insertar
+    console.log("[comments] Iniciando moderacion para comentario de user:", userId);
+    console.log("[comments] ANTHROPIC_API_KEY presente:", !!process.env.ANTHROPIC_API_KEY);
     try {
-      const { moderatePost } = await import("@/lib/moderatePost");
+      console.log("[comments] Llamando a moderatePost con texto de", cleanText.length, "chars");
       const modResult = await moderatePost({ text: cleanText });
+      console.log("[comments] Resultado moderacion:", JSON.stringify(modResult));
 
       if (!modResult.allowed) {
+        console.log("[comments] Comentario RECHAZADO:", modResult.reason);
         return NextResponse.json(
           { error: "Comentario rechazado por moderacion", reason: modResult.reason },
           { status: 403 }
         );
       }
-    } catch (modErr) {
-      // Si la moderacion falla (sin API key, rate limit, etc.), dejamos pasar
-      console.warn("Comment moderation failed (non-blocking):", modErr);
+      console.log("[comments] Comentario APROBADO por moderacion");
+    } catch (modErr: any) {
+      console.error("[comments] ERROR en moderacion:", modErr?.message ?? modErr);
+      console.error("[comments] Stack:", modErr?.stack);
+      // Si la moderacion falla, dejamos pasar para no bloquear funcionalidad
     }
 
     const { data: comment, error: insertErr } = await supabaseAdmin
