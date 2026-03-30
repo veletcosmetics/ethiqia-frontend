@@ -4,7 +4,7 @@
 import React, { useEffect, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import PostCard, { Post } from "@/components/PostCard";
+import { Post } from "@/components/PostCard";
 import { supabaseBrowser } from "@/lib/supabaseBrowserClient";
 import type { User } from "@supabase/supabase-js";
 
@@ -558,20 +558,56 @@ export default function ProfilePage() {
             </div>
           )}
 
-          <div className="space-y-4">
-            {myPosts.map((post) => (
-              <PostCard
-                key={post.id}
-                post={post}
-                authorName={profile?.full_name ?? name}
-                authorId={currentUser?.id}
-                authorAvatarUrl={profile?.avatar_url ?? undefined}
-                onDelete={(postId) => {
-                  setMyPosts((prev) => prev.filter((p) => p.id !== postId));
-                  setPostCount((c) => Math.max(0, c - 1));
-                }}
-              />
-            ))}
+          <div className="space-y-5">
+            {myPosts.map((post) => {
+              const imgUrl = post.image_url ?? (post as any).imageUrl ?? null;
+              const postDate = post.created_at ? new Date(post.created_at).toLocaleDateString("es-ES", { day: "2-digit", month: "short", year: "numeric" }) : "";
+              return (
+                <article key={post.id} className="rounded-2xl bg-neutral-900 border border-neutral-800/60 shadow-md shadow-black/20 overflow-hidden">
+                  {imgUrl && (
+                    <Link href={`/p/${post.id}`}>
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={imgUrl} alt={post.caption || "Publicacion"} className="w-full object-contain bg-black" loading="lazy" />
+                    </Link>
+                  )}
+                  <div className="p-4">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-[11px] text-neutral-500">{postDate}</span>
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          if (!window.confirm("Seguro que quieres eliminar esta publicacion?")) return;
+                          try {
+                            const { data: s } = await supabaseBrowser.auth.getSession();
+                            const tk = s.session?.access_token;
+                            if (!tk) return;
+                            const res = await fetch("/api/posts", {
+                              method: "DELETE",
+                              headers: { "Content-Type": "application/json", Authorization: `Bearer ${tk}` },
+                              body: JSON.stringify({ postId: post.id }),
+                            });
+                            if (res.ok) {
+                              setMyPosts((prev) => prev.filter((p) => p.id !== post.id));
+                              setPostCount((c) => Math.max(0, c - 1));
+                            }
+                          } catch { /* no-op */ }
+                        }}
+                        className="text-neutral-600 hover:text-red-400 transition-colors p-1 rounded"
+                        title="Eliminar publicacion"
+                      >
+                        <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none"><path d="M3 6h18M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2m3 0v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6h14z" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" /></svg>
+                      </button>
+                    </div>
+                    {post.caption && (
+                      <p className="text-sm text-neutral-200 whitespace-pre-line leading-relaxed">{post.caption}</p>
+                    )}
+                    <Link href={`/p/${post.id}`} className="block mt-2 text-xs text-neutral-500 hover:text-emerald-400 transition-colors">
+                      Ver detalle y comentarios →
+                    </Link>
+                  </div>
+                </article>
+              );
+            })}
           </div>
         </section>
       </section>
