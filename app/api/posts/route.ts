@@ -1,5 +1,5 @@
-import { NextResponse } from "next/server";
-import { supabaseServerClient } from "@/lib/supabaseServerClient";
+import { NextRequest, NextResponse } from "next/server";
+import { createClient } from "@supabase/supabase-js";
 
 export const runtime = "nodejs";
 
@@ -96,8 +96,6 @@ export async function GET(req: NextRequest) {
     console.error("Error inesperado en GET /api/posts:", err);
     return NextResponse.json({ error: "Unexpected error" }, { status: 500 });
   }
-
-  return NextResponse.json({ posts: data ?? [] });
 }
 
 // POST /api/posts
@@ -124,8 +122,8 @@ export async function POST(req: NextRequest) {
     const {
       imageUrl,
       caption,
-      ai_probability: aiProbability,
-      global_score: globalScore,
+      aiProbability,
+      globalScore,
       text,
       blocked,
       reason,
@@ -255,27 +253,4 @@ export async function POST(req: NextRequest) {
     console.error("Error inesperado en POST /api/posts:", err);
     return NextResponse.json({ error: "Unexpected error" }, { status: 500 });
   }
-
-  // 2) Sumar puntos de transparencia (ej: 3 puntos por post auténtico)
-  try {
-    const value = blocked ? 0 : 3; // si el post se bloquea, no sumamos nada
-
-    if (value > 0) {
-      const { error: scoreError } = await supabase.from("scores").insert({
-        user_id: userId,
-        source: "TRANSPARENCY_POST",
-        value,
-        meta: { post_id: post.id },
-      });
-
-      if (scoreError) {
-        console.error("Error insertando score:", scoreError);
-        // NO rompemos la creación del post, solo registramos el fallo
-      }
-    }
-  } catch (e) {
-    console.error("Error inesperado insertando score:", e);
-  }
-
-  return NextResponse.json({ post });
 }
