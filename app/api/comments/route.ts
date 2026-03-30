@@ -4,10 +4,16 @@ import { createClient } from "@supabase/supabase-js";
 export const runtime = "nodejs";
 
 function getSupabaseAdmin() {
-  return createClient(
-    process.env.SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-  );
+  const url = process.env.SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+  if (!url || !key) {
+    throw new Error(
+      `Supabase config missing: url=${url ? "OK" : "MISSING"}, serviceRoleKey=${key ? "OK" : "MISSING"}`
+    );
+  }
+
+  return createClient(url, key);
 }
 
 function getBearerToken(req: NextRequest): string | null {
@@ -18,8 +24,8 @@ function getBearerToken(req: NextRequest): string | null {
 
 // GET /api/comments?postId=xxx
 export async function GET(req: NextRequest) {
-  const supabaseAdmin = getSupabaseAdmin();
   try {
+    const supabaseAdmin = getSupabaseAdmin();
     const postId = new URL(req.url).searchParams.get("postId");
     if (!postId) {
       return NextResponse.json({ error: "Missing postId" }, { status: 400 });
@@ -34,20 +40,27 @@ export async function GET(req: NextRequest) {
 
     if (error) {
       console.error("Error loading comments:", error);
-      return NextResponse.json({ error: "Error loading comments" }, { status: 500 });
+      return NextResponse.json(
+        { error: "Error loading comments", details: error.message, code: error.code },
+        { status: 500 }
+      );
     }
 
     return NextResponse.json({ comments: data ?? [] }, { status: 200 });
-  } catch (e) {
+  } catch (e: any) {
     console.error("Unexpected error GET /api/comments:", e);
-    return NextResponse.json({ error: "Unexpected error" }, { status: 500 });
+    return NextResponse.json(
+      { error: "Unexpected error", details: e?.message ?? String(e) },
+      { status: 500 }
+    );
   }
 }
 
 // POST /api/comments  body: { postId, text }
 export async function POST(req: NextRequest) {
-  const supabaseAdmin = getSupabaseAdmin();
   try {
+    const supabaseAdmin = getSupabaseAdmin();
+
     const token = getBearerToken(req);
     if (!token) {
       return NextResponse.json({ error: "Missing Authorization Bearer token" }, { status: 401 });
@@ -55,7 +68,11 @@ export async function POST(req: NextRequest) {
 
     const { data: userData, error: userErr } = await supabaseAdmin.auth.getUser(token);
     if (userErr || !userData?.user) {
-      return NextResponse.json({ error: "Invalid session" }, { status: 401 });
+      console.error("Auth error:", userErr);
+      return NextResponse.json(
+        { error: "Invalid session", details: userErr?.message },
+        { status: 401 }
+      );
     }
 
     const body = await req.json().catch(() => ({}));
@@ -65,27 +82,47 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "postId y text son obligatorios" }, { status: 400 });
     }
 
+    const userId = userData.user.id;
+    const cleanText = text.trim().slice(0, 1000);
+
+    console.log("Inserting comment:", { post_id: postId, user_id: userId, text_length: cleanText.length });
+
     const { data: comment, error: insertErr } = await supabaseAdmin
       .from("comments")
       .insert({
         post_id: postId,
-        user_id: userData.user.id,
-        text: text.trim().slice(0, 1000),
+        user_id: userId,
+        text: cleanText,
       })
       .select("id, post_id, user_id, text, created_at")
       .single();
 
     if (insertErr) {
-      console.error("Error inserting comment:", insertErr);
-      return NextResponse.json({ error: "Error creating comment" }, { status: 400 });
+      console.error("Error inserting comment:", JSON.stringify(insertErr, null, 2));
+      return NextResponse.json(
+        {
+          error: "Error creating comment",
+          details: insertErr.message,
+          code: insertErr.code,
+          hint: insertErr.hint ?? null,
+        },
+        { status: 400 }
+      );
     }
 
     // Actualizar contador en posts (best-effort)
-    try { await supabaseAdmin.rpc("increment_comments_count", { post_id: postId }); } catch { /* no-op */ }
+    try {
+      await supabaseAdmin.rpc("increment_comments_count", { p_post_id: postId });
+    } catch (rpcErr) {
+      console.warn("increment_comments_count RPC failed (non-blocking):", rpcErr);
+    }
 
     return NextResponse.json({ comment }, { status: 201 });
-  } catch (e) {
+  } catch (e: any) {
     console.error("Unexpected error POST /api/comments:", e);
-    return NextResponse.json({ error: "Unexpected error" }, { status: 500 });
+    return NextResponse.json(
+      { error: "Unexpected error", details: e?.message ?? String(e) },
+      { status: 500 }
+    );
   }
 }
