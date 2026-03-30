@@ -20,8 +20,26 @@ type ProfileMini = {
 
 function computeGlobalScore(aiProbability: any): number {
   const n = typeof aiProbability === "number" ? aiProbability : 0;
-  const probPct = n <= 1 ? n * 100 : n; // 0..1 o 0..100
+  const probPct = n <= 1 ? n * 100 : n;
   return Math.max(0, Math.min(100, Math.round(100 - probPct)));
+}
+
+function PlusIcon({ className = "" }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path d="M12 5v14m-7-7h14" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function ImageIcon({ className = "" }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <rect x="3" y="3" width="18" height="18" rx="3" stroke="currentColor" strokeWidth="1.6" />
+      <circle cx="8.5" cy="8.5" r="1.5" fill="currentColor" />
+      <path d="M21 15l-5-5L5 21" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
 }
 
 export default function FeedPage() {
@@ -37,9 +55,12 @@ export default function FeedPage() {
   const [message, setMessage] = useState<string | null>(null);
   const [messageIsError, setMessageIsError] = useState(false);
   const [lastPoints, setLastPoints] = useState<number | null>(null);
+  const [showForm, setShowForm] = useState(false);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
 
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [currentUserName, setCurrentUserName] = useState<string>("Usuario Ethiqia");
+  const [currentUserAvatar, setCurrentUserAvatar] = useState<string | null>(null);
   const [authChecked, setAuthChecked] = useState(false);
 
   const [profilesMap, setProfilesMap] = useState<Record<string, ProfileMini>>({});
@@ -62,12 +83,13 @@ export default function FeedPage() {
         if (user) {
           const { data: profile, error } = await supabaseBrowser
             .from("profiles")
-            .select("full_name")
+            .select("full_name, avatar_url")
             .eq("id", user.id)
             .maybeSingle();
 
-          if (!error && profile?.full_name) {
-            setCurrentUserName(profile.full_name as string);
+          if (!error && profile) {
+            if (profile.full_name) setCurrentUserName(profile.full_name as string);
+            if (profile.avatar_url) setCurrentUserAvatar(profile.avatar_url as string);
           }
         }
       } catch (e) {
@@ -115,7 +137,7 @@ export default function FeedPage() {
             (profs as ProfileMini[]).forEach((p) => (next[p.id] = p));
             setProfilesMap(next);
           } else if (error) {
-            console.warn("No se han podido cargar perfiles públicos (RLS):", error);
+            console.warn("No se han podido cargar perfiles publicos (RLS):", error);
           }
         }
       } catch (e) {
@@ -131,6 +153,12 @@ export default function FeedPage() {
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0] ?? null;
     setNewPost((prev) => ({ ...prev, file }));
+    if (file) {
+      const url = URL.createObjectURL(file);
+      setPreviewUrl(url);
+    } else {
+      setPreviewUrl(null);
+    }
   };
 
   const handleCaptionChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
@@ -148,7 +176,7 @@ export default function FeedPage() {
     setLastPoints(null);
 
     if (!currentUser) {
-      setMessage("Debes iniciar sesión para publicar.");
+      setMessage("Debes iniciar sesion para publicar.");
       return;
     }
     if (!newPost.file) {
@@ -161,7 +189,7 @@ export default function FeedPage() {
     try {
       const token = await getAccessToken();
       if (!token) {
-        setMessage("Sesión no válida. Vuelve a iniciar sesión.");
+        setMessage("Sesion no valida. Vuelve a iniciar sesion.");
         return;
       }
 
@@ -182,7 +210,7 @@ export default function FeedPage() {
 
       const uploadJson = await uploadRes.json();
       const imageUrl = (uploadJson.url ?? uploadJson.publicUrl) as string | undefined;
-      if (!imageUrl) throw new Error("No se ha recibido la URL pública de la imagen");
+      if (!imageUrl) throw new Error("No se ha recibido la URL publica de la imagen");
 
       // 2) moderate
       const moderationRes = await fetch("/api/moderate-post", {
@@ -197,8 +225,6 @@ export default function FeedPage() {
       }
 
       const moderation = await moderationRes.json();
-      console.log("Respuesta moderación:", moderation);
-
       const aiProbability: number = moderation.aiProbability ?? 0;
       const blocked: boolean = moderation.blocked ?? !moderation.allowed;
       const reason: string | null = moderation.reason ?? null;
@@ -206,7 +232,7 @@ export default function FeedPage() {
       if (blocked) {
         setMessageIsError(true);
         setMessage(
-          `Tu publicación ha sido rechazada por la moderación IA.\n${reason ?? "Contenido no permitido según las normas de Ethiqia."}`
+          `Tu publicacion ha sido rechazada por la moderacion IA.\n${reason ?? "Contenido no permitido segun las normas de Ethiqia."}`
         );
         return;
       }
@@ -238,15 +264,17 @@ export default function FeedPage() {
       const post = saved.post as Post;
       const pointsAwarded = typeof saved.points_awarded === "number" ? saved.points_awarded : 3;
 
-      setPosts((prev) => [post, ...prev]);
+      setPosts((prev) => [{ ...post, liked_by_me: false }, ...prev]);
       setNewPost({ caption: "", file: null, aiDisclosed: false });
+      setPreviewUrl(null);
+      setShowForm(false);
       setMessageIsError(false);
       setLastPoints(pointsAwarded);
-      setMessage(`Publicación creada correctamente.\nHas ganado +${pointsAwarded} puntos.`);
+      setMessage(`Publicacion creada. +${pointsAwarded} puntos.`);
 
       try {
         const flash = {
-          title: "Publicación creada",
+          title: "Publicacion creada",
           body: newPost.aiDisclosed
             ? `Has ganado +${pointsAwarded} puntos (+3 por publicar, +1 por transparencia IA).`
             : `Has ganado +${pointsAwarded} puntos por publicar.`,
@@ -257,26 +285,31 @@ export default function FeedPage() {
         console.warn("No se pudo guardar ethiqia_flash:", err);
       }
     } catch (err) {
-      console.error("Error creando publicación:", err);
+      console.error("Error creando publicacion:", err);
       setMessageIsError(true);
-      setMessage("Ha ocurrido un error al crear la publicación. Inténtalo de nuevo.");
+      setMessage("Ha ocurrido un error al crear la publicacion. Intentalo de nuevo.");
     } finally {
       setSubmitting(false);
     }
   };
 
-  // Render auth gate
+  // Auth gate
   if (authChecked && !currentUser) {
     return (
       <main className="min-h-screen bg-black text-white flex items-center justify-center">
-        <div className="text-center space-y-3">
+        <div className="text-center space-y-4 px-6">
+          <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-to-br from-emerald-500 to-emerald-700 text-2xl font-bold mb-2">
+            E
+          </div>
           <h1 className="text-2xl font-semibold">Ethiqia</h1>
-          <p className="text-sm text-gray-400">Debes iniciar sesión para ver y publicar en el feed.</p>
+          <p className="text-sm text-neutral-400 max-w-xs mx-auto">
+            Inicia sesion para ver y publicar en el feed de reputacion etica.
+          </p>
           <a
             href="/login"
-            className="inline-flex items-center justify-center rounded-full bg-emerald-500 hover:bg-emerald-600 px-6 py-2 text-sm font-semibold"
+            className="inline-flex items-center justify-center rounded-full bg-emerald-500 hover:bg-emerald-600 px-8 py-2.5 text-sm font-semibold transition-colors"
           >
-            Ir a iniciar sesión
+            Iniciar sesion
           </a>
         </div>
       </main>
@@ -287,77 +320,185 @@ export default function FeedPage() {
 
   return (
     <main className="min-h-screen bg-black text-white">
-      <section className="max-w-3xl mx-auto px-4 py-8">
-        <div className="flex items-center justify-between mb-4">
+      <section className="max-w-xl mx-auto px-4 py-6">
+        {/* Header */}
+        <div className="flex items-center justify-between mb-6">
           <div>
-            <h1 className="text-3xl font-semibold mb-1">Feed Ethiqia</h1>
-            <p className="text-gray-400">
-              Publica contenido y construye reputación. Puedes marcar si has usado IA (transparencia).
-            </p>
+            <h1 className="text-xl font-bold">Feed</h1>
+            <p className="text-xs text-neutral-500 mt-0.5">Publica y construye tu reputacion etica</p>
           </div>
 
-          <Link href="/profile" className="text-xs text-neutral-300 hover:text-emerald-400 transition-colors">
-            Mi perfil →
-          </Link>
+          <div className="flex items-center gap-2">
+            <Link
+              href="/profile"
+              className="h-8 w-8 rounded-full overflow-hidden bg-gradient-to-br from-emerald-600 to-emerald-800 border-2 border-neutral-700/50 flex items-center justify-center"
+            >
+              {currentUserAvatar ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={currentUserAvatar} alt="Perfil" className="h-full w-full object-cover" />
+              ) : (
+                <span className="text-xs font-bold">{currentUserName[0]?.toUpperCase() ?? "U"}</span>
+              )}
+            </Link>
+          </div>
         </div>
 
-        <form onSubmit={handleSubmit} className="bg-neutral-900 rounded-xl p-6 mb-8 space-y-4">
-          <label className="block text-sm font-medium mb-1">Cuenta algo sobre tu foto…</label>
-          <textarea
-            className="w-full rounded-lg bg-black border border-neutral-700 px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-emerald-500"
-            rows={3}
-            value={newPost.caption}
-            onChange={handleCaptionChange}
-          />
-
-          <div className="flex items-center gap-4">
-            <input type="file" accept="image/*" onChange={handleFileChange} className="text-sm" />
-          </div>
-
-          <label className="flex items-center gap-2 text-xs text-neutral-300">
-            <input
-              type="checkbox"
-              checked={newPost.aiDisclosed}
-              onChange={handleAiDisclosedChange}
-              className="accent-emerald-500"
-            />
-            He usado IA en esta publicación (transparencia)
-          </label>
-
-          {message && (
-            <div className="space-y-2">
-              <p className={`text-sm whitespace-pre-line ${messageIsError ? "text-red-400" : "text-emerald-400"}`}>
-                {message}
-              </p>
-              {!messageIsError && typeof lastPoints === "number" && (
-                <Link href="/profile" className="inline-flex text-xs text-neutral-300 hover:text-emerald-400">
-                  Ver mi perfil y notificaciones →
-                </Link>
+        {/* Create post trigger */}
+        {!showForm ? (
+          <button
+            type="button"
+            onClick={() => setShowForm(true)}
+            className="w-full mb-6 rounded-2xl border border-neutral-800/60 bg-neutral-900/50 hover:bg-neutral-900 hover:border-neutral-700/60 transition-all p-4 flex items-center gap-3 group"
+          >
+            <div className="h-9 w-9 rounded-full bg-gradient-to-br from-emerald-600 to-emerald-800 flex items-center justify-center shrink-0">
+              {currentUserAvatar ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={currentUserAvatar} alt="" className="h-full w-full rounded-full object-cover" />
+              ) : (
+                <span className="text-xs font-bold">{currentUserName[0]?.toUpperCase() ?? "U"}</span>
               )}
             </div>
-          )}
-
-          <button
-            type="submit"
-            disabled={submitting}
-            className="mt-2 inline-flex items-center justify-center rounded-full bg-emerald-500 hover:bg-emerald-600 px-6 py-2 text-sm font-semibold disabled:opacity-60"
-          >
-            {submitting ? "Publicando..." : "Publicar"}
+            <span className="text-sm text-neutral-500 group-hover:text-neutral-300 transition-colors">
+              Que quieres compartir hoy?
+            </span>
+            <div className="ml-auto flex items-center gap-2">
+              <span className="text-neutral-600 group-hover:text-emerald-500 transition-colors">
+                <ImageIcon className="h-5 w-5" />
+              </span>
+            </div>
           </button>
-        </form>
+        ) : (
+          /* Create post form */
+          <form onSubmit={handleSubmit} className="mb-6 rounded-2xl border border-neutral-800/60 bg-neutral-900/80 overflow-hidden">
+            <div className="p-5 space-y-4">
+              <div className="flex items-start gap-3">
+                <div className="h-9 w-9 rounded-full bg-gradient-to-br from-emerald-600 to-emerald-800 flex items-center justify-center shrink-0 mt-0.5">
+                  {currentUserAvatar ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={currentUserAvatar} alt="" className="h-full w-full rounded-full object-cover" />
+                  ) : (
+                    <span className="text-xs font-bold">{currentUserName[0]?.toUpperCase() ?? "U"}</span>
+                  )}
+                </div>
+                <textarea
+                  className="flex-1 bg-transparent text-sm text-white placeholder-neutral-500 focus:outline-none resize-none min-h-[60px]"
+                  rows={3}
+                  placeholder="Cuenta algo sobre tu foto..."
+                  value={newPost.caption}
+                  onChange={handleCaptionChange}
+                />
+              </div>
 
-        {loadingPosts && <p className="text-sm text-gray-400">Cargando publicaciones...</p>}
+              {/* Image preview */}
+              {previewUrl && (
+                <div className="relative rounded-xl overflow-hidden border border-neutral-700/50">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={previewUrl} alt="Preview" className="w-full max-h-[300px] object-cover" />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setNewPost((prev) => ({ ...prev, file: null }));
+                      setPreviewUrl(null);
+                    }}
+                    className="absolute top-2 right-2 bg-black/60 backdrop-blur rounded-full p-1.5 text-white hover:bg-black/80 transition-colors"
+                  >
+                    <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none">
+                      <path d="M18 6L6 18M6 6l12 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                    </svg>
+                  </button>
+                </div>
+              )}
+            </div>
 
-        {!loadingPosts && posts.length === 0 && (
-          <p className="text-sm text-gray-500">Todavía no hay publicaciones.</p>
+            <div className="px-5 py-3 border-t border-neutral-800/60 flex items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <label className="cursor-pointer text-neutral-400 hover:text-emerald-400 transition-colors">
+                  <input type="file" accept="image/*" onChange={handleFileChange} className="hidden" />
+                  <ImageIcon className="h-5 w-5" />
+                </label>
+
+                <label className="flex items-center gap-1.5 text-[11px] text-neutral-400 cursor-pointer hover:text-neutral-300 transition-colors">
+                  <input
+                    type="checkbox"
+                    checked={newPost.aiDisclosed}
+                    onChange={handleAiDisclosedChange}
+                    className="accent-emerald-500 rounded"
+                  />
+                  Contenido con IA
+                </label>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowForm(false);
+                    setPreviewUrl(null);
+                    setNewPost({ caption: "", file: null, aiDisclosed: false });
+                    setMessage(null);
+                  }}
+                  className="px-4 py-1.5 text-xs text-neutral-400 hover:text-white transition-colors"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={submitting}
+                  className="inline-flex items-center justify-center rounded-full bg-emerald-500 hover:bg-emerald-600 px-5 py-1.5 text-xs font-semibold disabled:opacity-50 transition-colors"
+                >
+                  {submitting ? "Publicando..." : "Publicar"}
+                </button>
+              </div>
+            </div>
+          </form>
         )}
 
-        <div className="space-y-4 mt-4">
+        {/* Messages */}
+        {message && (
+          <div
+            className={`mb-4 rounded-xl px-4 py-3 text-sm ${
+              messageIsError
+                ? "bg-red-500/10 border border-red-900/30 text-red-300"
+                : "bg-emerald-500/10 border border-emerald-900/30 text-emerald-300"
+            }`}
+          >
+            <p className="whitespace-pre-line">{message}</p>
+            {!messageIsError && typeof lastPoints === "number" && (
+              <Link href="/profile" className="inline-flex text-xs text-emerald-400 hover:text-emerald-300 mt-2">
+                Ver mi perfil →
+              </Link>
+            )}
+          </div>
+        )}
+
+        {/* Loading */}
+        {loadingPosts && (
+          <div className="flex items-center justify-center py-12">
+            <div className="flex items-center gap-3 text-neutral-400">
+              <div className="w-5 h-5 border-2 border-neutral-600 border-t-emerald-500 rounded-full animate-spin" />
+              <span className="text-sm">Cargando publicaciones...</span>
+            </div>
+          </div>
+        )}
+
+        {/* Empty state */}
+        {!loadingPosts && posts.length === 0 && (
+          <div className="text-center py-16 space-y-3">
+            <div className="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-neutral-900 border border-neutral-800 mb-2">
+              <PlusIcon className="h-6 w-6 text-neutral-500" />
+            </div>
+            <p className="text-sm text-neutral-400">Todavia no hay publicaciones.</p>
+            <p className="text-xs text-neutral-600">Se el primero en publicar algo.</p>
+          </div>
+        )}
+
+        {/* Posts */}
+        <div className="space-y-5">
           {posts.map((post) => {
             const isMine = myId && post.user_id === myId;
             const profile = profilesMap[post.user_id];
             const authorName = isMine ? currentUserName : profile?.full_name?.trim() || "Usuario Ethiqia";
-            const authorAvatarUrl = profile?.avatar_url ?? null;
+            const authorAvatarUrl = isMine ? (currentUserAvatar ?? profile?.avatar_url ?? null) : (profile?.avatar_url ?? null);
 
             return (
               <PostCard

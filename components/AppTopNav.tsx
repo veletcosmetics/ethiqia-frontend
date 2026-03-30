@@ -188,8 +188,11 @@ export default function AppTopNav() {
             <Link href="/profile" className="hover:text-white">
               Mi perfil
             </Link>
+            <Link href="/company" className="hover:text-white">
+              Empresas
+            </Link>
             <Link href="/score-rules" className="hover:text-white">
-              Info Score (Reglas)
+              Reglas
             </Link>
           </nav>
         </div>

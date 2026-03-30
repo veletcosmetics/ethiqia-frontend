@@ -1,7 +1,8 @@
 "use client";
 
-import React, { useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { supabaseBrowser } from "@/lib/supabaseBrowserClient";
 
 export type Post = {
   id: string;
@@ -12,13 +13,15 @@ export type Post = {
   created_at?: string | null;
 
   ai_probability?: number | null; // 0..1
-  global_score?: number | null; // NO lo mostramos como badge
+  global_score?: number | null;
 
   likes_count?: number | null;
   comments_count?: number | null;
 
   blocked?: boolean | null;
   reason?: string | null;
+
+  liked_by_me?: boolean | null;
 
   [k: string]: any;
 };
@@ -27,19 +30,26 @@ type Props = {
   post: Post;
   authorName?: string;
   authorAvatarUrl?: string;
-  authorId?: string; // link a /u/[id]
+  authorId?: string;
 };
 
 function formatDate(iso?: string | null) {
   if (!iso) return "";
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return "";
-  return d.toLocaleString("es-ES", {
+  const now = new Date();
+  const diff = now.getTime() - d.getTime();
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return "Ahora";
+  if (mins < 60) return `Hace ${mins}m`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `Hace ${hours}h`;
+  const days = Math.floor(hours / 24);
+  if (days < 7) return `Hace ${days}d`;
+  return d.toLocaleDateString("es-ES", {
     day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
+    month: "short",
+    year: d.getFullYear() !== now.getFullYear() ? "numeric" : undefined,
   });
 }
 
@@ -50,9 +60,9 @@ function clamp01(n: number) {
   return n;
 }
 
-function HeartIcon({ className = "" }: { className?: string }) {
+function HeartIcon({ className = "", filled = false }: { className?: string; filled?: boolean }) {
   return (
-    <svg className={className} viewBox="0 0 24 24" fill="none" aria-hidden="true">
+    <svg className={className} viewBox="0 0 24 24" fill={filled ? "currentColor" : "none"} aria-hidden="true">
       <path
         d="M12 20s-7-4.6-9.2-8.5C.7 7.7 3.1 4.8 6.4 4.6c1.6-.1 3.1.6 4.1 1.8 1-1.2 2.5-1.9 4.1-1.8 3.3.2 5.7 3.1 3.6 6.9C19 15.4 12 20 12 20z"
         stroke="currentColor"
@@ -97,6 +107,19 @@ function ShareIcon({ className = "" }: { className?: string }) {
   );
 }
 
+function BookmarkIcon({ className = "" }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path
+        d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
 export default function PostCard({ post, authorName, authorAvatarUrl, authorId }: Props) {
   const displayName = useMemo(() => {
     const s = (authorName || "").trim();
@@ -124,43 +147,77 @@ export default function PostCard({ post, authorName, authorAvatarUrl, authorId }
   const initialLikes = Number(post.likes_count ?? (post as any).likes ?? 0) || 0;
   const initialComments = Number(post.comments_count ?? (post as any).comments ?? 0) || 0;
 
-  const [liked, setLiked] = useState(false);
+  const [liked, setLiked] = useState(Boolean(post.liked_by_me));
   const [likesUi, setLikesUi] = useState(initialLikes);
+  const [copied, setCopied] = useState(false);
+
+  // Sincronizar si la prop cambia (e.g. al recargar datos)
+  useEffect(() => {
+    setLiked(Boolean(post.liked_by_me));
+  }, [post.liked_by_me]);
+
+  const getAccessToken = useCallback(async (): Promise<string | null> => {
+    try {
+      const { data } = await supabaseBrowser.auth.getSession();
+      return data.session?.access_token ?? null;
+    } catch {
+      return null;
+    }
+  }, []);
 
   const toggleLikeUi = async () => {
-    // Optimista siempre (no rompe UI)
-    setLiked((prev) => {
-      const next = !prev;
-      setLikesUi((n) => (next ? n + 1 : Math.max(0, n - 1)));
-      return next;
-    });
+    const wasLiked = liked;
+    // Optimista
+    setLiked(!wasLiked);
+    setLikesUi((n) => (!wasLiked ? n + 1 : Math.max(0, n - 1)));
 
-    // Persistencia “best effort” (si existe /api/likes en tu proyecto)
     try {
-      const method = !liked ? "POST" : "DELETE";
+      const token = await getAccessToken();
       await fetch("/api/likes", {
-        method,
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ postId: post.id }),
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({
+          postId: post.id,
+          action: wasLiked ? "unlike" : "like",
+        }),
       });
     } catch {
-      // No hacemos nada: si no existe endpoint, no rompemos.
+      // Revertir si falla
+      setLiked(wasLiked);
+      setLikesUi((n) => (wasLiked ? n + 1 : Math.max(0, n - 1)));
     }
   };
 
   const postUrl = typeof window !== "undefined" ? `${window.location.origin}/p/${post.id}` : "";
 
+  const handleShare = async () => {
+    try {
+      const url = postUrl || `${window.location.origin}/feed`;
+      await navigator.clipboard.writeText(url);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      // Fallback: prompt
+      try {
+        window.prompt("Copia este enlace:", postUrl);
+      } catch { /* no-op */ }
+    }
+  };
+
   return (
-    <article className="rounded-2xl border border-neutral-800 bg-neutral-950 overflow-hidden">
+    <article className="group rounded-2xl border border-neutral-800/60 bg-gradient-to-b from-neutral-900 to-neutral-950 overflow-hidden transition-all hover:border-neutral-700/60 hover:shadow-lg hover:shadow-emerald-500/5">
       {/* Header autor */}
-      <div className="px-4 py-3 flex items-center justify-between gap-3 border-b border-neutral-900">
+      <div className="px-5 py-3.5 flex items-center justify-between gap-3">
         <div className="flex items-center gap-3 min-w-0">
-          <div className="h-10 w-10 rounded-full overflow-hidden bg-neutral-800 border border-neutral-700 flex items-center justify-center shrink-0">
+          <div className="h-10 w-10 rounded-full overflow-hidden bg-gradient-to-br from-emerald-600 to-emerald-800 border-2 border-neutral-700/50 flex items-center justify-center shrink-0">
             {authorAvatarUrl ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img src={authorAvatarUrl} alt={displayName} className="h-full w-full object-cover" />
             ) : (
-              <span className="text-sm font-semibold">
+              <span className="text-sm font-bold text-white">
                 {(displayName?.[0] || "U").toUpperCase()}
               </span>
             )}
@@ -168,110 +225,128 @@ export default function PostCard({ post, authorName, authorAvatarUrl, authorId }
 
           <div className="min-w-0">
             {authorLink ? (
-              <Link href={authorLink} className="text-sm font-semibold truncate hover:text-emerald-400">
+              <Link href={authorLink} className="text-sm font-semibold truncate block hover:text-emerald-400 transition-colors">
                 {displayName}
               </Link>
             ) : (
               <div className="text-sm font-semibold truncate">{displayName}</div>
             )}
-            {created ? <div className="text-[11px] text-neutral-500">{created}</div> : null}
+            {created ? <div className="text-[11px] text-neutral-500 mt-0.5">{created}</div> : null}
           </div>
         </div>
 
-        {/* Derecha: IA% (discreto). Ojo: NO mostramos 100/100 ni score */}
-        <div className="text-[11px] text-neutral-500 shrink-0">
-          {aiProbPct !== null ? <>IA: {aiProbPct}%</> : null}
+        <div className="flex items-center gap-2 shrink-0">
+          {aiProbPct !== null && aiProbPct > 0 ? (
+            <span className="inline-flex items-center gap-1 rounded-full bg-neutral-800/80 border border-neutral-700/50 px-2.5 py-1 text-[10px] text-neutral-400">
+              <span className="inline-block w-1.5 h-1.5 rounded-full bg-amber-500/80" />
+              IA {aiProbPct}%
+            </span>
+          ) : null}
         </div>
       </div>
 
       {/* Imagen */}
       {imageUrl ? (
-        <div className="relative bg-black">
+        <div className="relative bg-black/50">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src={imageUrl}
-            alt={post.caption || "Publicación Ethiqia"}
-            className="w-full max-h-[560px] object-cover"
+            alt={post.caption || "Publicacion Ethiqia"}
+            className="w-full max-h-[600px] object-cover"
             loading="lazy"
           />
-          {/* IMPORTANTE: aquí NO hay badge de score */}
         </div>
-      ) : (
-        <div className="p-6 text-sm text-neutral-500">Sin imagen</div>
-      )}
+      ) : null}
 
       {/* Actions */}
-      <div className="px-4 pt-3 pb-4">
+      <div className="px-5 pt-3 pb-4">
         <div className="flex items-center justify-between">
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-1">
             <button
               type="button"
               onClick={toggleLikeUi}
-              className={`inline-flex items-center gap-2 text-xs font-semibold ${
-                liked ? "text-emerald-400" : "text-neutral-200 hover:text-white"
+              className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition-all ${
+                liked
+                  ? "text-rose-400 bg-rose-500/10 hover:bg-rose-500/20"
+                  : "text-neutral-300 hover:text-rose-400 hover:bg-neutral-800/50"
               }`}
               aria-label="Me gusta"
               title="Me gusta"
             >
-              <HeartIcon className="h-5 w-5" />
-              <span className="hidden sm:inline">Me gusta</span>
+              <HeartIcon className="h-5 w-5" filled={liked} />
+              <span>{likesUi}</span>
             </button>
 
             <Link
               href={`/p/${post.id}`}
-              className="inline-flex items-center gap-2 text-xs font-semibold text-neutral-200 hover:text-white"
+              className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold text-neutral-300 hover:text-white hover:bg-neutral-800/50 transition-all"
               aria-label="Comentar"
               title="Comentar"
             >
               <ChatIcon className="h-5 w-5" />
-              <span className="hidden sm:inline">Comentar</span>
+              <span>{initialComments}</span>
             </Link>
 
             <button
               type="button"
-              onClick={async () => {
-                try {
-                  const url = postUrl || `${window.location.origin}/feed`;
-                  await navigator.clipboard.writeText(url);
-                } catch {}
-              }}
-              className="inline-flex items-center gap-2 text-xs font-semibold text-neutral-200 hover:text-white"
+              onClick={handleShare}
+              className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition-all ${
+                copied
+                  ? "text-emerald-400 bg-emerald-500/10"
+                  : "text-neutral-300 hover:text-white hover:bg-neutral-800/50"
+              }`}
               aria-label="Compartir"
               title="Compartir"
             >
               <ShareIcon className="h-5 w-5" />
-              <span className="hidden sm:inline">Compartir</span>
+              <span className="hidden sm:inline">{copied ? "Copiado!" : "Compartir"}</span>
             </button>
           </div>
 
-          {/* Contadores */}
-          <div className="text-[11px] text-neutral-500 flex items-center gap-3">
-            <span>
-              <span className="text-neutral-200 font-semibold">{likesUi}</span> me gusta
-            </span>
-            <span>
-              <span className="text-neutral-200 font-semibold">{initialComments}</span> comentarios
-            </span>
-          </div>
+          <button
+            type="button"
+            className="text-neutral-400 hover:text-white transition-colors p-1.5 rounded-lg hover:bg-neutral-800/50"
+            aria-label="Guardar"
+            title="Guardar"
+          >
+            <BookmarkIcon className="h-5 w-5" />
+          </button>
         </div>
 
         {/* Caption */}
-        <div className="mt-3 space-y-2">
-          {post.caption ? (
-            <div className="text-sm text-neutral-200 whitespace-pre-line">{post.caption}</div>
-          ) : (
-            <div className="text-sm text-neutral-500">Sin descripción</div>
-          )}
+        {post.caption ? (
+          <div className="mt-3">
+            <p className="text-sm text-neutral-200 whitespace-pre-line leading-relaxed">
+              {authorLink ? (
+                <Link href={authorLink} className="font-semibold hover:text-emerald-400 mr-1.5 transition-colors">
+                  {displayName}
+                </Link>
+              ) : (
+                <span className="font-semibold mr-1.5">{displayName}</span>
+              )}
+              {post.caption}
+            </p>
+          </div>
+        ) : null}
 
-          {post.blocked ? (
-            <div className="text-xs rounded-xl border border-red-900/40 bg-red-500/10 p-3 text-red-200">
-              Contenido marcado como rechazado.
-              {post.reason ? (
-                <div className="text-[11px] text-neutral-300 mt-1">Motivo: {post.reason}</div>
-              ) : null}
-            </div>
-          ) : null}
-        </div>
+        {post.blocked ? (
+          <div className="mt-3 text-xs rounded-xl border border-red-900/40 bg-red-500/10 p-3 text-red-200">
+            Contenido marcado como rechazado.
+            {post.reason ? (
+              <div className="text-[11px] text-neutral-300 mt-1">Motivo: {post.reason}</div>
+            ) : null}
+          </div>
+        ) : null}
+
+        {/* Link a comentarios */}
+        {initialComments > 0 ? (
+          <Link
+            href={`/p/${post.id}`}
+            className="block mt-2 text-xs text-neutral-500 hover:text-neutral-300 transition-colors"
+          >
+            Ver los {initialComments} comentarios
+          </Link>
+        ) : null}
       </div>
     </article>
   );

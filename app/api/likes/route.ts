@@ -8,17 +8,32 @@ function getSupabaseAdmin() {
   );
 }
 
+function getBearerToken(req: NextRequest): string | null {
+  const h = req.headers.get("authorization") || "";
+  if (!h.toLowerCase().startsWith("bearer ")) return null;
+  return h.slice(7).trim() || null;
+}
+
 /**
  * POST /api/likes
- * Body: { postId: string, userId: string, action?: "like" | "unlike" }
- *
- * - Si action no viene, hacemos "toggle": si existe like => borra; si no => crea
+ * Body: { postId: string, userId?: string, action?: "like" | "unlike" }
+ * Header: Authorization: Bearer <token> (preferred — extracts userId from session)
  */
 export async function POST(req: NextRequest) {
   const supabase = getSupabaseAdmin();
   try {
     const body = await req.json();
-    const { postId, userId, action } = body ?? {};
+    const { postId, action } = body ?? {};
+    let userId = body?.userId as string | undefined;
+
+    // Si viene Bearer token, extraer userId de la sesión (más seguro)
+    const token = getBearerToken(req);
+    if (token) {
+      const { data: userData, error: userErr } = await supabase.auth.getUser(token);
+      if (!userErr && userData?.user) {
+        userId = userData.user.id;
+      }
+    }
 
     if (!postId || !userId) {
       return NextResponse.json(

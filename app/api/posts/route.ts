@@ -73,7 +73,25 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    return NextResponse.json({ posts: data ?? [] });
+    // Añadir liked_by_me para cada post
+    const posts = data ?? [];
+    let postsWithLiked = posts;
+    if (posts.length > 0) {
+      const postIds = posts.map((p: any) => p.id);
+      const { data: likedRows } = await supabaseAdmin
+        .from("post_likes")
+        .select("post_id")
+        .eq("user_id", userData.user.id)
+        .in("post_id", postIds);
+
+      const likedSet = new Set((likedRows ?? []).map((r: any) => r.post_id));
+      postsWithLiked = posts.map((p: any) => ({
+        ...p,
+        liked_by_me: likedSet.has(p.id),
+      }));
+    }
+
+    return NextResponse.json({ posts: postsWithLiked });
   } catch (err) {
     console.error("Error inesperado en GET /api/posts:", err);
     return NextResponse.json({ error: "Unexpected error" }, { status: 500 });
