@@ -7,22 +7,16 @@ import { supabaseBrowser } from "@/lib/supabaseBrowserClient";
 export type Post = {
   id: string;
   user_id: string;
-
   image_url?: string | null;
   caption?: string | null;
   created_at?: string | null;
-
   ai_probability?: number | null;
   global_score?: number | null;
-
   likes_count?: number | null;
   comments_count?: number | null;
-
   blocked?: boolean | null;
   reason?: string | null;
-
   liked_by_me?: boolean | null;
-
   [k: string]: any;
 };
 
@@ -53,12 +47,7 @@ function formatDate(iso?: string | null) {
 function HeartIcon({ className = "", filled = false }: { className?: string; filled?: boolean }) {
   return (
     <svg className={className} viewBox="0 0 24 24" fill={filled ? "currentColor" : "none"} aria-hidden="true">
-      <path
-        d="M12 20s-7-4.6-9.2-8.5C.7 7.7 3.1 4.8 6.4 4.6c1.6-.1 3.1.6 4.1 1.8 1-1.2 2.5-1.9 4.1-1.8 3.3.2 5.7 3.1 3.6 6.9C19 15.4 12 20 12 20z"
-        stroke="currentColor"
-        strokeWidth="1.6"
-        strokeLinejoin="round"
-      />
+      <path d="M12 20s-7-4.6-9.2-8.5C.7 7.7 3.1 4.8 6.4 4.6c1.6-.1 3.1.6 4.1 1.8 1-1.2 2.5-1.9 4.1-1.8 3.3.2 5.7 3.1 3.6 6.9C19 15.4 12 20 12 20z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" />
     </svg>
   );
 }
@@ -103,12 +92,10 @@ export default function PostCard({ post, authorName, authorAvatarUrl, authorId, 
     ((post as any).imageUrl as string | null | undefined) ??
     null;
 
-  const initialLikes = Number(post.likes_count ?? (post as any).likes ?? 0) || 0;
-
   const [liked, setLiked] = useState(Boolean(post.liked_by_me));
-  const [likesUi, setLikesUi] = useState(initialLikes);
+  const [likesUi, setLikesUi] = useState(Number(post.likes_count ?? 0) || 0);
   const [commentsCount, setCommentsCount] = useState<number>(
-    Number(post.comments_count ?? (post as any).comments ?? 0) || 0
+    Number(post.comments_count ?? 0) || 0
   );
   const [copied, setCopied] = useState(false);
 
@@ -179,114 +166,111 @@ export default function PostCard({ post, authorName, authorAvatarUrl, authorId, 
   };
 
   return (
-    <article className="border-b border-neutral-800/60 hover:bg-neutral-900/30 transition-colors">
-      <div className="flex gap-3 px-4 pt-3 pb-2.5">
-        {/* Avatar */}
-        <div className="shrink-0 pt-0.5">
-          {authorLink ? (
-            <Link href={authorLink} className="block">
-              <div className="h-10 w-10 rounded-full overflow-hidden bg-gradient-to-br from-emerald-600 to-emerald-800 border border-neutral-700/50 flex items-center justify-center">
-                {authorAvatarUrl ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img src={authorAvatarUrl} alt={displayName} className="h-full w-full object-cover" />
-                ) : (
-                  <span className="text-xs font-bold text-white">{(displayName[0] || "U").toUpperCase()}</span>
-                )}
-              </div>
-            </Link>
-          ) : (
-            <div className="h-10 w-10 rounded-full overflow-hidden bg-gradient-to-br from-emerald-600 to-emerald-800 border border-neutral-700/50 flex items-center justify-center">
-              <span className="text-xs font-bold text-white">{(displayName[0] || "U").toUpperCase()}</span>
-            </div>
-          )}
-        </div>
+    <article className="rounded-2xl bg-neutral-900/80 border border-neutral-800/50 shadow-md shadow-black/20 overflow-hidden flex flex-col transition-all hover:border-neutral-700/50 hover:shadow-lg hover:shadow-black/30">
+      {/* Imagen */}
+      {imageUrl && (
+        <Link href={`/p/${post.id}`} className="block">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={imageUrl}
+            alt={post.caption || "Publicacion"}
+            className="w-full h-[210px] object-cover"
+            loading="lazy"
+          />
+        </Link>
+      )}
 
-        {/* Contenido */}
-        <div className="flex-1 min-w-0">
-          {/* Cabecera: nombre + fecha + delete */}
-          <div className="flex items-center gap-1.5">
+      {/* Contenido */}
+      <div className="p-4 flex flex-col flex-1">
+        {/* Header: avatar + nombre + fecha + delete */}
+        <div className="flex items-center gap-2.5 mb-2.5">
+          <div className="h-7 w-7 rounded-full overflow-hidden bg-gradient-to-br from-emerald-600 to-emerald-800 flex items-center justify-center shrink-0">
+            {authorAvatarUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={authorAvatarUrl} alt="" className="h-full w-full object-cover" />
+            ) : (
+              <span className="text-[10px] font-bold text-white">{(displayName[0] || "U").toUpperCase()}</span>
+            )}
+          </div>
+          <div className="min-w-0 flex-1">
             {authorLink ? (
-              <Link href={authorLink} className="text-sm font-semibold truncate hover:text-emerald-400 transition-colors">
+              <Link href={authorLink} className="text-xs font-semibold truncate block hover:text-emerald-400 transition-colors">
                 {displayName}
               </Link>
             ) : (
-              <span className="text-sm font-semibold truncate">{displayName}</span>
-            )}
-            {created && <span className="text-neutral-500 text-xs shrink-0">· {created}</span>}
-            {onDelete && (
-              <button
-                type="button"
-                disabled={deleting}
-                onClick={handleDelete}
-                className="ml-auto text-neutral-600 hover:text-red-400 transition-colors p-1 rounded disabled:opacity-50"
-                title="Eliminar"
-              >
-                <TrashIcon className="h-3.5 w-3.5" />
-              </button>
+              <span className="text-xs font-semibold truncate block">{displayName}</span>
             )}
           </div>
-
-          {/* Texto */}
-          {post.caption && (
-            <p className="text-sm text-neutral-200 mt-1 whitespace-pre-line leading-relaxed">{post.caption}</p>
+          {created && <span className="text-[11px] text-neutral-500 shrink-0">{created}</span>}
+          {onDelete && (
+            <button
+              type="button"
+              disabled={deleting}
+              onClick={handleDelete}
+              className="text-neutral-600 hover:text-red-400 transition-colors p-0.5 rounded disabled:opacity-50 shrink-0"
+              title="Eliminar"
+            >
+              <TrashIcon className="h-3.5 w-3.5" />
+            </button>
           )}
+        </div>
 
-          {/* Imagen compacta */}
-          {imageUrl && (
-            <div className="mt-2 rounded-xl overflow-hidden border border-neutral-800/60 max-w-sm">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={imageUrl}
-                alt={post.caption || "Publicacion"}
-                className="w-full max-h-[280px] object-cover"
-                loading="lazy"
-              />
-            </div>
-          )}
+        {/* Caption */}
+        {post.caption && (
+          <p className="text-[13px] text-neutral-300 leading-snug mb-3 line-clamp-3">{post.caption}</p>
+        )}
 
-          {/* Blocked */}
-          {post.blocked && (
-            <div className="mt-2 text-xs rounded-lg border border-red-900/40 bg-red-500/10 px-3 py-2 text-red-200">
-              Contenido rechazado.
-              {post.reason && <span className="text-neutral-400 ml-1">({post.reason})</span>}
-            </div>
-          )}
+        {/* No image placeholder */}
+        {!imageUrl && !post.caption && (
+          <p className="text-xs text-neutral-600 mb-3">Sin contenido</p>
+        )}
 
-          {/* Acciones */}
-          <div className="flex items-center gap-5 mt-2 -ml-1.5">
+        {/* Blocked */}
+        {post.blocked && (
+          <div className="text-[11px] rounded-lg border border-red-900/40 bg-red-500/10 px-2.5 py-1.5 text-red-300 mb-3">
+            Rechazado{post.reason && <span className="text-neutral-400"> — {post.reason}</span>}
+          </div>
+        )}
+
+        {/* Spacer */}
+        <div className="flex-1" />
+
+        {/* Acciones */}
+        <div className="flex items-center justify-between pt-2.5 border-t border-neutral-800/40">
+          <div className="flex items-center gap-1">
             <button
               type="button"
               onClick={toggleLikeUi}
-              className={`inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs transition-colors ${
-                liked ? "text-rose-400 hover:text-rose-300" : "text-neutral-500 hover:text-rose-400"
+              className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium transition-colors ${
+                liked ? "text-rose-400 bg-rose-500/10" : "text-neutral-500 hover:text-rose-400 hover:bg-neutral-800/50"
               }`}
               aria-label="Me gusta"
             >
-              <HeartIcon className="h-[18px] w-[18px]" filled={liked} />
+              <HeartIcon className="h-4 w-4" filled={liked} />
               {likesUi > 0 && <span>{likesUi}</span>}
             </button>
 
             <Link
               href={`/p/${post.id}`}
-              className="inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs text-neutral-500 hover:text-sky-400 transition-colors"
+              className="inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium text-neutral-500 hover:text-sky-400 hover:bg-neutral-800/50 transition-colors"
               aria-label="Comentar"
             >
-              <ChatIcon className="h-[18px] w-[18px]" />
+              <ChatIcon className="h-4 w-4" />
               {commentsCount > 0 && <span>{commentsCount}</span>}
             </Link>
-
-            <button
-              type="button"
-              onClick={handleShare}
-              className={`inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs transition-colors ${
-                copied ? "text-emerald-400" : "text-neutral-500 hover:text-emerald-400"
-              }`}
-              aria-label="Compartir"
-            >
-              <ShareIcon className="h-[18px] w-[18px]" />
-              {copied && <span>Copiado</span>}
-            </button>
           </div>
+
+          <button
+            type="button"
+            onClick={handleShare}
+            className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium transition-colors ${
+              copied ? "text-emerald-400" : "text-neutral-500 hover:text-emerald-400 hover:bg-neutral-800/50"
+            }`}
+            aria-label="Compartir"
+          >
+            <ShareIcon className="h-4 w-4" />
+            <span className="hidden sm:inline">{copied ? "Copiado" : "Compartir"}</span>
+          </button>
         </div>
       </div>
     </article>

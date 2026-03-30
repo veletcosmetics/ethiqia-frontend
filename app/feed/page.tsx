@@ -320,7 +320,7 @@ export default function FeedPage() {
 
   return (
     <main className="min-h-screen bg-black text-white">
-      <section className="max-w-xl mx-auto px-4 py-6">
+      <section className="max-w-3xl mx-auto px-4 py-6">
         {/* Header */}
         <div className="flex items-center justify-between mb-6">
           <div>
@@ -492,8 +492,8 @@ export default function FeedPage() {
           </div>
         )}
 
-        {/* Posts */}
-        <div className="space-y-5">
+        {/* Posts grid */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           {posts.map((post) => {
             const isMine = myId && post.user_id === myId;
             const profile = profilesMap[post.user_id];
