@@ -39,7 +39,7 @@ export default function ProfilePage() {
   const [loading, setLoading] = useState(true);
   const [avatarUploading, setAvatarUploading] = useState(false);
 
-  // 1) Cargar usuario, perfil, score, nº de publicaciones
+  // 1) Cargar todo: usuario, perfil, score, posts propios, follow stats
   useEffect(() => {
     const loadData = async () => {
       try {
@@ -54,6 +54,10 @@ export default function ProfilePage() {
 
         setCurrentUser(user);
 
+        // Token para las API routes
+        const { data: sessionData } = await supabaseBrowser.auth.getSession();
+        const token = sessionData.session?.access_token ?? null;
+
         // Perfil
         const { data: profileData } = await supabaseBrowser
           .from("profiles")
@@ -65,18 +69,15 @@ export default function ProfilePage() {
           setProfile(profileData as Profile);
         }
 
-        // Score (de momento asumo que tienes una vista o función;
-        // aquí lo dejo como placeholder estático si falla)
+        // Score
         const { data: scoreData, error: scoreError } =
           await supabaseBrowser.rpc("calculate_user_score", {
             p_user_id: user.id,
           });
 
         if (!scoreError && scoreData) {
-          // scoreData debe tener las columnas que definimos en BD
           setScore(scoreData as UserScore);
         } else {
-          // Fallback por si aún no está conectada la función
           setScore({
             transparency_score: 25,
             positive_behavior_score: 18,
@@ -86,13 +87,51 @@ export default function ProfilePage() {
           });
         }
 
-        // Número de publicaciones
+        // Numero de publicaciones
         const { count } = await supabaseBrowser
           .from("posts")
           .select("id", { count: "exact", head: true })
           .eq("user_id", user.id);
 
         setPostCount(count ?? 0);
+
+        // Posts propios
+        if (token) {
+          setLoadingPosts(true);
+          try {
+            const res = await fetch("/api/posts?mine=1", {
+              headers: { Authorization: `Bearer ${token}` },
+              cache: "no-store",
+            });
+            if (res.ok) {
+              const json = await res.json();
+              setMyPosts((json.posts ?? []) as Post[]);
+            } else {
+              console.error("Error cargando posts propios:", res.status, await res.text().catch(() => ""));
+            }
+          } finally {
+            setLoadingPosts(false);
+          }
+        }
+
+        // Follow stats
+        if (token) {
+          try {
+            const res = await fetch(`/api/follow-stats?userId=${user.id}`, {
+              headers: { Authorization: `Bearer ${token}` },
+              cache: "no-store",
+            });
+            if (res.ok) {
+              const json = await res.json();
+              setFollowStats({
+                followers: json.followers ?? 0,
+                following: json.following ?? 0,
+              });
+            }
+          } catch (e) {
+            console.error("Error cargando follow stats:", e);
+          }
+        }
       } catch (err) {
         console.error("Error cargando perfil:", err);
       } finally {
@@ -102,57 +141,6 @@ export default function ProfilePage() {
 
     loadData();
   }, []);
-
-  // 2) Cargar posts propios y follow stats
-  useEffect(() => {
-    if (!currentUser) return;
-    const loadPosts = async () => {
-      setLoadingPosts(true);
-      try {
-        const { data: session } = await supabaseBrowser.auth.getSession();
-        const token = session.session?.access_token;
-        if (!token) return;
-
-        const res = await fetch("/api/posts?mine=1", {
-          headers: { Authorization: `Bearer ${token}` },
-          cache: "no-store",
-        });
-        if (res.ok) {
-          const json = await res.json();
-          setMyPosts((json.posts ?? []) as Post[]);
-        }
-      } catch (e) {
-        console.error("Error cargando posts propios:", e);
-      } finally {
-        setLoadingPosts(false);
-      }
-    };
-
-    const loadFollowStats = async () => {
-      try {
-        const { data: session } = await supabaseBrowser.auth.getSession();
-        const token = session.session?.access_token;
-        if (!token) return;
-
-        const res = await fetch(`/api/follow-stats?userId=${currentUser.id}`, {
-          headers: { Authorization: `Bearer ${token}` },
-          cache: "no-store",
-        });
-        if (res.ok) {
-          const json = await res.json();
-          setFollowStats({
-            followers: json.followers ?? 0,
-            following: json.following ?? 0,
-          });
-        }
-      } catch (e) {
-        console.error("Error cargando follow stats:", e);
-      }
-    };
-
-    loadPosts();
-    loadFollowStats();
-  }, [currentUser]);
 
   // 3) Subir y guardar avatar
   const handleAvatarChange = async (
