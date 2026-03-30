@@ -112,13 +112,15 @@ export default function PostDetailPage() {
         body: JSON.stringify({ postId: id, text: commentText }),
       });
 
+      const json = await res.json().catch(() => ({}));
+
       if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error(err.error ?? "Error al enviar comentario");
+        // Mostrar razon de moderacion si viene
+        const reason = json.reason ? `\n${json.reason}` : "";
+        throw new Error((json.error ?? "Error al enviar comentario") + reason);
       }
 
-      const { comment } = await res.json();
-      setComments((prev) => [...prev, comment]);
+      setComments((prev) => [...prev, json.comment]);
       setCommentText("");
       setMessage("Comentario publicado.");
     } catch (err: any) {

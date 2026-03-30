@@ -85,7 +85,21 @@ export async function POST(req: NextRequest) {
     const userId = userData.user.id;
     const cleanText = text.trim().slice(0, 1000);
 
-    console.log("Inserting comment:", { post_id: postId, user_id: userId, text_length: cleanText.length });
+    // Moderacion IA antes de insertar
+    try {
+      const { moderatePost } = await import("@/lib/moderatePost");
+      const modResult = await moderatePost({ text: cleanText });
+
+      if (!modResult.allowed) {
+        return NextResponse.json(
+          { error: "Comentario rechazado por moderacion", reason: modResult.reason },
+          { status: 403 }
+        );
+      }
+    } catch (modErr) {
+      // Si la moderacion falla (sin API key, rate limit, etc.), dejamos pasar
+      console.warn("Comment moderation failed (non-blocking):", modErr);
+    }
 
     const { data: comment, error: insertErr } = await supabaseAdmin
       .from("comments")
@@ -110,6 +124,18 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // Cargar perfil del autor para devolver con el comentario
+    const { data: authorProfile } = await supabaseAdmin
+      .from("profiles")
+      .select("full_name, avatar_url")
+      .eq("id", userId)
+      .maybeSingle();
+
+    const commentWithProfile = {
+      ...comment,
+      profiles: authorProfile ?? { full_name: null, avatar_url: null },
+    };
+
     // Actualizar contador en posts (best-effort)
     try {
       await supabaseAdmin.rpc("increment_comments_count", { p_post_id: postId });
@@ -117,7 +143,7 @@ export async function POST(req: NextRequest) {
       console.warn("increment_comments_count RPC failed (non-blocking):", rpcErr);
     }
 
-    return NextResponse.json({ comment }, { status: 201 });
+    return NextResponse.json({ comment: commentWithProfile }, { status: 201 });
   } catch (e: any) {
     console.error("Unexpected error POST /api/comments:", e);
     return NextResponse.json(
