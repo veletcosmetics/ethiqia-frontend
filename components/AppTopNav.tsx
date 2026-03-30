@@ -71,6 +71,8 @@ export default function AppTopNav() {
   }, [pathname]);
 
   const [authed, setAuthed] = useState(false);
+  const [userName, setUserName] = useState<string | null>(null);
+  const [userAvatar, setUserAvatar] = useState<string | null>(null);
 
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -95,6 +97,22 @@ export default function AppTopNav() {
         return;
       }
       setAuthed(true);
+
+      // Cargar nombre y avatar del usuario (solo la primera vez)
+      if (!userName) {
+        try {
+          const { data: { user } } = await supabaseBrowser.auth.getUser();
+          if (user) {
+            const { data: prof } = await supabaseBrowser
+              .from("profiles")
+              .select("full_name, avatar_url")
+              .eq("id", user.id)
+              .maybeSingle();
+            if (prof?.full_name) setUserName(prof.full_name);
+            if (prof?.avatar_url) setUserAvatar(prof.avatar_url);
+          }
+        } catch { /* no-op */ }
+      }
 
       const res = await fetch("/api/notifications?limit=30", {
         headers: { Authorization: `Bearer ${token}` },
@@ -210,6 +228,27 @@ export default function AppTopNav() {
               <span className="hidden sm:inline">Buscar</span>
             </div>
           </Link>
+
+          {/* Avatar usuario → /profile */}
+          {authed && (
+            <Link
+              href="/profile"
+              className="flex items-center gap-2 rounded-full border border-neutral-800 bg-black px-2 py-1.5 text-xs text-neutral-200 hover:border-neutral-600 transition-colors"
+              title="Mi perfil"
+            >
+              <div className="h-6 w-6 rounded-full overflow-hidden bg-gradient-to-br from-emerald-600 to-emerald-800 flex items-center justify-center shrink-0">
+                {userAvatar ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={userAvatar} alt="" className="h-full w-full object-cover" />
+                ) : (
+                  <span className="text-[10px] font-bold">
+                    {(userName?.[0] ?? "U").toUpperCase()}
+                  </span>
+                )}
+              </div>
+              <span className="hidden sm:inline max-w-[80px] truncate">{userName ?? "Perfil"}</span>
+            </Link>
+          )}
 
           {/* Campana */}
           <div className="relative" ref={panelRef}>

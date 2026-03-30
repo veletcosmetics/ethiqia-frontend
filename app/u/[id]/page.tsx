@@ -73,16 +73,31 @@ export default function PublicProfilePage({ params }: { params: { id: string } }
     }
   };
 
-  const loadPosts = async () => {
+  const loadPosts = async (token?: string | null) => {
     setLoadingPosts(true);
     try {
-      const res = await fetch("/api/posts");
-      const json = await res.json();
-      const all = (json?.posts ?? []) as any[];
-      const mine = all.filter((p) => p.user_id === targetId);
+      // Con token: usar API (incluye liked_by_me)
+      if (token) {
+        const res = await fetch(`/api/posts?user_id=${encodeURIComponent(targetId)}`, {
+          headers: { Authorization: `Bearer ${token}` },
+          cache: "no-store",
+        });
+        if (res.ok) {
+          const json = await res.json();
+          setPosts((json.posts ?? []) as Post[]);
+          return;
+        }
+      }
+      // Sin token o si falla: query directa con Supabase (anon)
+      const { data, error } = await supabaseBrowser
+        .from("posts")
+        .select("*")
+        .eq("user_id", targetId)
+        .order("created_at", { ascending: false });
 
-      mine.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
-      setPosts(mine as Post[]);
+      if (!error && data) {
+        setPosts(data as Post[]);
+      }
     } catch (e) {
       console.error("Error cargando posts:", e);
       setPosts([]);
@@ -182,18 +197,25 @@ export default function PublicProfilePage({ params }: { params: { id: string } }
   useEffect(() => {
     const init = async () => {
       try {
-        const {
-          data: { user },
-        } = await supabaseBrowser.auth.getUser();
-
-        setViewerId(user?.id ?? null);
+        let token: string | null = null;
+        try {
+          const { data: { user } } = await supabaseBrowser.auth.getUser();
+          setViewerId(user?.id ?? null);
+          if (user) {
+            const { data: session } = await supabaseBrowser.auth.getSession();
+            token = session.session?.access_token ?? null;
+          }
+        } catch {
+          // No auth — continuar como anonimo
+          setViewerId(null);
+        }
 
         await loadProfile();
         await loadCounts();
-        await loadPosts();
+        await loadPosts(token);
 
-        if (user?.id) {
-          await loadFollowingStatus(user.id);
+        if (viewerId) {
+          await loadFollowingStatus(viewerId);
         }
       } catch (e) {
         console.error("Init public profile error:", e);
