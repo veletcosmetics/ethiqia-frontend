@@ -73,25 +73,38 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    // Añadir liked_by_me para cada post
+    // Añadir liked_by_me y likes_count real para cada post
     const posts = data ?? [];
-    let postsWithLiked = posts;
+    let postsEnriched = posts;
     if (posts.length > 0) {
       const postIds = posts.map((p: any) => p.id);
+
+      // Likes del usuario actual
       const { data: likedRows } = await supabaseAdmin
         .from("post_likes")
         .select("post_id")
         .eq("user_id", userData.user.id)
         .in("post_id", postIds);
-
       const likedSet = new Set((likedRows ?? []).map((r: any) => r.post_id));
-      postsWithLiked = posts.map((p: any) => ({
+
+      // Conteo real de likes por post
+      const { data: allLikes } = await supabaseAdmin
+        .from("post_likes")
+        .select("post_id")
+        .in("post_id", postIds);
+      const likeCounts: Record<string, number> = {};
+      (allLikes ?? []).forEach((r: any) => {
+        likeCounts[r.post_id] = (likeCounts[r.post_id] || 0) + 1;
+      });
+
+      postsEnriched = posts.map((p: any) => ({
         ...p,
         liked_by_me: likedSet.has(p.id),
+        likes_count: likeCounts[p.id] ?? 0,
       }));
     }
 
-    return NextResponse.json({ posts: postsWithLiked });
+    return NextResponse.json({ posts: postsEnriched });
   } catch (err) {
     console.error("Error inesperado en GET /api/posts:", err);
     return NextResponse.json({ error: "Unexpected error" }, { status: 500 });
