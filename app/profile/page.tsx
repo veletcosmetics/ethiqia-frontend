@@ -52,6 +52,7 @@ export default function ProfilePage() {
     tiktok_url: "", youtube_url: "",
   });
   const [saving, setSaving] = useState(false);
+  const [premiumDemo, setPremiumDemo] = useState(false);
 
   // 1) Cargar todo: usuario, perfil, score, posts propios, follow stats
   useEffect(() => {
@@ -415,70 +416,129 @@ export default function ProfilePage() {
           )}
         </header>
 
-        {/* ── Premium (bloqueado) ── */}
-        <section className="relative bg-neutral-900 border border-neutral-800 rounded-2xl overflow-hidden">
-          {/* Overlay */}
-          <div className="absolute inset-0 bg-black/60 backdrop-blur-[2px] z-10 flex flex-col items-center justify-center text-center px-6">
-            <span className="text-2xl mb-2">&#128274;</span>
-            <h3 className="text-base font-semibold">Ethiqia Premium</h3>
-            <p className="text-xs text-neutral-400 mt-1 max-w-xs">Desbloquea estadisticas avanzadas, badge verificado, categoria de creador y mas.</p>
-            <button type="button" className="mt-4 rounded-full bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 px-6 py-2 text-sm font-semibold text-black transition-colors">
-              Hazte Premium
-            </button>
-          </div>
+        {/* ── Premium ── */}
+        <section className={`relative bg-neutral-900 border rounded-2xl overflow-hidden ${premiumDemo ? "border-amber-500/30" : "border-neutral-800"}`}>
+          {/* Overlay (solo cuando no esta en demo) */}
+          {!premiumDemo && (
+            <div className="absolute inset-0 bg-black/60 backdrop-blur-[2px] z-10 flex flex-col items-center justify-center text-center px-6">
+              <span className="text-2xl mb-2">&#128274;</span>
+              <h3 className="text-base font-semibold">Ethiqia Premium</h3>
+              <p className="text-xs text-neutral-400 mt-1 max-w-xs">Desbloquea estadisticas avanzadas, badge verificado, categoria de creador y mas.</p>
+              <div className="flex items-center gap-3 mt-4">
+                <button type="button" className="rounded-full bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 px-6 py-2 text-sm font-semibold text-black transition-colors">
+                  Hazte Premium
+                </button>
+                <button type="button" onClick={() => setPremiumDemo(true)} className="rounded-full border border-neutral-600 hover:border-neutral-400 px-4 py-2 text-xs text-neutral-300 hover:text-white transition-colors">
+                  Ver demo
+                </button>
+              </div>
+            </div>
+          )}
 
-          {/* Contenido (borroso detras) */}
-          <div className="p-6 space-y-5 select-none" aria-hidden="true">
-            <div className="flex items-center gap-3">
-              <h2 className="text-sm font-semibold">Estadisticas avanzadas</h2>
-              <span className="text-[10px] bg-amber-500/20 text-amber-400 rounded-full px-2 py-0.5 font-medium">PREMIUM</span>
+          {/* Contenido premium */}
+          <div className={`p-6 space-y-5 ${premiumDemo ? "" : "select-none"}`} aria-hidden={!premiumDemo}>
+            {/* Header con badge demo */}
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <h2 className="text-sm font-semibold">{premiumDemo ? "Estadisticas avanzadas" : "Estadisticas avanzadas"}</h2>
+                <span className="text-[10px] bg-amber-500/20 text-amber-400 rounded-full px-2 py-0.5 font-medium">PREMIUM</span>
+                {premiumDemo && <span className="text-[10px] bg-sky-500/20 text-sky-400 rounded-full px-2 py-0.5 font-medium">DEMO</span>}
+              </div>
+              {premiumDemo && (
+                <button type="button" onClick={() => setPremiumDemo(false)} className="text-[11px] text-neutral-500 hover:text-white transition-colors">
+                  Cerrar demo
+                </button>
+              )}
             </div>
 
+            {/* Metricas */}
             <div className="grid grid-cols-3 gap-4">
-              <div className="rounded-xl bg-neutral-800/50 p-4 text-center">
-                <div className="text-2xl font-bold text-neutral-600">12.4k</div>
-                <div className="text-[11px] text-neutral-600 mt-1">Alcance</div>
+              <div className={`rounded-xl p-4 text-center ${premiumDemo ? "bg-neutral-800 border border-neutral-700/50" : "bg-neutral-800/50"}`}>
+                <div className={`text-2xl font-bold ${premiumDemo ? "text-white" : "text-neutral-600"}`}>12.4k</div>
+                <div className={`text-[11px] mt-1 ${premiumDemo ? "text-neutral-400" : "text-neutral-600"}`}>Alcance</div>
+                {premiumDemo && <div className="text-[10px] text-emerald-400 mt-1">+18% este mes</div>}
               </div>
-              <div className="rounded-xl bg-neutral-800/50 p-4 text-center">
-                <div className="text-2xl font-bold text-neutral-600">8.1k</div>
-                <div className="text-[11px] text-neutral-600 mt-1">Impresiones</div>
+              <div className={`rounded-xl p-4 text-center ${premiumDemo ? "bg-neutral-800 border border-neutral-700/50" : "bg-neutral-800/50"}`}>
+                <div className={`text-2xl font-bold ${premiumDemo ? "text-white" : "text-neutral-600"}`}>8.1k</div>
+                <div className={`text-[11px] mt-1 ${premiumDemo ? "text-neutral-400" : "text-neutral-600"}`}>Impresiones</div>
+                {premiumDemo && <div className="text-[10px] text-emerald-400 mt-1">+12% este mes</div>}
               </div>
-              <div className="rounded-xl bg-neutral-800/50 p-4 text-center">
-                <div className="text-2xl font-bold text-neutral-600">4.2%</div>
-                <div className="text-[11px] text-neutral-600 mt-1">Engagement</div>
+              <div className={`rounded-xl p-4 text-center ${premiumDemo ? "bg-neutral-800 border border-neutral-700/50" : "bg-neutral-800/50"}`}>
+                <div className={`text-2xl font-bold ${premiumDemo ? "text-emerald-400" : "text-neutral-600"}`}>4.2%</div>
+                <div className={`text-[11px] mt-1 ${premiumDemo ? "text-neutral-400" : "text-neutral-600"}`}>Engagement</div>
+                {premiumDemo && <div className="text-[10px] text-amber-400 mt-1">Media sector: 2.8%</div>}
               </div>
             </div>
 
+            {/* Features */}
             <div className="grid grid-cols-2 gap-4 text-sm">
-              <div className="rounded-xl bg-neutral-800/50 p-4">
+              <div className={`rounded-xl p-4 ${premiumDemo ? "bg-neutral-800 border border-neutral-700/50" : "bg-neutral-800/50"}`}>
                 <div className="flex items-center gap-2 mb-2">
-                  <span className="text-neutral-600">&#9989;</span>
-                  <span className="text-neutral-600 font-medium">Badge verificado especial</span>
+                  <span className={premiumDemo ? "text-amber-400" : "text-neutral-600"}>&#9989;</span>
+                  <span className={`font-medium ${premiumDemo ? "text-neutral-200" : "text-neutral-600"}`}>Badge verificado especial</span>
                 </div>
-                <p className="text-[11px] text-neutral-700">Icono de verificacion premium visible en tu perfil y posts.</p>
+                <p className={`text-[11px] ${premiumDemo ? "text-neutral-400" : "text-neutral-700"}`}>
+                  {premiumDemo ? "Tu perfil y posts mostrarian un icono dorado de verificacion premium." : "Icono de verificacion premium visible en tu perfil y posts."}
+                </p>
+                {premiumDemo && (
+                  <div className="mt-2 flex items-center gap-1.5 text-xs text-amber-400">
+                    <span>&#9733;</span> <span className="font-medium">{name}</span> <span className="text-[10px] text-neutral-500">asi se veria</span>
+                  </div>
+                )}
               </div>
-              <div className="rounded-xl bg-neutral-800/50 p-4">
+              <div className={`rounded-xl p-4 ${premiumDemo ? "bg-neutral-800 border border-neutral-700/50" : "bg-neutral-800/50"}`}>
                 <div className="flex items-center gap-2 mb-2">
-                  <span className="text-neutral-600">&#128279;</span>
-                  <span className="text-neutral-600 font-medium">Enlace destacado en bio</span>
+                  <span className={premiumDemo ? "text-sky-400" : "text-neutral-600"}>&#128279;</span>
+                  <span className={`font-medium ${premiumDemo ? "text-neutral-200" : "text-neutral-600"}`}>Enlace destacado en bio</span>
                 </div>
-                <p className="text-[11px] text-neutral-700">Enlace visible y destacado al inicio de tu perfil publico.</p>
+                <p className={`text-[11px] ${premiumDemo ? "text-neutral-400" : "text-neutral-700"}`}>Enlace visible y destacado al inicio de tu perfil publico.</p>
+                {premiumDemo && (
+                  <div className="mt-2 rounded-lg bg-emerald-500/10 border border-emerald-500/20 px-3 py-1.5 text-xs text-emerald-400">
+                    {profile?.website?.replace(/^https?:\/\//, "") || "tuenlace.com"}
+                  </div>
+                )}
               </div>
-              <div className="rounded-xl bg-neutral-800/50 p-4">
+              <div className={`rounded-xl p-4 ${premiumDemo ? "bg-neutral-800 border border-neutral-700/50" : "bg-neutral-800/50"}`}>
                 <div className="flex items-center gap-2 mb-2">
-                  <span className="text-neutral-600">&#127941;</span>
-                  <span className="text-neutral-600 font-medium">Categoria de creador</span>
+                  <span className={premiumDemo ? "text-purple-400" : "text-neutral-600"}>&#127941;</span>
+                  <span className={`font-medium ${premiumDemo ? "text-neutral-200" : "text-neutral-600"}`}>Categoria de creador</span>
                 </div>
-                <p className="text-[11px] text-neutral-700">Influencer, periodista, activista, empresa, artista...</p>
+                <p className={`text-[11px] ${premiumDemo ? "text-neutral-400" : "text-neutral-700"}`}>
+                  {premiumDemo ? "Elige la categoria que mejor te define." : "Influencer, periodista, activista, empresa, artista..."}
+                </p>
+                {premiumDemo && (
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    {["Creador", "Activista", "Periodista", "Empresa", "Artista"].map((c) => (
+                      <span key={c} className="text-[10px] rounded-full border border-neutral-600 px-2 py-0.5 text-neutral-300">{c}</span>
+                    ))}
+                  </div>
+                )}
               </div>
-              <div className="rounded-xl bg-neutral-800/50 p-4">
+              <div className={`rounded-xl p-4 ${premiumDemo ? "bg-neutral-800 border border-neutral-700/50" : "bg-neutral-800/50"}`}>
                 <div className="flex items-center gap-2 mb-2">
-                  <span className="text-neutral-600">&#128200;</span>
-                  <span className="text-neutral-600 font-medium">Metricas de audiencia</span>
+                  <span className={premiumDemo ? "text-emerald-400" : "text-neutral-600"}>&#128200;</span>
+                  <span className={`font-medium ${premiumDemo ? "text-neutral-200" : "text-neutral-600"}`}>Metricas de audiencia</span>
                 </div>
-                <p className="text-[11px] text-neutral-700">Demografia, horarios de actividad, crecimiento mensual.</p>
+                <p className={`text-[11px] ${premiumDemo ? "text-neutral-400" : "text-neutral-700"}`}>Demografia, horarios de actividad, crecimiento mensual.</p>
+                {premiumDemo && (
+                  <div className="mt-2 space-y-1">
+                    <div className="flex justify-between text-[10px]"><span className="text-neutral-400">18-24 anos</span><span className="text-white">34%</span></div>
+                    <div className="flex justify-between text-[10px]"><span className="text-neutral-400">25-34 anos</span><span className="text-white">41%</span></div>
+                    <div className="flex justify-between text-[10px]"><span className="text-neutral-400">35-44 anos</span><span className="text-white">18%</span></div>
+                  </div>
+                )}
               </div>
             </div>
+
+            {/* CTA en modo demo */}
+            {premiumDemo && (
+              <div className="text-center pt-2">
+                <p className="text-xs text-neutral-500 mb-3">Estos son datos de ejemplo. Con Premium tendrias tus metricas reales.</p>
+                <button type="button" className="rounded-full bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 px-6 py-2 text-sm font-semibold text-black transition-colors">
+                  Hazte Premium
+                </button>
+              </div>
+            )}
           </div>
         </section>
 
