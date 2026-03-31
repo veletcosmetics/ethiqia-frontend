@@ -53,6 +53,11 @@ export default function CompanyPage() {
   return (
     <main className="min-h-screen bg-neutral-950 text-neutral-50 pb-20">
       <section className="max-w-5xl mx-auto px-4 py-10 space-y-10">
+        {/* NAV */}
+        <Link href="/" className="text-xs text-neutral-500 hover:text-emerald-400 transition-colors">
+          ← Inicio
+        </Link>
+
         {/* CABECERA EMPRESA */}
         <header className="space-y-4">
           <div className="flex gap-5 items-center">
@@ -76,7 +81,9 @@ export default function CompanyPage() {
                 {data.sector} · {data.country}
               </p>
 
-              <p className="text-xs text-neutral-500 max-w-xl">
+              <p className="text-xs text-neutral-500">Fundada en 2019</p>
+
+              <p className="text-xs text-neutral-500 max-w-xl mt-1">
                 Ethiqia valida la reputacion de una empresa a traves de
                 evidencias, actividad y datos verificables.
               </p>
@@ -89,6 +96,21 @@ export default function CompanyPage() {
 
         {/* DESGLOSE ETHIQIA SCORE */}
         <ScoreBreakdown items={data.scoreBreakdown} />
+
+        {/* ALINEACION ODS */}
+        <section className="mt-6 rounded-2xl border border-neutral-800 bg-emerald-950/20 p-6 space-y-4">
+          <h2 className="text-sm font-semibold text-neutral-100">Alineacion Agenda 2030</h2>
+          <p className="text-xs text-neutral-400 max-w-2xl">
+            El Ethiqia Score de Velet Cosmetics se mapea con los siguientes Objetivos de Desarrollo Sostenible de la ONU.
+          </p>
+          <div className="flex flex-wrap gap-2">
+            <span className="rounded-full bg-green-600 px-3 py-1.5 text-[11px] font-semibold text-white">ODS 3 · Salud y bienestar</span>
+            <span className="rounded-full bg-red-700 px-3 py-1.5 text-[11px] font-semibold text-white">ODS 8 · Trabajo decente</span>
+            <span className="rounded-full bg-orange-600 px-3 py-1.5 text-[11px] font-semibold text-white">ODS 9 · Innovacion</span>
+            <span className="rounded-full bg-amber-700 px-3 py-1.5 text-[11px] font-semibold text-white">ODS 12 · Produccion responsable</span>
+            <span className="rounded-full bg-blue-700 px-3 py-1.5 text-[11px] font-semibold text-white">ODS 16 · Instituciones solidas</span>
+          </div>
+        </section>
 
         {/* APIS ACTIVAS CON DESCRIPCIÓN */}
         <section className="mt-10">

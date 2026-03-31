@@ -14,12 +14,16 @@ export const ScoreBreakdown = ({ items }: any) => {
             key={i}
             className="p-4 rounded-2xl border border-neutral-800 bg-neutral-900/70"
           >
-            <div className="flex justify-between">
+            <div className="flex justify-between items-baseline">
               <p className="text-neutral-200 font-medium">{item.label}</p>
               <p className="text-neutral-400 text-sm">{item.value}/100</p>
             </div>
 
-            <div className="mt-2 h-1.5 w-full rounded-full bg-neutral-800 overflow-hidden">
+            {item.description && (
+              <p className="text-[11px] text-neutral-500 mt-1">{item.description}</p>
+            )}
+
+            <div className="mt-2.5 h-1.5 w-full rounded-full bg-neutral-800 overflow-hidden">
               <div
                 className="h-full rounded-full bg-emerald-400"
                 style={{ width: `${item.value}%` }}
@@ -31,4 +35,3 @@ export const ScoreBreakdown = ({ items }: any) => {
     </section>
   );
 };
-

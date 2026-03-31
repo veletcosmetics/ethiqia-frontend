@@ -192,7 +192,7 @@ export default function AppTopNav() {
     <div className="sticky top-0 z-50 border-b border-neutral-800 bg-black/90 backdrop-blur">
       <div className="max-w-5xl mx-auto px-4 h-14 flex items-center justify-between">
         <div className="flex items-center gap-4">
-          <Link href="/feed" className="font-semibold text-sm hover:text-emerald-400">
+          <Link href="/" className="font-semibold text-sm hover:text-emerald-400">
             Ethiqia
           </Link>
 

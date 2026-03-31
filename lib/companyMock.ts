@@ -3,12 +3,14 @@
 export interface ScoreBreakdownItem {
   label: string;
   value: number; // 0–100
+  description?: string;
 }
 
 export interface KpiMetric {
   label: string;
   value: string;
   helper?: string;
+  link?: string;
 }
 
 export interface MonthlyActivityPoint {
@@ -129,33 +131,39 @@ export const companyData: CompanyData = {
   ],
 
   scoreBreakdown: [
-    { label: "Confianza B2B", value: 88 },
-    { label: "Actividad comercial", value: 81 },
-    { label: "Impacto social", value: 90 },
-    { label: "Sostenibilidad", value: 79 },
-    { label: "Regulación y cumplimiento", value: 87 }
+    { label: "Transparencia", value: 88, description: "Registros regulatorios CPNP y FDA activos y verificados" },
+    { label: "Sostenibilidad", value: 79, description: "Formulacion 100% vegetal, sin testeo animal, packaging sostenible" },
+    { label: "Impacto social", value: 90, description: "Cooperativa, cosmetica para piel sensible, colaboracion con UMH e IDIBE" },
+    { label: "Actividad verificada", value: 81, description: "Ventas de PrestaShop integradas en tiempo real con Ethiqia" },
+    { label: "Confianza B2B", value: 88, description: "Contratos activos, sede en parque cientifico UMH, acuerdo con AITEX" },
   ],
 
   kpiMetrics: [
     {
-      label: "Productos registrados en CPNP",
+      label: "Registros CPNP",
       value: "18",
       helper: "Catalogo profesional para la UE"
     },
     {
-      label: "Productos registrados en FDA",
+      label: "Registros FDA",
       value: "6",
       helper: "Catalogo regulado en EE. UU."
     },
     {
       label: "Anos en el mercado",
-      value: "5",
-      helper: "Desde 2021"
+      value: "7",
+      helper: "Fundada en 2019"
     },
     {
       label: "Sede",
-      value: "Elche",
-      helper: "Espana · Alicante"
+      value: "Elche · Alicante",
+      helper: "Espana"
+    },
+    {
+      label: "Web oficial",
+      value: "veletcosmetics.com",
+      helper: "",
+      link: "https://veletcosmetics.com"
     }
   ],
 
