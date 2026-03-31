@@ -85,7 +85,7 @@ export default function CompanyPage() {
         {/* CABECERA */}
         <header className="space-y-4">
           <div className="flex gap-5 items-center">
-            <div className="w-[160px] h-[80px] rounded-2xl bg-[#1a1a1a] flex items-center justify-center shadow-lg shadow-emerald-500/10 overflow-hidden shrink-0">
+            <div className="w-[160px] h-[80px] rounded-2xl bg-[#f5f5f5] flex items-center justify-center shadow-lg shadow-emerald-500/10 overflow-hidden shrink-0">
               {logoError ? (
                 <span className="text-2xl font-semibold text-white">VC</span>
               ) : (
