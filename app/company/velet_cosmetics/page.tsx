@@ -85,7 +85,7 @@ export default function CompanyPage() {
         {/* CABECERA */}
         <header className="space-y-4">
           <div className="flex gap-5 items-center">
-            <div className="w-[160px] h-[80px] rounded-2xl bg-[#f5f5f5] flex items-center justify-center shadow-lg shadow-emerald-500/10 overflow-hidden shrink-0">
+            <div className="w-[160px] h-[80px] rounded-2xl bg-[#111111] flex items-center justify-center shadow-lg shadow-emerald-500/10 overflow-hidden shrink-0">
               {logoError ? (
                 <span className="text-2xl font-semibold text-white">VC</span>
               ) : (
@@ -94,19 +94,21 @@ export default function CompanyPage() {
               )}
             </div>
 
-            <div className="space-y-1">
+            <div className="space-y-1 flex-1 min-w-0">
               <div className="flex items-center gap-2 flex-wrap">
                 <h1 className="text-xl font-semibold">{data.name}</h1>
+                <span className="text-2xl font-bold text-emerald-400">{data.score}</span>
+                <span className="text-xs text-neutral-500">/100</span>
                 {data.verified && (
                   <span className="inline-flex items-center gap-1 rounded-full border border-emerald-500/50 bg-emerald-500/10 px-2.5 py-[3px] text-[11px] text-emerald-300">
-                    ✓ Empresa verificada
+                    ✓ Verificada
                   </span>
                 )}
               </div>
               <p className="text-sm text-neutral-400">{data.sector} · {data.country}</p>
               <p className="text-xs text-neutral-500">Fundada en 2019</p>
-              <p className="text-xs text-neutral-500 max-w-xl mt-1">
-                Ethiqia valida la reputacion de una empresa a traves de evidencias, actividad y datos verificables.
+              <p className="text-xs text-neutral-400 max-w-xl mt-1">
+                Cooperativa espanola de cosmetica profesional vegana. Formulacion biotecnologica, sin testeo animal, con registros CPNP y FDA activos.
               </p>
             </div>
           </div>

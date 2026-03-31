@@ -152,7 +152,7 @@ export const companyData: CompanyData = {
     {
       label: "Anos en el mercado",
       value: "7",
-      helper: "Fundada en 2019"
+      helper: ""
     },
     {
       label: "Sede",

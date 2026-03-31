@@ -167,7 +167,7 @@ export default function LandingPage() {
         </p>
         <div className="max-w-md mx-auto rounded-2xl border border-neutral-800 bg-neutral-900/60 overflow-hidden">
           <div className="p-6 flex items-center gap-4">
-            <div className="w-[100px] h-[50px] rounded-xl bg-[#f5f5f5] overflow-hidden flex items-center justify-center shrink-0">
+            <div className="w-[100px] h-[50px] rounded-xl bg-[#111111] overflow-hidden flex items-center justify-center shrink-0">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src="/logo-velet.png" alt="Velet Cosmetics" className="w-full h-full object-contain p-1.5" />
             </div>

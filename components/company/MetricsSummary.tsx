@@ -18,7 +18,7 @@ export const MetricsSummary = ({ metrics }: any) => {
               href={m.link}
               target="_blank"
               rel="noopener noreferrer"
-              className="text-lg font-semibold text-emerald-400 hover:text-emerald-300 transition-colors block truncate"
+              className="text-sm font-semibold text-emerald-400 hover:text-emerald-300 transition-colors block break-all"
             >
               {m.value}
             </a>
