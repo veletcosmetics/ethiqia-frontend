@@ -13,6 +13,8 @@ export default function CompanyPage() {
   const [logoError, setLogoError] = useState(false);
   const [uploadingDoc, setUploadingDoc] = useState(false);
   const [admin, setAdmin] = useState<{ id: string; full_name: string; avatar_url: string | null } | null>(null);
+  const [activity, setActivity] = useState<{ title: string; date: string; points: number }[]>([]);
+  const [activityLoaded, setActivityLoaded] = useState(false);
 
   // Documentos desde Supabase (con fallback hardcodeado)
   const [documents, setDocuments] = useState<{ name: string; doc_type: string; verified: boolean }[]>([
@@ -48,6 +50,26 @@ export default function CompanyPage() {
           setDocuments(docs as any);
         }
       } catch { /* usar fallback hardcodeado */ }
+
+      // Cargar actividad verificada desde Supabase
+      try {
+        const { data: events, error } = await supabaseBrowser
+          .from("reputation_events")
+          .select("event_type, points, created_at, metadata")
+          .eq("subject_type", "company")
+          .eq("subject_id", "velet_cosmetics")
+          .order("created_at", { ascending: false })
+          .limit(10);
+
+        if (!error && events && events.length > 0) {
+          setActivity(events.map((ev: any) => ({
+            title: ev.metadata?.title ?? ev.event_type ?? "Evento verificado",
+            date: new Date(ev.created_at).toLocaleDateString("es-ES", { day: "2-digit", month: "short", year: "numeric" }),
+            points: ev.points ?? 0,
+          })));
+        }
+      } catch { /* no-op */ }
+      setActivityLoaded(true);
     };
     load();
   }, []);
@@ -195,18 +217,29 @@ export default function CompanyPage() {
           </div>
         </section>
 
-        {/* ACTIVIDAD VERIFICADA */}
+        {/* ACTIVIDAD VERIFICADA (desde Supabase) */}
         <section>
           <h2 className="text-sm font-semibold text-neutral-100 mb-4">Actividad verificada reciente</h2>
-          <div className="space-y-3">
-            {data.activity.map((item, i) => (
-              <div key={i} className="p-4 rounded-2xl border border-neutral-800 bg-neutral-900/70">
-                <p className="font-medium text-neutral-100">{item.title}</p>
-                <p className="text-sm text-neutral-500">{item.date}</p>
-                <p className="text-xs text-emerald-400 mt-1">+{item.points.toFixed(1)} puntos</p>
-              </div>
-            ))}
-          </div>
+          {!activityLoaded ? (
+            <div className="flex items-center gap-2 py-4 text-neutral-500">
+              <div className="w-4 h-4 border-2 border-neutral-700 border-t-emerald-500 rounded-full animate-spin" />
+              <span className="text-xs">Cargando actividad...</span>
+            </div>
+          ) : activity.length === 0 ? (
+            <div className="p-5 rounded-2xl border border-neutral-800 bg-neutral-900/70 text-center">
+              <p className="text-xs text-neutral-500">Actividad en tiempo real aparecera aqui segun se generen eventos verificados.</p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {activity.map((item, i) => (
+                <div key={i} className="p-4 rounded-2xl border border-neutral-800 bg-neutral-900/70">
+                  <p className="font-medium text-neutral-100">{item.title}</p>
+                  <p className="text-sm text-neutral-500">{item.date}</p>
+                  {item.points > 0 && <p className="text-xs text-emerald-400 mt-1">+{item.points} puntos</p>}
+                </div>
+              ))}
+            </div>
+          )}
         </section>
 
         {/* ADMINISTRADOR */}
