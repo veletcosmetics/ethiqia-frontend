@@ -2,7 +2,6 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
-import Image from "next/image";
 import Link from "next/link";
 import PostCard, { Post } from "@/components/PostCard";
 import { supabaseBrowser } from "@/lib/supabaseBrowserClient";
@@ -240,104 +239,100 @@ export default function ProfilePage() {
     );
   }
 
-  const name =
-    profile?.full_name || currentUser.email || "Usuario Ethiqia";
-
+  const name = profile?.full_name?.trim() || "Usuario Ethiqia";
   const totalScore = score?.total_score ?? 65;
+
+  const socialLinks = [
+    { url: profile?.website, label: profile?.website?.replace(/^https?:\/\//, "") ?? "", prefix: "https://" },
+    { url: profile?.instagram_url, label: "Instagram", prefix: "https://instagram.com/" },
+    { url: profile?.linkedin_url, label: "LinkedIn", prefix: "https://linkedin.com/in/" },
+    { url: profile?.twitter_url, label: "Twitter/X", prefix: "https://x.com/" },
+    { url: profile?.tiktok_url, label: "TikTok", prefix: "https://tiktok.com/@" },
+    { url: profile?.youtube_url, label: "YouTube", prefix: "https://youtube.com/" },
+  ].filter((l) => l.url);
+
+  const inputCls = "w-full rounded-lg bg-black border border-neutral-700 px-3 py-1.5 text-sm text-white focus:outline-none focus:ring-1 focus:ring-emerald-500";
 
   return (
     <main className="min-h-screen bg-black text-white">
-      <section className="max-w-4xl mx-auto px-4 py-8 space-y-8">
-        {/* Cabecera perfil */}
+      <section className="max-w-3xl mx-auto px-4 py-8 space-y-6">
+
+        {/* ── Cabecera ── */}
         <header className="bg-neutral-900 border border-neutral-800 rounded-2xl p-6">
           <div className="flex items-start gap-5">
-            <div className="relative h-20 w-20 rounded-full overflow-hidden bg-emerald-600 flex items-center justify-center text-2xl font-semibold shrink-0">
+            {/* Avatar */}
+            <label className="relative h-20 w-20 rounded-full overflow-hidden bg-emerald-700 flex items-center justify-center text-2xl font-semibold shrink-0 cursor-pointer group">
               {profile?.avatar_url ? (
-                <Image src={profile.avatar_url} alt={name} fill className="object-cover" />
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={profile.avatar_url} alt={name} className="h-full w-full object-cover" />
               ) : (
                 <span>{name[0]?.toUpperCase() ?? "U"}</span>
               )}
-            </div>
+              <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                <span className="text-[10px] text-white">{avatarUploading ? "..." : "Cambiar"}</span>
+              </div>
+              <input type="file" accept="image/*" className="hidden" onChange={handleAvatarChange} />
+            </label>
 
+            {/* Info principal */}
             <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-3 flex-wrap">
+              <div className="flex items-center gap-2 flex-wrap">
                 <h1 className="text-xl font-semibold">{name}</h1>
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (!editing) {
-                      setEditForm({
-                        full_name: profile?.full_name ?? "",
-                        bio: profile?.bio ?? "",
-                        profession: profile?.profession ?? "",
-                        location: profile?.location ?? "",
-                        website: profile?.website ?? "",
-                        instagram_url: profile?.instagram_url ?? "",
-                        linkedin_url: profile?.linkedin_url ?? "",
-                        twitter_url: profile?.twitter_url ?? "",
-                        tiktok_url: profile?.tiktok_url ?? "",
-                        youtube_url: profile?.youtube_url ?? "",
-                      });
-                    }
-                    setEditing(!editing);
-                  }}
-                  className="text-xs text-emerald-400 hover:text-emerald-300 transition-colors"
-                >
-                  {editing ? "Cancelar" : "Editar perfil"}
-                </button>
+                <span className="text-emerald-400 text-xs font-medium bg-emerald-500/10 rounded-full px-2 py-0.5">
+                  Score: {totalScore}
+                </span>
               </div>
 
               {profile?.profession && <p className="text-xs text-emerald-400 mt-0.5">{profile.profession}</p>}
               {profile?.location && <p className="text-xs text-neutral-500 mt-0.5">{profile.location}</p>}
 
-              {profile?.bio && <p className="text-sm text-neutral-300 mt-2 whitespace-pre-line">{profile.bio}</p>}
-
-              {/* Links sociales */}
-              <div className="flex flex-wrap gap-3 mt-2 text-xs text-neutral-400">
-                {profile?.website && (
-                  <a href={profile.website.startsWith("http") ? profile.website : `https://${profile.website}`} target="_blank" rel="noopener noreferrer" className="hover:text-emerald-400 transition-colors">
-                    {profile.website.replace(/^https?:\/\//, "")}
-                  </a>
-                )}
-                {profile?.instagram_url && (
-                  <a href={profile.instagram_url.startsWith("http") ? profile.instagram_url : `https://instagram.com/${profile.instagram_url.replace("@", "")}`} target="_blank" rel="noopener noreferrer" className="hover:text-emerald-400 transition-colors">
-                    Instagram
-                  </a>
-                )}
-                {profile?.linkedin_url && (
-                  <a href={profile.linkedin_url.startsWith("http") ? profile.linkedin_url : `https://linkedin.com/in/${profile.linkedin_url}`} target="_blank" rel="noopener noreferrer" className="hover:text-emerald-400 transition-colors">
-                    LinkedIn
-                  </a>
-                )}
-                {profile?.twitter_url && (
-                  <a href={profile.twitter_url.startsWith("http") ? profile.twitter_url : `https://x.com/${profile.twitter_url.replace("@", "")}`} target="_blank" rel="noopener noreferrer" className="hover:text-emerald-400 transition-colors">
-                    Twitter/X
-                  </a>
-                )}
-                {profile?.tiktok_url && (
-                  <a href={profile.tiktok_url.startsWith("http") ? profile.tiktok_url : `https://tiktok.com/@${profile.tiktok_url.replace("@", "")}`} target="_blank" rel="noopener noreferrer" className="hover:text-emerald-400 transition-colors">
-                    TikTok
-                  </a>
-                )}
-                {profile?.youtube_url && (
-                  <a href={profile.youtube_url.startsWith("http") ? profile.youtube_url : `https://youtube.com/${profile.youtube_url}`} target="_blank" rel="noopener noreferrer" className="hover:text-emerald-400 transition-colors">
-                    YouTube
-                  </a>
-                )}
-              </div>
-
-              <div className="flex gap-4 text-xs text-neutral-400 mt-3">
+              <div className="flex gap-4 text-xs text-neutral-400 mt-2">
                 <span><span className="text-white font-semibold">{postCount}</span> publicaciones</span>
                 <span><span className="text-white font-semibold">{followStats.followers}</span> seguidores</span>
                 <span><span className="text-white font-semibold">{followStats.following}</span> siguiendo</span>
               </div>
             </div>
 
-            <label className="cursor-pointer text-xs text-neutral-500 hover:text-emerald-400 transition-colors shrink-0">
-              <input type="file" accept="image/*" className="hidden" onChange={handleAvatarChange} />
-              {avatarUploading ? "Subiendo..." : "Cambiar foto"}
-            </label>
+            <button
+              type="button"
+              onClick={() => {
+                if (!editing) {
+                  setEditForm({
+                    full_name: profile?.full_name ?? "",
+                    bio: profile?.bio ?? "",
+                    profession: profile?.profession ?? "",
+                    location: profile?.location ?? "",
+                    website: profile?.website ?? "",
+                    instagram_url: profile?.instagram_url ?? "",
+                    linkedin_url: profile?.linkedin_url ?? "",
+                    twitter_url: profile?.twitter_url ?? "",
+                    tiktok_url: profile?.tiktok_url ?? "",
+                    youtube_url: profile?.youtube_url ?? "",
+                  });
+                }
+                setEditing(!editing);
+              }}
+              className="text-xs text-emerald-400 hover:text-emerald-300 transition-colors shrink-0"
+            >
+              {editing ? "Cancelar" : "Editar perfil"}
+            </button>
           </div>
+
+          {/* Bio y links (modo vista) */}
+          {!editing && (
+            <div className="mt-4">
+              {profile?.bio && <p className="text-sm text-neutral-300 whitespace-pre-line leading-relaxed">{profile.bio}</p>}
+              {socialLinks.length > 0 && (
+                <div className="flex flex-wrap gap-3 mt-2.5 text-xs text-neutral-400">
+                  {socialLinks.map((l, i) => (
+                    <a key={i} href={l.url!.startsWith("http") ? l.url! : l.prefix + l.url!} target="_blank" rel="noopener noreferrer" className="hover:text-emerald-400 transition-colors">
+                      {l.label}
+                    </a>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Formulario de edicion */}
           {editing && (
@@ -345,44 +340,44 @@ export default function ProfilePage() {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="text-[11px] text-neutral-500 mb-1 block">Nombre</label>
-                  <input className="w-full rounded-lg bg-black border border-neutral-700 px-3 py-1.5 text-sm text-white focus:outline-none focus:ring-1 focus:ring-emerald-500" value={editForm.full_name} onChange={(e) => setEditForm((f) => ({ ...f, full_name: e.target.value }))} />
+                  <input className={inputCls} value={editForm.full_name} onChange={(e) => setEditForm((f) => ({ ...f, full_name: e.target.value }))} />
                 </div>
                 <div>
                   <label className="text-[11px] text-neutral-500 mb-1 block">Profesion</label>
-                  <input className="w-full rounded-lg bg-black border border-neutral-700 px-3 py-1.5 text-sm text-white focus:outline-none focus:ring-1 focus:ring-emerald-500" value={editForm.profession} onChange={(e) => setEditForm((f) => ({ ...f, profession: e.target.value }))} placeholder="Ej: Diseñadora UX" />
+                  <input className={inputCls} value={editForm.profession} onChange={(e) => setEditForm((f) => ({ ...f, profession: e.target.value }))} placeholder="Ej: Disenadora UX" />
                 </div>
                 <div>
                   <label className="text-[11px] text-neutral-500 mb-1 block">Ubicacion</label>
-                  <input className="w-full rounded-lg bg-black border border-neutral-700 px-3 py-1.5 text-sm text-white focus:outline-none focus:ring-1 focus:ring-emerald-500" value={editForm.location} onChange={(e) => setEditForm((f) => ({ ...f, location: e.target.value }))} placeholder="Ej: Barcelona, España" />
+                  <input className={inputCls} value={editForm.location} onChange={(e) => setEditForm((f) => ({ ...f, location: e.target.value }))} placeholder="Ej: Barcelona" />
                 </div>
                 <div>
-                  <label className="text-[11px] text-neutral-500 mb-1 block">Web personal</label>
-                  <input className="w-full rounded-lg bg-black border border-neutral-700 px-3 py-1.5 text-sm text-white focus:outline-none focus:ring-1 focus:ring-emerald-500" value={editForm.website} onChange={(e) => setEditForm((f) => ({ ...f, website: e.target.value }))} placeholder="tusitio.com" />
+                  <label className="text-[11px] text-neutral-500 mb-1 block">Web</label>
+                  <input className={inputCls} value={editForm.website} onChange={(e) => setEditForm((f) => ({ ...f, website: e.target.value }))} placeholder="tusitio.com" />
                 </div>
                 <div>
                   <label className="text-[11px] text-neutral-500 mb-1 block">Instagram</label>
-                  <input className="w-full rounded-lg bg-black border border-neutral-700 px-3 py-1.5 text-sm text-white focus:outline-none focus:ring-1 focus:ring-emerald-500" value={editForm.instagram_url} onChange={(e) => setEditForm((f) => ({ ...f, instagram_url: e.target.value }))} placeholder="https://instagram.com/usuario" />
+                  <input className={inputCls} value={editForm.instagram_url} onChange={(e) => setEditForm((f) => ({ ...f, instagram_url: e.target.value }))} placeholder="https://instagram.com/usuario" />
                 </div>
                 <div>
                   <label className="text-[11px] text-neutral-500 mb-1 block">LinkedIn</label>
-                  <input className="w-full rounded-lg bg-black border border-neutral-700 px-3 py-1.5 text-sm text-white focus:outline-none focus:ring-1 focus:ring-emerald-500" value={editForm.linkedin_url} onChange={(e) => setEditForm((f) => ({ ...f, linkedin_url: e.target.value }))} placeholder="https://linkedin.com/in/usuario" />
+                  <input className={inputCls} value={editForm.linkedin_url} onChange={(e) => setEditForm((f) => ({ ...f, linkedin_url: e.target.value }))} placeholder="https://linkedin.com/in/usuario" />
                 </div>
                 <div>
                   <label className="text-[11px] text-neutral-500 mb-1 block">Twitter / X</label>
-                  <input className="w-full rounded-lg bg-black border border-neutral-700 px-3 py-1.5 text-sm text-white focus:outline-none focus:ring-1 focus:ring-emerald-500" value={editForm.twitter_url} onChange={(e) => setEditForm((f) => ({ ...f, twitter_url: e.target.value }))} placeholder="https://x.com/usuario" />
+                  <input className={inputCls} value={editForm.twitter_url} onChange={(e) => setEditForm((f) => ({ ...f, twitter_url: e.target.value }))} placeholder="https://x.com/usuario" />
                 </div>
                 <div>
                   <label className="text-[11px] text-neutral-500 mb-1 block">TikTok</label>
-                  <input className="w-full rounded-lg bg-black border border-neutral-700 px-3 py-1.5 text-sm text-white focus:outline-none focus:ring-1 focus:ring-emerald-500" value={editForm.tiktok_url} onChange={(e) => setEditForm((f) => ({ ...f, tiktok_url: e.target.value }))} placeholder="https://tiktok.com/@usuario" />
+                  <input className={inputCls} value={editForm.tiktok_url} onChange={(e) => setEditForm((f) => ({ ...f, tiktok_url: e.target.value }))} placeholder="https://tiktok.com/@usuario" />
                 </div>
                 <div>
                   <label className="text-[11px] text-neutral-500 mb-1 block">YouTube</label>
-                  <input className="w-full rounded-lg bg-black border border-neutral-700 px-3 py-1.5 text-sm text-white focus:outline-none focus:ring-1 focus:ring-emerald-500" value={editForm.youtube_url} onChange={(e) => setEditForm((f) => ({ ...f, youtube_url: e.target.value }))} placeholder="https://youtube.com/@canal" />
+                  <input className={inputCls} value={editForm.youtube_url} onChange={(e) => setEditForm((f) => ({ ...f, youtube_url: e.target.value }))} placeholder="https://youtube.com/@canal" />
                 </div>
               </div>
               <div>
                 <label className="text-[11px] text-neutral-500 mb-1 block">Bio</label>
-                <textarea className="w-full rounded-lg bg-black border border-neutral-700 px-3 py-2 text-sm text-white focus:outline-none focus:ring-1 focus:ring-emerald-500 resize-none" rows={3} value={editForm.bio} onChange={(e) => setEditForm((f) => ({ ...f, bio: e.target.value }))} placeholder="Cuentanos sobre ti..." />
+                <textarea className={`${inputCls} resize-none`} rows={4} value={editForm.bio} onChange={(e) => setEditForm((f) => ({ ...f, bio: e.target.value }))} placeholder="Cuentanos sobre ti..." />
               </div>
               <button
                 type="button"
@@ -420,112 +415,74 @@ export default function ProfilePage() {
           )}
         </header>
 
-        {/* Tarjeta Score Ethiqia (mismo diseño que ya tenías) */}
-        <section className="bg-neutral-900 border border-neutral-800 rounded-2xl p-6 space-y-4">
-          <div className="flex justify-between items-baseline">
-            <div>
-              <h2 className="text-lg font-semibold">Score Etiqia</h2>
-              <p className="text-xs text-neutral-400 mt-1">
-                Versión inicial de tu puntuación. Se irá refinando con tu
-                actividad y las integraciones externas.
-              </p>
+        {/* ── Premium (bloqueado) ── */}
+        <section className="relative bg-neutral-900 border border-neutral-800 rounded-2xl overflow-hidden">
+          {/* Overlay */}
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-[2px] z-10 flex flex-col items-center justify-center text-center px-6">
+            <span className="text-2xl mb-2">&#128274;</span>
+            <h3 className="text-base font-semibold">Ethiqia Premium</h3>
+            <p className="text-xs text-neutral-400 mt-1 max-w-xs">Desbloquea estadisticas avanzadas, badge verificado, categoria de creador y mas.</p>
+            <button type="button" className="mt-4 rounded-full bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 px-6 py-2 text-sm font-semibold text-black transition-colors">
+              Hazte Premium
+            </button>
+          </div>
+
+          {/* Contenido (borroso detras) */}
+          <div className="p-6 space-y-5 select-none" aria-hidden="true">
+            <div className="flex items-center gap-3">
+              <h2 className="text-sm font-semibold">Estadisticas avanzadas</h2>
+              <span className="text-[10px] bg-amber-500/20 text-amber-400 rounded-full px-2 py-0.5 font-medium">PREMIUM</span>
             </div>
-            <div className="text-right">
-              <div className="text-3xl font-bold">{totalScore}</div>
-              <div className="text-xs text-neutral-400">
-                PUNTUACIÓN ACTUAL
+
+            <div className="grid grid-cols-3 gap-4">
+              <div className="rounded-xl bg-neutral-800/50 p-4 text-center">
+                <div className="text-2xl font-bold text-neutral-600">12.4k</div>
+                <div className="text-[11px] text-neutral-600 mt-1">Alcance</div>
+              </div>
+              <div className="rounded-xl bg-neutral-800/50 p-4 text-center">
+                <div className="text-2xl font-bold text-neutral-600">8.1k</div>
+                <div className="text-[11px] text-neutral-600 mt-1">Impresiones</div>
+              </div>
+              <div className="rounded-xl bg-neutral-800/50 p-4 text-center">
+                <div className="text-2xl font-bold text-neutral-600">4.2%</div>
+                <div className="text-[11px] text-neutral-600 mt-1">Engagement</div>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4 text-sm">
+              <div className="rounded-xl bg-neutral-800/50 p-4">
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="text-neutral-600">&#9989;</span>
+                  <span className="text-neutral-600 font-medium">Badge verificado especial</span>
+                </div>
+                <p className="text-[11px] text-neutral-700">Icono de verificacion premium visible en tu perfil y posts.</p>
+              </div>
+              <div className="rounded-xl bg-neutral-800/50 p-4">
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="text-neutral-600">&#128279;</span>
+                  <span className="text-neutral-600 font-medium">Enlace destacado en bio</span>
+                </div>
+                <p className="text-[11px] text-neutral-700">Enlace visible y destacado al inicio de tu perfil publico.</p>
+              </div>
+              <div className="rounded-xl bg-neutral-800/50 p-4">
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="text-neutral-600">&#127941;</span>
+                  <span className="text-neutral-600 font-medium">Categoria de creador</span>
+                </div>
+                <p className="text-[11px] text-neutral-700">Influencer, periodista, activista, empresa, artista...</p>
+              </div>
+              <div className="rounded-xl bg-neutral-800/50 p-4">
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="text-neutral-600">&#128200;</span>
+                  <span className="text-neutral-600 font-medium">Metricas de audiencia</span>
+                </div>
+                <p className="text-[11px] text-neutral-700">Demografia, horarios de actividad, crecimiento mensual.</p>
               </div>
             </div>
           </div>
-
-          {/* Barras – de momento usan los valores del score (o fallback) */}
-          <div className="space-y-3 text-xs">
-            <div>
-              <div className="flex justify-between mb-1">
-                <span>Transparencia</span>
-                <span>{score?.transparency_score ?? 25}/35</span>
-              </div>
-              <div className="h-2 rounded-full bg-neutral-800 overflow-hidden">
-                <div
-                  className="h-full bg-emerald-500"
-                  style={{
-                    width: `${
-                      ((score?.transparency_score ?? 25) / 35) * 100
-                    }%`,
-                  }}
-                />
-              </div>
-            </div>
-
-            <div>
-              <div className="flex justify-between mb-1">
-                <span>Conducta y actividad positiva</span>
-                <span>{score?.positive_behavior_score ?? 18}/25</span>
-              </div>
-              <div className="h-2 rounded-full bg-neutral-800 overflow-hidden">
-                <div
-                  className="h-full bg-emerald-500"
-                  style={{
-                    width: `${
-                      ((score?.positive_behavior_score ?? 18) / 25) *
-                      100
-                    }%`,
-                  }}
-                />
-              </div>
-            </div>
-
-            <div>
-              <div className="flex justify-between mb-1">
-                <span>Reputación interna</span>
-                <span>
-                  {score?.internal_reputation_score ?? 12}/20
-                </span>
-              </div>
-              <div className="h-2 rounded-full bg-neutral-800 overflow-hidden">
-                <div
-                  className="h-full bg-emerald-500"
-                  style={{
-                    width: `${
-                      ((score?.internal_reputation_score ?? 12) /
-                        20) *
-                      100
-                    }%`,
-                  }}
-                />
-              </div>
-            </div>
-
-            <div>
-              <div className="flex justify-between mb-1">
-                <span>Reputación externa verificada</span>
-                <span>
-                  {score?.external_reputation_score ?? 10}/20
-                </span>
-              </div>
-              <div className="h-2 rounded-full bg-neutral-800 overflow-hidden">
-                <div
-                  className="h-full bg-emerald-500"
-                  style={{
-                    width: `${
-                      ((score?.external_reputation_score ?? 10) /
-                        20) *
-                      100
-                    }%`,
-                  }}
-                />
-              </div>
-            </div>
-          </div>
-
-          <p className="text-[11px] text-neutral-500 mt-2">
-            Nota: La reputación externa (compras verificadas, eventos,
-            integraciones con empresas como Velet, etc.) se activará a
-            medida que integremos más fuentes de datos reales.
-          </p>
         </section>
 
-        {/* Publicaciones del usuario */}
+        {/* ── Publicaciones ── */}
         <section className="space-y-4">
           <div className="flex items-center justify-between">
             <h2 className="text-lg font-semibold">Mis publicaciones</h2>
