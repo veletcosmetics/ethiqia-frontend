@@ -29,6 +29,7 @@ export default function CompanyPage() {
     setReviewResponses((prev) => ({ ...prev, [index]: newVal }));
   };
 
+  const [logoError, setLogoError] = useState(false);
   const [admin, setAdmin] = useState<{ id: string; full_name: string; avatar_url: string | null } | null>(null);
 
   useEffect(() => {
@@ -62,8 +63,12 @@ export default function CompanyPage() {
         <header className="space-y-4">
           <div className="flex gap-5 items-center">
             <div className="w-[160px] h-[80px] rounded-2xl bg-[#1a1a1a] flex items-center justify-center shadow-lg shadow-emerald-500/10 overflow-hidden shrink-0">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src="/logo-velet.png" alt={data.name} className="w-full h-full object-contain p-2" onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; e.currentTarget.parentElement!.innerHTML = "<span class='text-2xl font-semibold'>V</span>"; }} />
+              {logoError ? (
+                <span className="text-2xl font-semibold text-white">VC</span>
+              ) : (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src="/logo-velet.png" alt={data.name} className="w-full h-full object-contain p-2" onError={() => setLogoError(true)} />
+              )}
             </div>
 
             <div className="space-y-1">
