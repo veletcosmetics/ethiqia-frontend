@@ -138,24 +138,24 @@ export const companyData: CompanyData = {
 
   kpiMetrics: [
     {
-      label: "Clínicas y centros activos",
-      value: "63",
-      helper: "Trabajando con Velet actualmente"
-    },
-    {
-      label: "Pacientes beneficiados (piel sensible)",
-      value: "120+",
-      helper: "Programas en colaboración con clínicas"
-    },
-    {
       label: "Productos registrados en CPNP",
       value: "18",
-      helper: "Catálogo profesional para la UE"
+      helper: "Catalogo profesional para la UE"
     },
     {
       label: "Productos registrados en FDA",
       value: "6",
-      helper: "Catálogo regulado en EE. UU."
+      helper: "Catalogo regulado en EE. UU."
+    },
+    {
+      label: "Anos en el mercado",
+      value: "5",
+      helper: "Desde 2021"
+    },
+    {
+      label: "Sede",
+      value: "Elche",
+      helper: "Espana · Alicante"
     }
   ],
 

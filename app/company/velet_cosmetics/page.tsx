@@ -1,7 +1,9 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
+import Link from "next/link";
 import { companyData, type CompanyData } from "@/lib/companyMock";
+import { supabaseBrowser } from "@/lib/supabaseBrowserClient";
 import { ReviewCard } from "@/components/company/ReviewCard";
 import { ScoreBreakdown } from "@/components/company/ScoreBreakdown";
 import { MetricsSummary } from "@/components/company/MetricsSummary";
@@ -27,15 +29,36 @@ export default function CompanyPage() {
     setReviewResponses((prev) => ({ ...prev, [index]: newVal }));
   };
 
+  const [admin, setAdmin] = useState<{ id: string; full_name: string; avatar_url: string | null } | null>(null);
+
+  useEffect(() => {
+    const loadAdmin = async () => {
+      try {
+        // Buscar el primer usuario que tenga full_name que contenga "David"
+        // o el usuario logueado actual como admin de la empresa
+        const { data: { user } } = await supabaseBrowser.auth.getUser();
+        if (user) {
+          const { data: prof } = await supabaseBrowser
+            .from("profiles")
+            .select("id, full_name, avatar_url")
+            .eq("id", user.id)
+            .maybeSingle();
+          if (prof?.full_name) setAdmin(prof as any);
+        }
+      } catch { /* no-op */ }
+    };
+    loadAdmin();
+  }, []);
+
   return (
     <main className="min-h-screen bg-neutral-950 text-neutral-50 pb-20">
       <section className="max-w-5xl mx-auto px-4 py-10 space-y-10">
         {/* CABECERA EMPRESA */}
-        <header className="flex flex-col md:flex-row md:items-center md:justify-between gap-6">
-          <div className="flex gap-4 items-center">
-            <div className="h-16 w-16 rounded-2xl bg-gradient-to-br from-emerald-500/80 to-sky-500/80 flex items-center justify-center text-2xl font-semibold shadow-lg shadow-emerald-500/30 overflow-hidden">
+        <header className="space-y-4">
+          <div className="flex gap-5 items-center">
+            <div className="w-[160px] h-[80px] rounded-2xl bg-[#1a1a1a] flex items-center justify-center shadow-lg shadow-emerald-500/10 overflow-hidden shrink-0">
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src="/logo-velet.png" alt={data.name} className="h-full w-full object-cover" onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; e.currentTarget.parentElement!.innerHTML = "<span class='text-2xl font-semibold'>V</span>"; }} />
+              <img src="/logo-velet.png" alt={data.name} className="w-full h-full object-contain p-2" onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; e.currentTarget.parentElement!.innerHTML = "<span class='text-2xl font-semibold'>V</span>"; }} />
             </div>
 
             <div className="space-y-1">
@@ -58,16 +81,6 @@ export default function CompanyPage() {
                 evidencias, actividad y datos verificables.
               </p>
             </div>
-          </div>
-
-          <div className="flex flex-col items-start md:items-end gap-2">
-            <p className="text-xs uppercase tracking-[0.2em] text-emerald-400">
-              Perfil empresarial
-            </p>
-            <p className="text-sm text-neutral-400 max-w-xs md:text-right">
-              Pensado para explicar a administraciones, inversores y partners
-              cómo funcionaría Ethiqia con datos reales de una empresa.
-            </p>
           </div>
         </header>
 
@@ -228,6 +241,27 @@ export default function CompanyPage() {
             />
           ))}
         </section>
+
+        {/* ADMINISTRADOR VINCULADO */}
+        {admin && (
+          <section className="mt-10 rounded-2xl border border-neutral-800 bg-neutral-900/70 p-5">
+            <h2 className="text-xs font-semibold text-neutral-400 uppercase tracking-wider mb-3">Administrador vinculado</h2>
+            <Link href={`/u/${admin.id}`} className="flex items-center gap-3 group">
+              <div className="h-10 w-10 rounded-full overflow-hidden bg-gradient-to-br from-emerald-600 to-emerald-800 flex items-center justify-center shrink-0">
+                {admin.avatar_url ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={admin.avatar_url} alt={admin.full_name} className="h-full w-full object-cover" />
+                ) : (
+                  <span className="text-sm font-bold text-white">{admin.full_name[0]?.toUpperCase()}</span>
+                )}
+              </div>
+              <div>
+                <p className="text-sm font-semibold text-neutral-100 group-hover:text-emerald-400 transition-colors">{admin.full_name}</p>
+                <p className="text-[11px] text-neutral-500">Administrador de {data.name}</p>
+              </div>
+            </Link>
+          </section>
+        )}
       </section>
     </main>
   );
