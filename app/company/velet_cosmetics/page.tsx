@@ -4,40 +4,27 @@ import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import { companyData, type CompanyData } from "@/lib/companyMock";
 import { supabaseBrowser } from "@/lib/supabaseBrowserClient";
-import { ReviewCard } from "@/components/company/ReviewCard";
 import { ScoreBreakdown } from "@/components/company/ScoreBreakdown";
 import { MetricsSummary } from "@/components/company/MetricsSummary";
-import { ActivityChart } from "@/components/company/ActivityChart";
 
 export default function CompanyPage() {
   const data: CompanyData = companyData;
-
-  const [openEvidenceIndex, setOpenEvidenceIndex] = useState<number | null>(
-    null
-  );
-
-  const [reviewResponses, setReviewResponses] = useState<
-    Record<number, string>
-  >(
-    data.reviews.reduce((acc, review, index) => {
-      acc[index] = review.response ?? "";
-      return acc;
-    }, {} as Record<number, string>)
-  );
-
-  const handleChangeResponse = (index: number, newVal: string) => {
-    setReviewResponses((prev) => ({ ...prev, [index]: newVal }));
-  };
 
   const [logoError, setLogoError] = useState(false);
   const [uploadingDoc, setUploadingDoc] = useState(false);
   const [admin, setAdmin] = useState<{ id: string; full_name: string; avatar_url: string | null } | null>(null);
 
+  // Documentos desde Supabase (con fallback hardcodeado)
+  const [documents, setDocuments] = useState<{ name: string; doc_type: string; verified: boolean }[]>([
+    { name: "Registro CPNP — 18 productos", doc_type: "Certificacion", verified: true },
+    { name: "FDA MOCRA Registration", doc_type: "Certificacion", verified: true },
+    { name: "Acuerdo colaboracion AITEX", doc_type: "Contrato", verified: true },
+    { name: "Certificacion Vegana — PETA", doc_type: "Certificacion", verified: true },
+  ]);
+
   useEffect(() => {
-    const loadAdmin = async () => {
+    const load = async () => {
       try {
-        // Buscar el primer usuario que tenga full_name que contenga "David"
-        // o el usuario logueado actual como admin de la empresa
         const { data: { user } } = await supabaseBrowser.auth.getUser();
         if (user) {
           const { data: prof } = await supabaseBrowser
@@ -48,8 +35,21 @@ export default function CompanyPage() {
           if (prof?.full_name) setAdmin(prof as any);
         }
       } catch { /* no-op */ }
+
+      // Intentar cargar documentos desde Supabase
+      try {
+        const { data: docs, error } = await supabaseBrowser
+          .from("company_documents")
+          .select("name, doc_type, verified")
+          .eq("company_handle", "velet_cosmetics")
+          .order("uploaded_at", { ascending: false });
+
+        if (!error && docs && docs.length > 0) {
+          setDocuments(docs as any);
+        }
+      } catch { /* usar fallback hardcodeado */ }
     };
-    loadAdmin();
+    load();
   }, []);
 
   return (
@@ -60,7 +60,7 @@ export default function CompanyPage() {
           ← Inicio
         </Link>
 
-        {/* CABECERA EMPRESA */}
+        {/* CABECERA */}
         <header className="space-y-4">
           <div className="flex gap-5 items-center">
             <div className="w-[160px] h-[80px] rounded-2xl bg-[#1a1a1a] flex items-center justify-center shadow-lg shadow-emerald-500/10 overflow-hidden shrink-0">
@@ -75,35 +75,28 @@ export default function CompanyPage() {
             <div className="space-y-1">
               <div className="flex items-center gap-2 flex-wrap">
                 <h1 className="text-xl font-semibold">{data.name}</h1>
-
                 {data.verified && (
                   <span className="inline-flex items-center gap-1 rounded-full border border-emerald-500/50 bg-emerald-500/10 px-2.5 py-[3px] text-[11px] text-emerald-300">
                     ✓ Empresa verificada
                   </span>
                 )}
               </div>
-
-              <p className="text-sm text-neutral-400">
-                {data.sector} · {data.country}
-              </p>
-
+              <p className="text-sm text-neutral-400">{data.sector} · {data.country}</p>
               <p className="text-xs text-neutral-500">Fundada en 2019</p>
-
               <p className="text-xs text-neutral-500 max-w-xl mt-1">
-                Ethiqia valida la reputacion de una empresa a traves de
-                evidencias, actividad y datos verificables.
+                Ethiqia valida la reputacion de una empresa a traves de evidencias, actividad y datos verificables.
               </p>
             </div>
           </div>
         </header>
 
-        {/* MÉTRICAS PRINCIPALES */}
+        {/* METRICAS */}
         <MetricsSummary metrics={data.kpiMetrics} />
 
-        {/* DESGLOSE ETHIQIA SCORE */}
+        {/* SCORE + TIPS */}
         <ScoreBreakdown items={data.scoreBreakdown} />
 
-        {/* ALINEACION ODS */}
+        {/* ODS */}
         <section className="mt-6 rounded-2xl border border-neutral-800 bg-emerald-950/20 p-6 space-y-4">
           <h2 className="text-sm font-semibold text-neutral-100">Alineacion Agenda 2030</h2>
           <p className="text-xs text-neutral-400 max-w-2xl">
@@ -118,8 +111,8 @@ export default function CompanyPage() {
           </div>
         </section>
 
-        {/* APLICACIONES Y HERRAMIENTAS ACTIVAS */}
-        <section className="mt-10">
+        {/* HERRAMIENTAS ACTIVAS */}
+        <section>
           <h2 className="text-sm font-semibold text-neutral-100 mb-3">Aplicaciones y herramientas activas</h2>
           <p className="text-xs text-neutral-500 mb-4 max-w-2xl">
             Herramientas vinculadas que generan datos verificados automaticamente para el Ethiqia Score.
@@ -149,8 +142,8 @@ export default function CompanyPage() {
           </div>
         </section>
 
-        {/* DOCUMENTACION Y CERTIFICACIONES */}
-        <section className="mt-10">
+        {/* DOCUMENTACION (desde Supabase con fallback) */}
+        <section>
           <div className="flex items-center justify-between mb-3">
             <h2 className="text-sm font-semibold text-neutral-100">Documentacion y certificaciones</h2>
             {admin && (
@@ -161,7 +154,7 @@ export default function CompanyPage() {
                   className="hidden"
                   onChange={async (e) => {
                     const file = e.target.files?.[0];
-                    if (!file || !admin) return;
+                    if (!file) return;
                     setUploadingDoc(true);
                     try {
                       const { data: session } = await supabaseBrowser.auth.getSession();
@@ -183,19 +176,14 @@ export default function CompanyPage() {
             )}
           </div>
           <div className="space-y-2">
-            {[
-              { name: "Registro CPNP — 18 productos", type: "Certificacion", verified: true },
-              { name: "FDA MOCRA Registration", type: "Certificacion", verified: true },
-              { name: "Acuerdo colaboracion AITEX", type: "Contrato", verified: true },
-              { name: "Certificacion Vegana — PETA", type: "Certificacion", verified: true },
-            ].map((doc, i) => (
+            {documents.map((doc, i) => (
               <div key={i} className="flex items-center gap-3 p-3.5 rounded-xl border border-neutral-800 bg-neutral-900/70">
                 <div className="h-8 w-8 rounded-lg bg-neutral-800 flex items-center justify-center shrink-0">
                   <svg className="h-4 w-4 text-neutral-400" viewBox="0 0 24 24" fill="none"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" /><path d="M14 2v6h6" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" /></svg>
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="text-xs font-medium text-neutral-200 truncate">{doc.name}</p>
-                  <p className="text-[10px] text-neutral-500">{doc.type}</p>
+                  <p className="text-[10px] text-neutral-500">{doc.doc_type}</p>
                 </div>
                 {doc.verified && (
                   <span className="text-[10px] text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 rounded-full px-2 py-0.5 shrink-0">
@@ -207,161 +195,23 @@ export default function CompanyPage() {
           </div>
         </section>
 
-        {/* APIS ACTIVAS CON DESCRIPCIÓN */}
-        <section className="mt-10">
-          <h2 className="text-sm font-semibold text-neutral-100 mb-3">
-            APIs activas
-          </h2>
-
-          <p className="text-xs text-neutral-500 mb-4 max-w-2xl">
-            Ethiqia no se conecta “a todo Internet”. Se conecta a muy pocos
-            puntos clave: ventas reales, actividad profesional, soporte y
-            documentación. Estas APIs están pensadas para ser simples y
-            controlables por Velet.
-          </p>
-
-          <div className="grid gap-4 md:grid-cols-2">
-            {data.apis.map((api, i) => (
-              <div
-                key={i}
-                className="rounded-2xl border border-neutral-800 bg-neutral-900/70 p-4 space-y-2"
-              >
-                <p className="text-sm font-semibold text-neutral-100">
-                  {api.title}
-                </p>
-                <p className="text-xs text-neutral-400 leading-relaxed">
-                  {api.description}
-                </p>
-              </div>
-            ))}
-          </div>
-        </section>
-
-        {/* CÓMO FUNCIONA PARA CLÍNICAS (VERSIÓN SIMPLE) */}
-        <section className="mt-10">
-          <h2 className="text-sm font-semibold text-neutral-100 mb-3">
-            Cómo funciona para clínicas (versión simple)
-          </h2>
-
-          <p className="text-xs text-neutral-500 mb-4 max-w-2xl">
-            Para una clínica, Ethiqia se resume en dos pasos: compras reales a
-            Velet y visitas validadas de clientes. Nada de datos médicos,
-            solo actividad profesional real.
-          </p>
-
-          <div className="grid gap-4 md:grid-cols-3">
-            {data.clinicFlows.map((flow, i) => (
-              <div
-                key={i}
-                className="rounded-2xl border border-neutral-800 bg-neutral-900/70 p-4 space-y-2"
-              >
-                <p className="text-sm font-semibold text-neutral-100">
-                  {flow.title}
-                </p>
-                <p className="text-xs text-neutral-400 leading-relaxed">
-                  {flow.description}
-                </p>
-              </div>
-            ))}
-          </div>
-        </section>
-
-        {/* CERTIFICACIONES CON EVIDENCIA */}
+        {/* ACTIVIDAD VERIFICADA */}
         <section>
-          <h2 className="text-sm font-semibold text-neutral-100 mt-12 mb-4">
-            Certificaciones validadas
-          </h2>
-
-          <div className="space-y-3">
-            {data.certifications.map((item, idx) => (
-              <div
-                key={idx}
-                className="p-4 rounded-2xl border border-neutral-800 bg-neutral-900/70"
-              >
-                <div className="flex justify-between items-start gap-4">
-                  <div>
-                    <p className="font-medium text-neutral-100">{item.title}</p>
-                    <p className="text-sm text-neutral-500">{item.date}</p>
-                    <p className="text-xs text-emerald-400 mt-1">
-                      +{item.points.toFixed(1)} en Ethiqia Score
-                    </p>
-                  </div>
-
-                  {item.hasEvidence && (
-                    <button
-                      onClick={() =>
-                        setOpenEvidenceIndex(
-                          openEvidenceIndex === idx ? null : idx
-                        )
-                      }
-                      className="text-xs px-3 py-1 border border-neutral-700 rounded-full bg-neutral-800 hover:bg-neutral-700 transition"
-                    >
-                      {openEvidenceIndex === idx
-                        ? "Ocultar evidencia"
-                        : "Ver evidencia"}
-                    </button>
-                  )}
-                </div>
-
-                {openEvidenceIndex === idx && (
-                  <div className="mt-3 p-3 text-xs text-neutral-300 bg-neutral-800/60 border border-neutral-700 rounded-lg">
-                    {item.evidenceDescription}
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
-        </section>
-
-        {/* ACTIVIDAD VALIDADA */}
-        <section>
-          <h2 className="text-sm font-semibold text-neutral-100 mt-12 mb-4">
-            Actividad validada reciente
-          </h2>
-
+          <h2 className="text-sm font-semibold text-neutral-100 mb-4">Actividad verificada reciente</h2>
           <div className="space-y-3">
             {data.activity.map((item, i) => (
-              <div
-                key={i}
-                className="p-4 rounded-2xl border border-neutral-800 bg-neutral-900/70"
-              >
+              <div key={i} className="p-4 rounded-2xl border border-neutral-800 bg-neutral-900/70">
                 <p className="font-medium text-neutral-100">{item.title}</p>
                 <p className="text-sm text-neutral-500">{item.date}</p>
-                <p className="text-xs text-emerald-400 mt-1">
-                  +{item.points.toFixed(1)} puntos
-                </p>
+                <p className="text-xs text-emerald-400 mt-1">+{item.points.toFixed(1)} puntos</p>
               </div>
             ))}
           </div>
         </section>
 
-        {/* GRÁFICO DE ACTIVIDAD MENSUAL */}
-        <ActivityChart data={data.monthlyActivity} />
-
-        {/* RESEÑAS VERIFICADAS */}
-        <section>
-          <h2 className="text-sm font-semibold text-neutral-100 mt-12 mb-4">
-            Resenas verificadas
-          </h2>
-          <p className="text-xs text-neutral-500 mb-4">
-            Todas las reseñas están asociadas a compras reales. La empresa
-            puede responder desde su panel profesional.
-          </p>
-
-          {data.reviews.map((review, i) => (
-            <ReviewCard
-              key={i}
-              review={review}
-              allowEditResponse
-              responseOverride={reviewResponses[i]}
-              onChangeResponse={(val: string) => handleChangeResponse(i, val)}
-            />
-          ))}
-        </section>
-
-        {/* ADMINISTRADOR VINCULADO */}
+        {/* ADMINISTRADOR */}
         {admin && (
-          <section className="mt-10 rounded-2xl border border-neutral-800 bg-neutral-900/70 p-5">
+          <section className="rounded-2xl border border-neutral-800 bg-neutral-900/70 p-5">
             <h2 className="text-xs font-semibold text-neutral-400 uppercase tracking-wider mb-3">Administrador vinculado</h2>
             <Link href={`/u/${admin.id}`} className="flex items-center gap-3 group">
               <div className="h-10 w-10 rounded-full overflow-hidden bg-gradient-to-br from-emerald-600 to-emerald-800 flex items-center justify-center shrink-0">
