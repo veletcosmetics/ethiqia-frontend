@@ -226,16 +226,7 @@ export default function PostCard({ post, authorName, authorAvatarUrl, authorId, 
   const getPostUrl = () => typeof window !== "undefined" ? `${window.location.origin}/p/${post.id}` : "";
   const shareTitle = post.caption?.slice(0, 80) || "Post en Ethiqia";
 
-  const handleShare = async () => {
-    const url = getPostUrl();
-    // Intentar Web Share API (movil)
-    if (typeof navigator !== "undefined" && navigator.share) {
-      try {
-        await navigator.share({ title: shareTitle, text: post.caption || "", url });
-        return;
-      } catch { /* usuario cancelo o error - mostrar dropdown */ }
-    }
-    // Desktop: mostrar dropdown
+  const handleShare = () => {
     setShareOpen((prev) => !prev);
   };
 
