@@ -17,6 +17,8 @@ export type Post = {
   blocked?: boolean | null;
   reason?: string | null;
   liked_by_me?: boolean | null;
+  repost_of?: string | null;
+  repost_author_name?: string | null;
   [k: string]: any;
 };
 
@@ -107,6 +109,10 @@ export default function PostCard({ post, authorName, authorAvatarUrl, authorId, 
   const [copied, setCopied] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
   const shareRef = useRef<HTMLDivElement>(null);
+  const [repostModalOpen, setRepostModalOpen] = useState(false);
+  const [repostText, setRepostText] = useState("");
+  const [reposting, setReposting] = useState(false);
+  const [repostMsg, setRepostMsg] = useState<string | null>(null);
 
   // Inline comments state
   const [commentsOpen, setCommentsOpen] = useState(false);
@@ -261,6 +267,41 @@ export default function PostCard({ post, authorName, authorAvatarUrl, authorId, 
     setShareOpen(false);
   };
 
+  const openRepostModal = () => {
+    setShareOpen(false);
+    setRepostText("");
+    setRepostMsg(null);
+    setRepostModalOpen(true);
+  };
+
+  const submitRepost = async () => {
+    setReposting(true);
+    setRepostMsg(null);
+    try {
+      const token = await getAccessToken();
+      if (!token) { setRepostMsg("Inicia sesion para repostear."); return; }
+      const res = await fetch("/api/posts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          caption: repostText || null,
+          repostOf: post.id,
+          aiProbability: 0,
+          globalScore: 100,
+          blocked: false,
+        }),
+      });
+      if (res.ok) {
+        setRepostMsg("Reposteado!");
+        setTimeout(() => { setRepostModalOpen(false); setRepostMsg(null); }, 1500);
+      } else {
+        const json = await res.json().catch(() => ({}));
+        setRepostMsg(json.error ?? "Error al repostear");
+      }
+    } catch { setRepostMsg("Error al repostear"); }
+    finally { setReposting(false); }
+  };
+
   const handleDelete = async () => {
     if (!onDelete) return;
     if (!window.confirm("Seguro que quieres eliminar esta publicacion?")) return;
@@ -278,6 +319,14 @@ export default function PostCard({ post, authorName, authorAvatarUrl, authorId, 
 
   return (
     <article className="rounded-2xl bg-neutral-900/80 border border-neutral-800/50 shadow-md shadow-black/20 overflow-hidden flex flex-col transition-all hover:border-neutral-700/50 hover:shadow-lg hover:shadow-black/30">
+      {/* Repost label */}
+      {post.repost_of && (
+        <div className="px-4 pt-2.5 pb-0 flex items-center gap-1.5 text-[11px] text-neutral-500">
+          <span>&#128257;</span>
+          <span>{post.repost_author_name ?? authorName} reposteo</span>
+        </div>
+      )}
+
       {/* Imagen */}
       {imageUrl && (
         <Link href={`/p/${post.id}`} className="block">
@@ -353,7 +402,11 @@ export default function PostCard({ post, authorName, authorAvatarUrl, authorId, 
             </button>
 
             {shareOpen && (
-              <div className="absolute bottom-full right-0 mb-2 w-48 rounded-xl border border-neutral-700/60 bg-neutral-900 shadow-xl shadow-black/40 overflow-hidden z-20">
+              <div className="absolute bottom-full right-0 mb-2 w-52 rounded-xl border border-neutral-700/60 bg-neutral-900 shadow-xl shadow-black/40 overflow-hidden z-20">
+                <button type="button" onClick={openRepostModal} className="w-full flex items-center gap-2.5 px-3.5 py-2.5 text-xs text-neutral-200 hover:bg-neutral-800 transition-colors border-b border-neutral-800/50">
+                  <span className="text-sm shrink-0">&#128257;</span>
+                  Repostear en Ethiqia
+                </button>
                 <button type="button" onClick={copyLink} className="w-full flex items-center gap-2.5 px-3.5 py-2.5 text-xs text-neutral-200 hover:bg-neutral-800 transition-colors">
                   <svg className="h-4 w-4 text-neutral-400 shrink-0" viewBox="0 0 24 24" fill="none"><rect x="9" y="9" width="13" height="13" rx="2" stroke="currentColor" strokeWidth="1.5"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1" stroke="currentColor" strokeWidth="1.5"/></svg>
                   Copiar enlace
@@ -434,6 +487,69 @@ export default function PostCard({ post, authorName, authorAvatarUrl, authorId, 
                 className="rounded-lg bg-emerald-600 hover:bg-emerald-500 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-40 transition-colors shrink-0"
               >
                 {submittingComment ? "..." : "Enviar"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* Modal repost */}
+      {repostModalOpen && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={() => setRepostModalOpen(false)}>
+          <div className="bg-neutral-900 border border-neutral-700/60 rounded-2xl w-full max-w-md shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <div className="px-5 py-4 border-b border-neutral-800/60 flex items-center justify-between">
+              <h3 className="text-sm font-semibold">Repostear en Ethiqia</h3>
+              <button type="button" onClick={() => setRepostModalOpen(false)} className="text-neutral-500 hover:text-white transition-colors">
+                <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none"><path d="M18 6L6 18M6 6l12 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" /></svg>
+              </button>
+            </div>
+
+            <div className="p-5 space-y-4">
+              <textarea
+                className="w-full rounded-lg bg-black border border-neutral-700 px-3 py-2 text-sm text-white placeholder-neutral-500 focus:outline-none focus:ring-1 focus:ring-emerald-500/50 resize-none"
+                rows={2}
+                placeholder="Anade tu comentario... (opcional)"
+                value={repostText}
+                onChange={(e) => setRepostText(e.target.value)}
+              />
+
+              {/* Preview del post original */}
+              <div className="rounded-xl border border-neutral-800 bg-neutral-950 overflow-hidden">
+                {imageUrl && (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={imageUrl} alt="" className="w-full h-32 object-cover" />
+                )}
+                <div className="p-3">
+                  <div className="flex items-center gap-2 mb-1.5">
+                    <div className="h-5 w-5 rounded-full bg-gradient-to-br from-emerald-600 to-emerald-800 flex items-center justify-center shrink-0">
+                      {authorAvatarUrl ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={authorAvatarUrl} alt="" className="h-full w-full rounded-full object-cover" />
+                      ) : (
+                        <span className="text-[8px] font-bold text-white">{(displayName[0] || "U").toUpperCase()}</span>
+                      )}
+                    </div>
+                    <span className="text-[11px] font-semibold text-neutral-300">{displayName}</span>
+                  </div>
+                  {post.caption && <p className="text-xs text-neutral-400 line-clamp-2">{post.caption}</p>}
+                </div>
+              </div>
+
+              {repostMsg && (
+                <p className={`text-xs ${repostMsg === "Reposteado!" ? "text-emerald-400" : "text-red-400"}`}>{repostMsg}</p>
+              )}
+            </div>
+
+            <div className="px-5 py-3 border-t border-neutral-800/60 flex justify-end gap-2">
+              <button type="button" onClick={() => setRepostModalOpen(false)} className="px-4 py-1.5 text-xs text-neutral-400 hover:text-white transition-colors">
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={submitRepost}
+                disabled={reposting}
+                className="rounded-full bg-emerald-500 hover:bg-emerald-600 px-5 py-1.5 text-xs font-semibold text-white disabled:opacity-50 transition-colors"
+              >
+                {reposting ? "Reposteando..." : "Repostear"}
               </button>
             </div>
           </div>

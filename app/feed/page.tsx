@@ -500,10 +500,15 @@ export default function FeedPage() {
             const authorName = isMine ? currentUserName : profile?.full_name?.trim() || "Usuario Ethiqia";
             const authorAvatarUrl = isMine ? (currentUserAvatar ?? profile?.avatar_url ?? null) : (profile?.avatar_url ?? null);
 
+            // Para reposts: el authorName es quien reposteo, el post original se muestra dentro
+            const postWithRepostName = post.repost_of
+              ? { ...post, repost_author_name: authorName }
+              : post;
+
             return (
               <PostCard
                 key={post.id}
-                post={post}
+                post={postWithRepostName}
                 authorName={authorName}
                 authorId={post.user_id}
                 authorAvatarUrl={authorAvatarUrl}

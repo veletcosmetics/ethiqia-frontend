@@ -143,7 +143,9 @@ export async function POST(req: NextRequest) {
       aiDisclosed,
     } = body;
 
-    if (!imageUrl) {
+    // Repost: no necesita imagen
+    const repostOf = body.repostOf ?? null;
+    if (!imageUrl && !repostOf) {
       return NextResponse.json({ error: "Falta imageUrl en el body" }, { status: 400 });
     }
 
@@ -160,16 +162,17 @@ export async function POST(req: NextRequest) {
       .from("posts")
       .insert({
         user_id: userId,
-        image_url: imageUrl,
+        image_url: imageUrl ?? null,
         caption: caption ?? null,
         ai_probability: aiProb,
         global_score: gScore,
         text: text ?? null,
         blocked: isBlocked,
         reason: reason ?? null,
+        repost_of: repostOf,
         moderation_status: moderationStatus,
         moderation_decided_at: nowIso,
-        moderation_decided_by: "ai-v1",
+        moderation_decided_by: repostOf ? "repost" : "ai-v1",
         moderation_labels: null,
       })
       .select("*")
