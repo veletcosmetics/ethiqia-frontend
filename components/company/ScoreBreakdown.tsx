@@ -1,7 +1,17 @@
 "use client";
-import React from "react";
+import React, { useState } from "react";
+
+const IMPROVE_TIPS: Record<string, string> = {
+  "Transparencia": "Sube certificados oficiales, anade politica de privacidad, publica ingredientes completos de cada producto.",
+  "Sostenibilidad": "Vincula Ecoembes, anade certificacion Vegan Society, documenta packaging reciclable y huella de carbono.",
+  "Impacto social": "Anade colaboraciones con instituciones (universidades, ONGs), documenta programas sociales activos.",
+  "Actividad verificada": "Conecta mas integraciones (Shopify, Stripe, WooCommerce), genera mas eventos verificados automaticamente.",
+  "Confianza B2B": "Sube contratos activos con distribuidores, anade partners institucionales, registra en mas organismos regulatorios.",
+};
 
 export const ScoreBreakdown = ({ items }: any) => {
+  const [openTip, setOpenTip] = useState<number | null>(null);
+
   return (
     <section className="mt-10">
       <h2 className="text-sm font-semibold text-neutral-100 mb-4">
@@ -29,6 +39,20 @@ export const ScoreBreakdown = ({ items }: any) => {
                 style={{ width: `${item.value}%` }}
               />
             </div>
+
+            <button
+              type="button"
+              onClick={() => setOpenTip(openTip === i ? null : i)}
+              className="mt-2 text-[11px] text-emerald-400 hover:text-emerald-300 transition-colors"
+            >
+              {openTip === i ? "Ocultar consejos" : "Como mejorar?"}
+            </button>
+
+            {openTip === i && IMPROVE_TIPS[item.label] && (
+              <div className="mt-2 p-3 rounded-lg bg-emerald-500/5 border border-emerald-500/10 text-xs text-neutral-300 leading-relaxed">
+                {IMPROVE_TIPS[item.label]}
+              </div>
+            )}
           </div>
         ))}
       </div>
