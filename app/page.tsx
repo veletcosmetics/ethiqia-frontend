@@ -242,8 +242,8 @@ export default function LandingPage() {
         <div className="max-w-5xl mx-auto px-4 py-12 space-y-6">
           <div className="text-center space-y-2">
             <p className="text-base font-semibold">Tu empresa quiere estar en Ethiqia?</p>
-            <a href="mailto:hola.ethiqia@gmail.com" className="text-sm text-emerald-400 hover:text-emerald-300 transition-colors">
-              hola.ethiqia@gmail.com
+            <a href="mailto:info.ethiqia@gmail.com" className="text-sm text-emerald-400 hover:text-emerald-300 transition-colors">
+              info.ethiqia@gmail.com
             </a>
           </div>
           <div className="flex justify-center gap-6 text-xs text-neutral-500">
