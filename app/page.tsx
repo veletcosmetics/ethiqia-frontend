@@ -53,10 +53,10 @@ export default function LandingPage() {
       {/* ── NAV ── */}
       <nav className="sticky top-0 z-50 border-b border-neutral-800/60 bg-black/80 backdrop-blur">
         <div className="max-w-6xl mx-auto px-4 h-14 flex items-center justify-between">
-          <div className="flex items-center gap-2.5">
-            <div className="h-8 w-8 rounded-full bg-emerald-600 flex items-center justify-center text-sm font-bold">E</div>
-            <span className="font-semibold text-sm">Ethiqia</span>
-          </div>
+          <Link href="/" className="hover:opacity-80 transition-opacity">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/ethiqia-logo.png" alt="Ethiqia" className="h-8" />
+          </Link>
           <div className="flex items-center gap-2">
             <Link href="/login" className="text-xs text-neutral-300 hover:text-white transition-colors px-3 py-1.5">
               Iniciar sesion

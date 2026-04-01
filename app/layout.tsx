@@ -5,6 +5,10 @@ import AppTopNav from "@/components/AppTopNav";
 export const metadata: Metadata = {
   title: "Ethiqia",
   description: "Beta reputación ética",
+  icons: {
+    icon: "/ethiqia-icon.png",
+    apple: "/ethiqia-icon.png",
+  },
 };
 
 export default function RootLayout({

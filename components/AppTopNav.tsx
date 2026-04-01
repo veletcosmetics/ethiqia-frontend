@@ -194,7 +194,7 @@ export default function AppTopNav() {
         <div className="flex items-center gap-4">
           <Link href="/" className="hover:opacity-80 transition-opacity">
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/ethiqia-logo-dark.png" alt="Ethiqia" className="h-8" />
+            <img src="/ethiqia-logo.png" alt="Ethiqia" className="h-8" />
           </Link>
 
           <nav className="hidden sm:flex items-center gap-3 text-xs text-neutral-300">
