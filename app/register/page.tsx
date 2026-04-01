@@ -42,8 +42,8 @@ export default function RegisterPage() {
     // - si NO requiere confirmación por email -> puede haber session directa
     // - si SÍ requiere confirmación -> data.session será null
     if (data.session) {
-      // Sesión creada -> directo al feed
-      router.push("/feed");
+      // Sesión creada -> onboarding
+      router.push("/onboarding");
     } else {
       setInfoMsg(
         "Cuenta creada. Revisa tu correo para confirmar la cuenta y luego inicia sesión."
