@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState, FormEvent } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import PostCard, { Post } from "@/components/PostCard";
 import { supabaseBrowser } from "@/lib/supabaseBrowserClient";
 import type { User } from "@supabase/supabase-js";
@@ -77,6 +78,12 @@ export default function FeedPage() {
         const {
           data: { user },
         } = await supabaseBrowser.auth.getUser();
+
+        // Redirect if email not confirmed
+        if (user && !user.email_confirmed_at) {
+          window.location.href = "/confirm-email";
+          return;
+        }
 
         setCurrentUser(user ?? null);
 

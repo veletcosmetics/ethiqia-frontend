@@ -34,7 +34,12 @@ export default function LoginPage() {
       return;
     }
 
-    // Login correcto -> al feed
+    // Check email confirmation
+    const user = data.session.user;
+    if (!user.email_confirmed_at) {
+      router.push("/confirm-email");
+      return;
+    }
     router.push("/feed");
   };
 

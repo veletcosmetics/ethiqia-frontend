@@ -31,6 +31,9 @@ export async function POST(req: NextRequest) {
     if (token) {
       const { data: userData, error: userErr } = await supabase.auth.getUser(token);
       if (!userErr && userData?.user) {
+        if (!userData.user.email_confirmed_at) {
+          return NextResponse.json({ error: "Email no confirmado" }, { status: 403 });
+        }
         userId = userData.user.id;
       }
     }

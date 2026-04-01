@@ -42,11 +42,15 @@ export default function RegisterPage() {
     // - si NO requiere confirmación por email -> puede haber session directa
     // - si SÍ requiere confirmación -> data.session será null
     if (data.session) {
-      // Sesión creada -> onboarding
-      router.push("/onboarding");
+      const user = data.session.user;
+      if (!user.email_confirmed_at) {
+        router.push("/confirm-email");
+      } else {
+        router.push("/onboarding");
+      }
     } else {
       setInfoMsg(
-        "Cuenta creada. Revisa tu correo para confirmar la cuenta y luego inicia sesión."
+        "Te hemos enviado un email de confirmacion. Revisa tu bandeja de entrada (y spam) antes de continuar."
       );
     }
   };

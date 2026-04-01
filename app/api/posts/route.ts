@@ -129,6 +129,10 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Invalid session" }, { status: 401 });
     }
 
+    if (!userData.user.email_confirmed_at) {
+      return NextResponse.json({ error: "Email no confirmado. Confirma tu email antes de publicar." }, { status: 403 });
+    }
+
     const userId = userData.user.id;
     const body = await req.json();
 

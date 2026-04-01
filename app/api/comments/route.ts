@@ -147,6 +147,10 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    if (!userData.user.email_confirmed_at) {
+      return NextResponse.json({ error: "Email no confirmado. Confirma tu email antes de comentar." }, { status: 403 });
+    }
+
     const body = await req.json().catch(() => ({}));
     const { postId, text } = body ?? {};
 
