@@ -53,9 +53,17 @@ export default function LandingPage() {
       {/* ── NAV ── */}
       <nav className="sticky top-0 z-50 border-b border-neutral-800/60 bg-black/80 backdrop-blur">
         <div className="max-w-6xl mx-auto px-4 h-14 flex items-center justify-between">
-          <Link href="/" className="hover:opacity-80 transition-opacity">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/ethiqia-logo.png" alt="Ethiqia" className="h-8" />
+          <Link href="/" className="flex items-center gap-2 hover:opacity-80 transition-opacity">
+            <svg width="28" height="28" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+              <path d="M50 5L93.3 27.5V72.5L50 95L6.7 72.5V27.5L50 5Z" fill="#10b981" fillOpacity="0.15" stroke="#10b981" strokeWidth="4"/>
+              <circle cx="50" cy="32" r="6" fill="#10b981"/>
+              <circle cx="30" cy="68" r="6" fill="#10b981"/>
+              <circle cx="70" cy="68" r="6" fill="#10b981"/>
+              <line x1="50" y1="32" x2="30" y2="68" stroke="#10b981" strokeWidth="3"/>
+              <line x1="50" y1="32" x2="70" y2="68" stroke="#10b981" strokeWidth="3"/>
+              <line x1="30" y1="68" x2="70" y2="68" stroke="#10b981" strokeWidth="3"/>
+            </svg>
+            <span className="text-lg font-bold text-white">ethiqia</span>
           </Link>
           <div className="flex items-center gap-2">
             <Link href="/login" className="text-xs text-neutral-300 hover:text-white transition-colors px-3 py-1.5">
