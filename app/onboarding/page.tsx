@@ -54,6 +54,7 @@ export default function OnboardingPage() {
       try {
         const { data: { user } } = await supabaseBrowser.auth.getUser();
         if (!user) { router.push("/login"); return; }
+        if (!user.email_confirmed_at) { router.push("/confirm-email"); return; }
         setUserId(user.id);
 
         const { data: session } = await supabaseBrowser.auth.getSession();

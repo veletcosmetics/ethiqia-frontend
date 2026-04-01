@@ -3,6 +3,7 @@
 import React, { useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabaseClient } from "@/lib/supabaseClient";
+import { supabaseBrowser } from "@/lib/supabaseBrowserClient";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -40,6 +41,21 @@ export default function LoginPage() {
       router.push("/confirm-email");
       return;
     }
+
+    // Check onboarding
+    try {
+      const { data: profile } = await supabaseBrowser
+        .from("profiles")
+        .select("onboarding_completed")
+        .eq("id", user.id)
+        .maybeSingle();
+
+      if (!profile?.onboarding_completed) {
+        router.push("/onboarding");
+        return;
+      }
+    } catch { /* go to feed if check fails */ }
+
     router.push("/feed");
   };
 

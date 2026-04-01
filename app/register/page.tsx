@@ -50,7 +50,7 @@ export default function RegisterPage() {
       }
     } else {
       setInfoMsg(
-        "Te hemos enviado un email de confirmacion. Revisa tu bandeja de entrada (y spam) antes de continuar."
+        "Te hemos enviado un email de confirmacion. Revisa tu bandeja de entrada (y spam) antes de continuar.\n\nDespues de confirmar, inicia sesion para acceder."
       );
     }
   };
