@@ -39,10 +39,12 @@ export async function GET(req: NextRequest) {
     const url = new URL(req.url);
     const limit = Math.min(50, Math.max(1, Number(url.searchParams.get("limit") || 20)));
 
+    // Excluir notificaciones de tipo purchase (van a actividad de empresa)
     const { data, error: dbErr } = await supabaseAdmin
       .from("notifications")
       .select("id, user_id, type, payload, read_at, created_at")
       .eq("user_id", user.id)
+      .not("type", "eq", "purchase")
       .order("read_at", { ascending: true, nullsFirst: true })
       .order("created_at", { ascending: false })
       .limit(limit);
@@ -94,6 +96,7 @@ export async function POST(req: NextRequest) {
         .from("notifications")
         .update({ read_at: new Date().toISOString() })
         .eq("user_id", user.id)
+        .not("type", "eq", "purchase")
         .is("read_at", null);
 
       if (upErr) {
