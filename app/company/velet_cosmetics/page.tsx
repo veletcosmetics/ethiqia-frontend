@@ -119,6 +119,11 @@ export default function CompanyPage() {
 
         {/* SCORE + TIPS */}
         <ScoreBreakdown items={data.scoreBreakdown} />
+        <div className="flex justify-end -mt-6">
+          <Link href="/score-info" className="text-[11px] text-neutral-500 hover:text-emerald-400 transition-colors">
+            Como se calcula el Ethiqia Score? →
+          </Link>
+        </div>
 
         {/* ODS */}
         <section className="mt-6 rounded-2xl border border-neutral-800 bg-emerald-950/20 p-6 space-y-4">

@@ -257,6 +257,7 @@ export default function LandingPage() {
           <div className="flex justify-center gap-6 text-xs text-neutral-500">
             <Link href="/feed" className="hover:text-white transition-colors">Feed</Link>
             <Link href="/company/velet_cosmetics" className="hover:text-white transition-colors">Empresas</Link>
+            <Link href="/score-info" className="hover:text-white transition-colors">Como se calcula el Score</Link>
             <Link href="/score-rules" className="hover:text-white transition-colors">Reglas</Link>
           </div>
           <p className="text-center text-[11px] text-neutral-600">

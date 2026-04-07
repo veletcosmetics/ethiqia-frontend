@@ -282,6 +282,9 @@ export default function ProfilePage() {
                 <span className="text-emerald-400 text-xs font-medium bg-emerald-500/10 rounded-full px-2 py-0.5">
                   Score: {totalScore}
                 </span>
+                <Link href="/score-info" className="text-[11px] text-neutral-500 hover:text-emerald-400 transition-colors">
+                  Como se calcula? →
+                </Link>
               </div>
 
               {profile?.profession && <p className="text-xs text-emerald-400 mt-0.5">{profile.profession}</p>}
