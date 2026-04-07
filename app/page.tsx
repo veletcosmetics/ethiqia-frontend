@@ -258,7 +258,7 @@ export default function LandingPage() {
             <Link href="/feed" className="hover:text-white transition-colors">Feed</Link>
             <Link href="/company/velet_cosmetics" className="hover:text-white transition-colors">Empresas</Link>
             <Link href="/score-info" className="hover:text-white transition-colors">Como se calcula el Score</Link>
-            <Link href="/score-rules" className="hover:text-white transition-colors">Reglas</Link>
+            <Link href="/score-info" className="hover:text-white transition-colors">Reglas</Link>
           </div>
           <p className="text-center text-[11px] text-neutral-600">
             Ethiqia · Red social con moderacion IA · 2026

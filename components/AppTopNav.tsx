@@ -218,8 +218,8 @@ export default function AppTopNav() {
             <Link href="/company" className="hover:text-white">
               Empresas
             </Link>
-            <Link href="/score-rules" className="hover:text-white">
-              Reglas
+            <Link href="/score-info" className="hover:text-white">
+              Como funciona
             </Link>
           </nav>
         </div>
