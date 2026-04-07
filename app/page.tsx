@@ -81,6 +81,13 @@ export default function LandingPage() {
         <div className="absolute inset-0 bg-gradient-to-br from-emerald-900/20 via-black to-black" />
         <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[800px] h-[800px] bg-emerald-500/5 rounded-full blur-3xl" />
         <div className="relative max-w-4xl mx-auto px-4 py-24 sm:py-32 text-center">
+          <div className="flex justify-center mb-6">
+            <svg width="80" height="80" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+              <path d="M50 5L93.3 27.5V72.5L50 95L6.7 72.5V27.5L50 5Z" fill="#10b981" fillOpacity="0.15" stroke="#10b981" strokeWidth="4"/>
+              <circle cx="50" cy="32" r="6" fill="#10b981"/><circle cx="30" cy="68" r="6" fill="#10b981"/><circle cx="70" cy="68" r="6" fill="#10b981"/>
+              <line x1="50" y1="32" x2="30" y2="68" stroke="#10b981" strokeWidth="3"/><line x1="50" y1="32" x2="70" y2="68" stroke="#10b981" strokeWidth="3"/><line x1="30" y1="68" x2="70" y2="68" stroke="#10b981" strokeWidth="3"/>
+            </svg>
+          </div>
           <h1 className="text-3xl sm:text-5xl font-bold leading-tight tracking-tight">
             La red social donde empresas y personas demuestran que{" "}
             <span className="text-emerald-400">actuan bien.</span>
