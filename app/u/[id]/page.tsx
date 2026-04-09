@@ -28,6 +28,7 @@ export default function PublicProfilePage({ params }: { params: { id: string } }
 
   const [authChecked, setAuthChecked] = useState(false);
   const [viewerId, setViewerId] = useState<string | null>(null);
+  const [lightboxImg, setLightboxImg] = useState<string | null>(null);
 
   const [profile, setProfile] = useState<ProfileRow | null>(null);
   const [loadingProfile, setLoadingProfile] = useState(false);
@@ -356,26 +357,33 @@ export default function PublicProfilePage({ params }: { params: { id: string } }
           ) : (
             <div className="grid grid-cols-3 gap-2 sm:gap-3">
               {posts.map((p) => (
-                <Link
-                  key={p.id}
-                  href="/feed"
-                  title={p.caption ?? ""}
-                  className="block rounded-xl overflow-hidden border border-neutral-800 bg-black hover:border-neutral-600 transition-colors"
-                >
+                <div key={p.id} className="rounded-xl overflow-hidden border border-neutral-800 bg-black hover:border-neutral-600 transition-colors cursor-pointer" onClick={() => p.image_url ? setLightboxImg(p.image_url) : null}>
                   {p.image_url ? (
                     <div className="relative aspect-square">
                       <Image src={p.image_url} alt={p.caption ?? "Post"} fill className="object-cover" />
                     </div>
                   ) : (
-                    <div className="aspect-square flex items-center justify-center text-xs text-neutral-500">
+                    <Link href={`/p/${p.id}`} className="aspect-square flex items-center justify-center text-xs text-neutral-500">
                       Sin imagen
-                    </div>
+                    </Link>
                   )}
-                </Link>
+                  <Link href={`/p/${p.id}`} className="block px-2 py-1.5 text-[10px] text-neutral-500 hover:text-emerald-400 truncate">
+                    {p.caption || "Ver post →"}
+                  </Link>
+                </div>
               ))}
             </div>
           )}
         </div>
+
+        {/* Lightbox */}
+        {lightboxImg && (
+          <div className="fixed inset-0 bg-black/90 z-50 flex items-center justify-center p-4" onClick={() => setLightboxImg(null)}>
+            <button type="button" onClick={() => setLightboxImg(null)} className="absolute top-4 right-4 text-white/70 hover:text-white text-2xl">✕</button>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={lightboxImg} alt="" className="max-w-full max-h-[90vh] object-contain rounded-lg" />
+          </div>
+        )}
       </section>
     </main>
   );

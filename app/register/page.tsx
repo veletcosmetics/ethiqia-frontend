@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabaseClient } from "@/lib/supabaseClient";
 
@@ -12,6 +12,14 @@ export default function RegisterPage() {
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [infoMsg, setInfoMsg] = useState<string | null>(null);
+  const [activeEmail, setActiveEmail] = useState<string | null>(null);
+  const [loggingOut, setLoggingOut] = useState(false);
+
+  useEffect(() => {
+    supabaseClient.auth.getSession().then(({ data }) => {
+      if (data.session?.user?.email) setActiveEmail(data.session.user.email);
+    });
+  }, []);
 
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -62,6 +70,26 @@ export default function RegisterPage() {
         <p className="text-sm text-zinc-400 mb-6">
           Regístrate para empezar a construir tu reputación en Ethiqia.
         </p>
+
+        {activeEmail && (
+          <div className="mb-4 rounded-lg border border-amber-800/50 bg-amber-500/10 px-4 py-3 text-sm">
+            <p className="text-amber-300">Ya tienes una sesion abierta como <span className="font-medium text-white">{activeEmail}</span>.</p>
+            <p className="text-amber-300/70 text-xs mt-1">Quieres cerrar sesion para crear una cuenta nueva?</p>
+            <button
+              type="button"
+              disabled={loggingOut}
+              onClick={async () => {
+                setLoggingOut(true);
+                await supabaseClient.auth.signOut();
+                setActiveEmail(null);
+                setLoggingOut(false);
+              }}
+              className="mt-2 rounded-full border border-amber-700 px-4 py-1 text-xs text-amber-300 hover:bg-amber-500/20 transition-colors disabled:opacity-50"
+            >
+              {loggingOut ? "Cerrando..." : "Cerrar sesion"}
+            </button>
+          </div>
+        )}
 
         <form onSubmit={handleRegister} className="space-y-4">
           <div>

@@ -31,10 +31,13 @@ export default function CompanyPage() {
         if (user) {
           const { data: prof } = await supabaseBrowser
             .from("profiles")
-            .select("id, full_name, avatar_url")
+            .select("id, full_name, avatar_url, user_type")
             .eq("id", user.id)
             .maybeSingle();
-          if (prof?.full_name) setAdmin(prof as any);
+          // Solo mostrar como admin si user_type es company
+          if (prof?.full_name && prof.user_type === "company") {
+            setAdmin({ id: prof.id, full_name: prof.full_name, avatar_url: prof.avatar_url });
+          }
         }
       } catch { /* no-op */ }
 
