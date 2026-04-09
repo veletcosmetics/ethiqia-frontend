@@ -33,6 +33,10 @@ export default function RegisterPage() {
 
     setLoading(true);
 
+    // Cerrar sesion activa antes de registrar para evitar mezcla de datos
+    await supabaseClient.auth.signOut();
+    setActiveEmail(null);
+
     const { data, error } = await supabaseClient.auth.signUp({
       email,
       password,
