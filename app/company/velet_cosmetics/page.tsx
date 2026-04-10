@@ -6,6 +6,7 @@ import { companyData, type CompanyData } from "@/lib/companyMock";
 import { supabaseBrowser } from "@/lib/supabaseBrowserClient";
 import { ScoreBreakdown } from "@/components/company/ScoreBreakdown";
 import { MetricsSummary } from "@/components/company/MetricsSummary";
+import { ToolsCatalog } from "@/components/company/ToolsCatalog";
 
 export default function CompanyPage() {
   const data: CompanyData = companyData;
@@ -107,6 +108,9 @@ export default function CompanyPage() {
                     ✓ Verificada
                   </span>
                 )}
+                <span className="inline-flex items-center gap-1 rounded-full border border-sky-500/50 bg-sky-500/10 px-2.5 py-[3px] text-[11px] text-sky-300">
+                  &#127760; Dominio verificado · veletcosmetics.com
+                </span>
               </div>
               <p className="text-sm text-neutral-400">{data.sector} · {data.country}</p>
               <p className="text-xs text-neutral-500">Fundada en 2019</p>
@@ -143,35 +147,18 @@ export default function CompanyPage() {
           </div>
         </section>
 
-        {/* HERRAMIENTAS ACTIVAS */}
-        <section>
-          <h2 className="text-sm font-semibold text-neutral-100 mb-3">Aplicaciones y herramientas activas</h2>
-          <p className="text-xs text-neutral-500 mb-4 max-w-2xl">
-            Herramientas vinculadas que generan datos verificados automaticamente para el Ethiqia Score.
+        {/* HERRAMIENTAS (catalogo dinamico) */}
+        <ToolsCatalog companyId="7c9071c5-1b04-4fd6-b0db-deb55dcdd145" isAdmin={!!admin} />
+
+        {/* BANNER API */}
+        <section className="rounded-2xl border border-emerald-800/40 bg-emerald-500/5 p-5 space-y-2">
+          <h3 className="text-sm font-semibold text-neutral-100">Eres certificadora o plataforma de formacion?</h3>
+          <p className="text-xs text-neutral-400 leading-relaxed">
+            Integra tu API con Ethiqia. Tus clientes apareceran verificados automaticamente en sus perfiles.
           </p>
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-            {[
-              { name: "PrestaShop", initials: "PS", bg: "bg-[#DF0067]", status: "Activo", statusColor: "text-emerald-400", detail: "Eventos en tiempo real", points: "+15 pts Actividad verificada" },
-              { name: "Ecoembes", initials: "EC", bg: "bg-[#00843D]", status: "Declarado", statusColor: "text-amber-400", detail: "Gestion de envases", points: "+10 pts Sostenibilidad" },
-              { name: "Stripe", initials: "ST", bg: "bg-[#635BFF]", status: "Declarado", statusColor: "text-amber-400", detail: "Pagos verificados", points: "+10 pts Confianza B2B" },
-              { name: "CPNP (UE)", initials: "EU", bg: "bg-[#003399]", status: "Verificado oficialmente", statusColor: "text-emerald-400", detail: "18 productos registrados", points: "+20 pts Transparencia" },
-              { name: "FDA MOCRA", initials: "FDA", bg: "bg-[#1B4F72]", status: "Verificado oficialmente", statusColor: "text-emerald-400", detail: "6 productos registrados", points: "+20 pts Transparencia" },
-            ].map((tool) => (
-              <div key={tool.name} className="rounded-2xl border border-neutral-800 bg-neutral-900/70 p-4">
-                <div className="flex items-center gap-3 mb-3">
-                  <div className={`h-10 w-10 rounded-xl ${tool.bg} flex items-center justify-center text-white text-xs font-bold shrink-0`}>
-                    {tool.initials}
-                  </div>
-                  <div className="min-w-0">
-                    <p className="text-sm font-semibold text-neutral-100">{tool.name}</p>
-                    <p className={`text-[11px] font-medium ${tool.statusColor}`}>{tool.status}</p>
-                  </div>
-                </div>
-                <p className="text-xs text-neutral-400">{tool.detail}</p>
-                <p className="text-[11px] text-emerald-400 mt-1.5">{tool.points}</p>
-              </div>
-            ))}
-          </div>
+          <a href="mailto:info.ethiqia@gmail.com" className="inline-block rounded-full border border-emerald-500/30 hover:bg-emerald-500/10 px-4 py-1.5 text-xs font-semibold text-emerald-400 transition-colors">
+            Solicitar acceso API →
+          </a>
         </section>
 
         {/* DOCUMENTACION (desde Supabase con fallback) */}
