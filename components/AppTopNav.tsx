@@ -73,6 +73,7 @@ export default function AppTopNav() {
   const [authed, setAuthed] = useState(false);
   const [userName, setUserName] = useState<string | null>(null);
   const [userAvatar, setUserAvatar] = useState<string | null>(null);
+  const [avatarMenuOpen, setAvatarMenuOpen] = useState(false);
 
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -80,6 +81,7 @@ export default function AppTopNav() {
   const [unread, setUnread] = useState<number>(0);
 
   const panelRef = useRef<HTMLDivElement | null>(null);
+  const avatarMenuRef = useRef<HTMLDivElement | null>(null);
 
   const getAccessToken = async (): Promise<string | null> => {
     const { data } = await supabaseBrowser.auth.getSession();
@@ -178,13 +180,12 @@ export default function AppTopNav() {
 
   useEffect(() => {
     const onDown = (e: MouseEvent) => {
-      if (!open) return;
-      if (!panelRef.current) return;
-      if (!panelRef.current.contains(e.target as any)) setOpen(false);
+      if (open && panelRef.current && !panelRef.current.contains(e.target as any)) setOpen(false);
+      if (avatarMenuOpen && avatarMenuRef.current && !avatarMenuRef.current.contains(e.target as any)) setAvatarMenuOpen(false);
     };
     document.addEventListener("mousedown", onDown);
     return () => document.removeEventListener("mousedown", onDown);
-  }, [open]);
+  }, [open, avatarMenuOpen]);
 
   if (hidden) return null;
 
@@ -238,25 +239,50 @@ export default function AppTopNav() {
             </div>
           </Link>
 
-          {/* Avatar usuario → /profile */}
+          {/* Avatar usuario con menu */}
           {authed && (
-            <Link
-              href="/profile"
-              className="flex items-center gap-2 rounded-full border border-neutral-800 bg-black px-2 py-1.5 text-xs text-neutral-200 hover:border-neutral-600 transition-colors"
-              title="Mi perfil"
-            >
-              <div className="h-6 w-6 rounded-full overflow-hidden bg-gradient-to-br from-emerald-600 to-emerald-800 flex items-center justify-center shrink-0">
-                {userAvatar ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img src={userAvatar} alt="" className="h-full w-full object-cover" />
-                ) : (
-                  <span className="text-[10px] font-bold">
-                    {(userName?.[0] ?? "U").toUpperCase()}
-                  </span>
-                )}
-              </div>
-              <span className="hidden sm:inline max-w-[80px] truncate">{userName ?? "Perfil"}</span>
-            </Link>
+            <div className="relative" ref={avatarMenuRef}>
+              <button
+                type="button"
+                onClick={() => setAvatarMenuOpen((prev) => !prev)}
+                className="flex items-center gap-2 rounded-full border border-neutral-800 bg-black px-2 py-1.5 text-xs text-neutral-200 hover:border-neutral-600 transition-colors"
+              >
+                <div className="h-6 w-6 rounded-full overflow-hidden bg-gradient-to-br from-emerald-600 to-emerald-800 flex items-center justify-center shrink-0">
+                  {userAvatar ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={userAvatar} alt="" className="h-full w-full object-cover" />
+                  ) : (
+                    <span className="text-[10px] font-bold">
+                      {(userName?.[0] ?? "U").toUpperCase()}
+                    </span>
+                  )}
+                </div>
+                <span className="hidden sm:inline max-w-[80px] truncate">{userName ?? "Perfil"}</span>
+              </button>
+
+              {avatarMenuOpen && (
+                <div className="absolute right-0 mt-2 w-44 rounded-xl border border-neutral-700/60 bg-neutral-900 shadow-xl shadow-black/40 overflow-hidden z-30">
+                  <Link href="/profile" onClick={() => setAvatarMenuOpen(false)} className="block px-4 py-2.5 text-xs text-neutral-200 hover:bg-neutral-800 transition-colors">
+                    Mi perfil
+                  </Link>
+                  <Link href="/profile" onClick={() => setAvatarMenuOpen(false)} className="block px-4 py-2.5 text-xs text-neutral-200 hover:bg-neutral-800 transition-colors">
+                    Editar perfil
+                  </Link>
+                  <div className="border-t border-neutral-800" />
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      setAvatarMenuOpen(false);
+                      await supabaseBrowser.auth.signOut();
+                      window.location.href = "/";
+                    }}
+                    className="w-full text-left px-4 py-2.5 text-xs text-red-400 hover:bg-neutral-800 transition-colors"
+                  >
+                    Cerrar sesion
+                  </button>
+                </div>
+              )}
+            </div>
           )}
 
           {/* Campana */}
