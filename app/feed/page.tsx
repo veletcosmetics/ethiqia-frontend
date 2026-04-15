@@ -211,8 +211,9 @@ export default function FeedPage() {
       });
 
       if (!uploadRes.ok) {
-        console.error("Error en /api/upload:", await uploadRes.text());
-        throw new Error("Error subiendo la imagen");
+        const errBody = await uploadRes.json().catch(() => ({}));
+        console.error("Error en /api/upload:", errBody);
+        throw new Error(errBody.error ?? "Error subiendo la imagen");
       }
 
       const uploadJson = await uploadRes.json();
@@ -263,8 +264,9 @@ export default function FeedPage() {
       });
 
       if (!saveRes.ok) {
-        console.error("Error en /api/posts:", await saveRes.text());
-        throw new Error("Error guardando el post");
+        const errBody = await saveRes.json().catch(() => ({}));
+        console.error("Error en /api/posts:", errBody);
+        throw new Error(errBody.error ?? "Error guardando el post");
       }
 
       const saved = await saveRes.json();
@@ -332,7 +334,7 @@ export default function FeedPage() {
         <div className="flex items-center justify-between mb-6">
           <div>
             <h1 className="text-xl font-bold">Feed</h1>
-            <p className="text-xs text-neutral-500 mt-0.5">Publica y construye tu reputacion etica</p>
+            <p className="text-xs text-neutral-500 mt-0.5">Feed global · descubre la comunidad</p>
           </div>
 
           <div className="flex items-center gap-2">

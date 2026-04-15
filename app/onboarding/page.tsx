@@ -94,15 +94,25 @@ export default function OnboardingPage() {
     try {
       const formData = new FormData();
       formData.append("file", avatarFile);
-      const res = await fetch("/api/upload-avatar", { method: "POST", body: formData });
+      const res = await fetch("/api/upload-avatar", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+        body: formData,
+      });
       if (res.ok) {
-        const { publicUrl } = await res.json();
+        const json = await res.json();
+        const publicUrl = json.publicUrl ?? json.url;
         if (publicUrl) {
-          await saveProfile({ avatar_url: publicUrl });
+          const { error } = await supabaseBrowser.from("profiles").update({ avatar_url: publicUrl }).eq("id", userId);
+          if (error) console.error("Error saving avatar_url:", error);
           return publicUrl;
         }
+      } else {
+        console.error("Upload avatar failed:", res.status, await res.text().catch(() => ""));
       }
-    } catch { /* no-op */ }
+    } catch (err) {
+      console.error("Upload avatar error:", err);
+    }
     return null;
   };
 
