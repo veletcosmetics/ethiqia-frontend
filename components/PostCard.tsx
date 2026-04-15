@@ -115,7 +115,7 @@ export default function PostCard({ post, authorName, authorAvatarUrl, authorId, 
   const [repostMsg, setRepostMsg] = useState<string | null>(null);
 
   // Load original post for reposts
-  const [originalPost, setOriginalPost] = useState<{ caption?: string | null; image_url?: string | null; author_name?: string; created_at?: string | null } | null>(null);
+  const [originalPost, setOriginalPost] = useState<{ caption?: string | null; image_url?: string | null; author_name?: string; author_avatar?: string | null; created_at?: string | null } | null>(null);
 
   useEffect(() => {
     if (!post.repost_of) return;
@@ -128,15 +128,17 @@ export default function PostCard({ post, authorName, authorAvatarUrl, authorId, 
           .maybeSingle();
         if (!error && data) {
           let authorName = "Usuario";
+          let authorAvatar: string | null = null;
           try {
             const { data: prof } = await supabaseBrowser
               .from("profiles")
-              .select("full_name")
+              .select("full_name, avatar_url")
               .eq("id", data.user_id)
               .maybeSingle();
             if (prof?.full_name) authorName = prof.full_name;
+            if (prof?.avatar_url) authorAvatar = prof.avatar_url;
           } catch { /* no-op */ }
-          setOriginalPost({ ...data, author_name: authorName });
+          setOriginalPost({ ...data, author_name: authorName, author_avatar: authorAvatar });
         }
       } catch { /* no-op */ }
     };
@@ -365,7 +367,15 @@ export default function PostCard({ post, authorName, authorAvatarUrl, authorId, 
                 <img src={originalPost.image_url} alt="" className="w-full max-h-[200px] object-cover" />
               )}
               <div className="p-3">
-                <div className="flex items-center gap-1.5 mb-1">
+                <div className="flex items-center gap-2 mb-1">
+                  <div className="h-5 w-5 rounded-full overflow-hidden bg-gradient-to-br from-emerald-600 to-emerald-800 flex items-center justify-center shrink-0">
+                    {originalPost.author_avatar ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={originalPost.author_avatar} alt="" className="h-full w-full object-cover" />
+                    ) : (
+                      <span className="text-[8px] font-bold text-white">{(originalPost.author_name?.[0] ?? "U").toUpperCase()}</span>
+                    )}
+                  </div>
                   <span className="text-[11px] font-semibold text-neutral-300">{originalPost.author_name}</span>
                   {originalPost.created_at && (
                     <span className="text-[10px] text-neutral-600">· {formatDate(originalPost.created_at)}</span>
