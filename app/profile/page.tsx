@@ -153,11 +153,18 @@ export default function ProfilePage() {
           console.log("[profile] Buscando empresa para user:", user.id);
           const { data: companyRow, error: companyErr } = await supabaseBrowser
             .from("company_profiles")
-            .select("handle, display_name, ethq_score, logo_url")
+            .select("*")
             .eq("owner_user_id", user.id)
             .maybeSingle();
-          console.log("[profile] Empresa encontrada:", companyRow, "error:", companyErr);
-          if (companyRow) setMyCompany(companyRow as any);
+          console.log("[profile] Empresa encontrada:", JSON.stringify(companyRow), "error:", companyErr);
+          if (companyRow) {
+            setMyCompany({
+              handle: companyRow.handle ?? "",
+              display_name: companyRow.display_name ?? companyRow.name ?? "Empresa",
+              ethq_score: companyRow.ethq_score ?? companyRow.score ?? 0,
+              logo_url: companyRow.logo_url ?? null,
+            });
+          }
         } catch (e) {
           console.error("[profile] Error buscando empresa:", e);
         }
@@ -449,17 +456,19 @@ export default function ProfilePage() {
           <section className="rounded-2xl border border-emerald-800/30 bg-emerald-500/5 p-5">
             <h2 className="text-xs font-semibold text-neutral-400 uppercase tracking-wider mb-3">Mi empresa</h2>
             <div className="flex items-center gap-4">
-              <div className="w-12 h-12 rounded-xl bg-[#111111] flex items-center justify-center overflow-hidden shrink-0">
+              <div className="w-14 h-14 rounded-xl bg-[#111111] flex items-center justify-center overflow-hidden shrink-0">
                 {myCompany.logo_url ? (
                   // eslint-disable-next-line @next/next/no-img-element
-                  <img src={myCompany.logo_url} alt="" className="w-full h-full object-contain p-1" />
-                ) : (
-                  <span className="text-sm font-bold text-white">{myCompany.display_name?.[0]?.toUpperCase() ?? "E"}</span>
+                  <img src={myCompany.logo_url} alt={myCompany.display_name} className="w-full h-full object-contain p-1.5" onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }} />
+                ) : null}
+                {/* Fallback initials (siempre renderizado, oculto si hay logo) */}
+                {!myCompany.logo_url && (
+                  <span className="text-lg font-bold text-white">{myCompany.display_name?.[0]?.toUpperCase() ?? "E"}</span>
                 )}
               </div>
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-semibold text-neutral-100">{myCompany.display_name}</p>
-                <p className="text-xs text-emerald-400">Score: {myCompany.ethq_score ?? "—"}</p>
+                <p className="text-xs text-emerald-400 font-medium">Score: {myCompany.ethq_score ?? "—"}/100</p>
               </div>
               <Link
                 href={`/company/${myCompany.handle}`}
