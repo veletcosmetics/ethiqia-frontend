@@ -4,10 +4,11 @@ import { createClient } from "@supabase/supabase-js";
 export const runtime = "nodejs";
 
 function getSupabaseAdmin() {
-  return createClient(
-    process.env.SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-  );
+  const url = process.env.SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  console.log("[posts] Supabase config: url=", url ? "OK" : "MISSING", "key=", key ? "OK" : "MISSING");
+  if (!url || !key) throw new Error("Supabase config missing");
+  return createClient(url, key);
 }
 
 function getBearerToken(req: NextRequest): string | null {
@@ -113,7 +114,14 @@ export async function GET(req: NextRequest) {
 
 // POST /api/posts
 export async function POST(req: NextRequest) {
-  const supabaseAdmin = getSupabaseAdmin();
+  console.log("[posts] POST /api/posts called");
+  let supabaseAdmin;
+  try {
+    supabaseAdmin = getSupabaseAdmin();
+  } catch (e: any) {
+    console.error("[posts] Supabase init failed:", e.message);
+    return NextResponse.json({ error: "Server config error", details: e.message }, { status: 500 });
+  }
 
   try {
     const token = getBearerToken(req);
@@ -134,7 +142,9 @@ export async function POST(req: NextRequest) {
     }
 
     const userId = userData.user.id;
+    console.log("[posts] User authenticated:", userId, "email_confirmed:", !!userData.user.email_confirmed_at);
     const body = await req.json();
+    console.log("[posts] Body keys:", Object.keys(body));
 
     const {
       imageUrl,
@@ -183,9 +193,9 @@ export async function POST(req: NextRequest) {
       .single();
 
     if (postErr) {
-      console.error("Error insertando post:", postErr);
+      console.error("[posts] Error insertando post:", JSON.stringify(postErr, null, 2));
       return NextResponse.json(
-        { error: "Error insertando post", details: postErr },
+        { error: "Error insertando post", details: postErr.message, code: postErr.code, hint: postErr.hint },
         { status: 400 }
       );
     }
