@@ -114,6 +114,35 @@ export default function PostCard({ post, authorName, authorAvatarUrl, authorId, 
   const [reposting, setReposting] = useState(false);
   const [repostMsg, setRepostMsg] = useState<string | null>(null);
 
+  // Load original post for reposts
+  const [originalPost, setOriginalPost] = useState<{ caption?: string | null; image_url?: string | null; author_name?: string; created_at?: string | null } | null>(null);
+
+  useEffect(() => {
+    if (!post.repost_of) return;
+    const loadOriginal = async () => {
+      try {
+        const { data, error } = await supabaseBrowser
+          .from("posts")
+          .select("caption, image_url, user_id, created_at")
+          .eq("id", post.repost_of!)
+          .maybeSingle();
+        if (!error && data) {
+          let authorName = "Usuario";
+          try {
+            const { data: prof } = await supabaseBrowser
+              .from("profiles")
+              .select("full_name")
+              .eq("id", data.user_id)
+              .maybeSingle();
+            if (prof?.full_name) authorName = prof.full_name;
+          } catch { /* no-op */ }
+          setOriginalPost({ ...data, author_name: authorName });
+        }
+      } catch { /* no-op */ }
+    };
+    loadOriginal();
+  }, [post.repost_of]);
+
   // Inline comments state
   const [commentsOpen, setCommentsOpen] = useState(false);
   const [comments, setComments] = useState<Comment[]>([]);
@@ -319,16 +348,38 @@ export default function PostCard({ post, authorName, authorAvatarUrl, authorId, 
 
   return (
     <article className="rounded-2xl bg-neutral-900/80 border border-neutral-800/50 shadow-md shadow-black/20 overflow-hidden flex flex-col transition-all hover:border-neutral-700/50 hover:shadow-lg hover:shadow-black/30">
-      {/* Repost label */}
+      {/* Repost label + original post */}
       {post.repost_of && (
-        <div className="px-4 pt-2.5 pb-0 flex items-center gap-1.5 text-[11px] text-neutral-500">
-          <span>&#128257;</span>
-          <span>{post.repost_author_name ?? authorName} reposteo</span>
+        <div className="px-4 pt-2.5 pb-0">
+          <div className="flex items-center gap-1.5 text-[11px] text-neutral-500 mb-2">
+            <span>&#128257;</span>
+            <span>{post.repost_author_name ?? authorName} reposteo</span>
+          </div>
+          {/* Caption del repost (comentario del usuario) */}
+          {post.caption && <p className="text-xs text-neutral-300 mb-2">{post.caption}</p>}
+          {/* Post original embebido */}
+          {originalPost && (
+            <Link href={`/p/${post.repost_of}`} className="block rounded-xl border border-neutral-800 bg-neutral-950 overflow-hidden mb-2 hover:border-neutral-700 transition-colors">
+              {originalPost.image_url && (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={originalPost.image_url} alt="" className="w-full max-h-[200px] object-cover" />
+              )}
+              <div className="p-3">
+                <div className="flex items-center gap-1.5 mb-1">
+                  <span className="text-[11px] font-semibold text-neutral-300">{originalPost.author_name}</span>
+                  {originalPost.created_at && (
+                    <span className="text-[10px] text-neutral-600">· {formatDate(originalPost.created_at)}</span>
+                  )}
+                </div>
+                {originalPost.caption && <p className="text-xs text-neutral-400 line-clamp-3">{originalPost.caption}</p>}
+              </div>
+            </Link>
+          )}
         </div>
       )}
 
-      {/* Imagen */}
-      {imageUrl && (
+      {/* Imagen (solo para posts normales, no reposts) */}
+      {!post.repost_of && imageUrl && (
         <Link href={`/p/${post.id}`} className="block">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src={imageUrl} alt={post.caption || "Publicacion"} className="w-full max-h-[320px] object-contain bg-black" loading="lazy" />

@@ -45,6 +45,7 @@ export default function ProfilePage() {
   const [followStats, setFollowStats] = useState<FollowStats>({ followers: 0, following: 0 });
   const [loading, setLoading] = useState(true);
   const [avatarUploading, setAvatarUploading] = useState(false);
+  const [myCompany, setMyCompany] = useState<{ handle: string; name: string; score: number; logo_url?: string | null } | null>(null);
   const [editing, setEditing] = useState(false);
   const [editForm, setEditForm] = useState({
     full_name: "", bio: "", profession: "", location: "",
@@ -147,6 +148,16 @@ export default function ProfilePage() {
             console.error("Error cargando follow stats:", e);
           }
         }
+        // Mi empresa
+        try {
+          const { data: companyRow } = await supabaseBrowser
+            .from("company_profiles")
+            .select("handle, name, score, logo_url")
+            .eq("owner_user_id", user.id)
+            .maybeSingle();
+          if (companyRow) setMyCompany(companyRow as any);
+        } catch { /* no company_profiles table or no row */ }
+
       } catch (err) {
         console.error("Error cargando perfil:", err);
       } finally {
@@ -554,6 +565,33 @@ export default function ProfilePage() {
             )}
           </div>
         </section>
+
+        {/* ── Mi empresa ── */}
+        {myCompany && (
+          <section className="rounded-2xl border border-neutral-800 bg-neutral-900/70 p-5">
+            <h2 className="text-xs font-semibold text-neutral-400 uppercase tracking-wider mb-3">Mi empresa</h2>
+            <div className="flex items-center gap-4">
+              <div className="w-12 h-12 rounded-xl bg-[#111111] flex items-center justify-center overflow-hidden shrink-0">
+                {myCompany.logo_url ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={myCompany.logo_url} alt="" className="w-full h-full object-contain p-1" />
+                ) : (
+                  <span className="text-sm font-bold text-white">{myCompany.name?.[0]?.toUpperCase() ?? "E"}</span>
+                )}
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-semibold text-neutral-100">{myCompany.name}</p>
+                <p className="text-xs text-emerald-400">Score: {myCompany.score ?? "—"}</p>
+              </div>
+              <Link
+                href={`/company/${myCompany.handle}`}
+                className="rounded-full border border-emerald-500/30 hover:bg-emerald-500/10 px-4 py-1.5 text-xs font-semibold text-emerald-400 transition-colors shrink-0"
+              >
+                Gestionar empresa
+              </Link>
+            </div>
+          </section>
+        )}
 
         {/* ── Publicaciones ── */}
         <section className="space-y-4">
