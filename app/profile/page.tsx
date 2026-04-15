@@ -403,12 +403,16 @@ export default function ProfilePage() {
                       youtube_url: editForm.youtube_url || null,
                     };
                     const { error } = await supabaseBrowser.from("profiles").update(updates).eq("id", currentUser.id);
-                    if (!error) {
+                    if (error) {
+                      console.error("Error guardando perfil:", JSON.stringify(error));
+                      alert(`Error guardando perfil: ${error.message ?? error.code ?? "desconocido"}`);
+                    } else {
                       setProfile((prev) => prev ? { ...prev, ...updates } : prev);
                       setEditing(false);
                     }
-                  } catch (err) {
+                  } catch (err: any) {
                     console.error("Error guardando perfil:", err);
+                    alert(`Error inesperado: ${err?.message ?? "desconocido"}`);
                   } finally { setSaving(false); }
                 }}
                 className="rounded-full bg-emerald-500 hover:bg-emerald-600 px-5 py-1.5 text-xs font-semibold disabled:opacity-50 transition-colors"

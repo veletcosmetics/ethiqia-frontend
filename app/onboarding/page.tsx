@@ -79,7 +79,8 @@ export default function OnboardingPage() {
 
   const saveProfile = async (fields: Record<string, any>) => {
     if (!userId) return;
-    await supabaseBrowser.from("profiles").update(fields).eq("id", userId);
+    const { error } = await supabaseBrowser.from("profiles").update(fields).eq("id", userId);
+    if (error) console.error("[onboarding] Error saving profile:", JSON.stringify(error));
   };
 
   const handleAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
