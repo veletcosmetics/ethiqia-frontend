@@ -444,6 +444,33 @@ export default function ProfilePage() {
           )}
         </header>
 
+        {/* ── Mi empresa ── */}
+        {myCompany && (
+          <section className="rounded-2xl border border-emerald-800/30 bg-emerald-500/5 p-5">
+            <h2 className="text-xs font-semibold text-neutral-400 uppercase tracking-wider mb-3">Mi empresa</h2>
+            <div className="flex items-center gap-4">
+              <div className="w-12 h-12 rounded-xl bg-[#111111] flex items-center justify-center overflow-hidden shrink-0">
+                {myCompany.logo_url ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={myCompany.logo_url} alt="" className="w-full h-full object-contain p-1" />
+                ) : (
+                  <span className="text-sm font-bold text-white">{myCompany.display_name?.[0]?.toUpperCase() ?? "E"}</span>
+                )}
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-semibold text-neutral-100">{myCompany.display_name}</p>
+                <p className="text-xs text-emerald-400">Score: {myCompany.ethq_score ?? "—"}</p>
+              </div>
+              <Link
+                href={`/company/${myCompany.handle}`}
+                className="rounded-full border border-emerald-500/30 hover:bg-emerald-500/10 px-4 py-1.5 text-xs font-semibold text-emerald-400 transition-colors shrink-0"
+              >
+                Gestionar empresa
+              </Link>
+            </div>
+          </section>
+        )}
+
         {/* ── Premium ── */}
         <section className={`relative bg-neutral-900 border rounded-2xl overflow-hidden ${premiumDemo ? "border-amber-500/30" : "border-neutral-800"}`}>
           {/* Overlay (solo cuando no esta en demo) */}
@@ -569,33 +596,6 @@ export default function ProfilePage() {
             )}
           </div>
         </section>
-
-        {/* ── Mi empresa ── */}
-        {myCompany && (
-          <section className="rounded-2xl border border-neutral-800 bg-neutral-900/70 p-5">
-            <h2 className="text-xs font-semibold text-neutral-400 uppercase tracking-wider mb-3">Mi empresa</h2>
-            <div className="flex items-center gap-4">
-              <div className="w-12 h-12 rounded-xl bg-[#111111] flex items-center justify-center overflow-hidden shrink-0">
-                {myCompany.logo_url ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img src={myCompany.logo_url} alt="" className="w-full h-full object-contain p-1" />
-                ) : (
-                  <span className="text-sm font-bold text-white">{myCompany.display_name?.[0]?.toUpperCase() ?? "E"}</span>
-                )}
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-semibold text-neutral-100">{myCompany.display_name}</p>
-                <p className="text-xs text-emerald-400">Score: {myCompany.ethq_score ?? "—"}</p>
-              </div>
-              <Link
-                href={`/company/${myCompany.handle}`}
-                className="rounded-full border border-emerald-500/30 hover:bg-emerald-500/10 px-4 py-1.5 text-xs font-semibold text-emerald-400 transition-colors shrink-0"
-              >
-                Gestionar empresa
-              </Link>
-            </div>
-          </section>
-        )}
 
         {/* ── Publicaciones ── */}
         <section className="space-y-4">
