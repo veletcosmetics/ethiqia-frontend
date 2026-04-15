@@ -79,8 +79,16 @@ export default function OnboardingPage() {
 
   const saveProfile = async (fields: Record<string, any>) => {
     if (!userId) return;
-    const { error } = await supabaseBrowser.from("profiles").update(fields).eq("id", userId);
-    if (error) console.error("[onboarding] Error saving profile:", JSON.stringify(error));
+    // Upsert: si el row no existe (usuario nuevo), lo crea; si existe, lo actualiza
+    const { error } = await supabaseBrowser
+      .from("profiles")
+      .upsert({ id: userId, ...fields }, { onConflict: "id" });
+    if (error) {
+      console.error("[onboarding] Error saving profile:", JSON.stringify(error));
+      // Fallback: intentar update si upsert falla por RLS
+      const { error: err2 } = await supabaseBrowser.from("profiles").update(fields).eq("id", userId);
+      if (err2) console.error("[onboarding] Fallback update also failed:", JSON.stringify(err2));
+    }
   };
 
   const handleAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -104,8 +112,7 @@ export default function OnboardingPage() {
         const json = await res.json();
         const publicUrl = json.publicUrl ?? json.url;
         if (publicUrl) {
-          const { error } = await supabaseBrowser.from("profiles").update({ avatar_url: publicUrl }).eq("id", userId);
-          if (error) console.error("Error saving avatar_url:", error);
+          await saveProfile({ avatar_url: publicUrl });
           return publicUrl;
         }
       } else {

@@ -402,7 +402,13 @@ export default function ProfilePage() {
                       tiktok_url: editForm.tiktok_url || null,
                       youtube_url: editForm.youtube_url || null,
                     };
-                    const { error } = await supabaseBrowser.from("profiles").update(updates).eq("id", currentUser.id);
+                    // Intentar update, si falla intentar upsert
+                    let { error } = await supabaseBrowser.from("profiles").update(updates).eq("id", currentUser.id);
+                    if (error) {
+                      console.warn("Update failed, trying upsert:", error.message);
+                      const res = await supabaseBrowser.from("profiles").upsert({ id: currentUser.id, ...updates }, { onConflict: "id" });
+                      error = res.error;
+                    }
                     if (error) {
                       console.error("Error guardando perfil:", JSON.stringify(error));
                       alert(`Error guardando perfil: ${error.message ?? error.code ?? "desconocido"}`);
