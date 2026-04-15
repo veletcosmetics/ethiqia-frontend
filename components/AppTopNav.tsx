@@ -208,7 +208,6 @@ export default function AppTopNav() {
 
           <nav className="hidden sm:flex items-center gap-3 text-xs text-neutral-300">
             <Link href="/feed" className="hover:text-white">Feed</Link>
-            <Link href="/profile" className="hover:text-white">Mi perfil</Link>
             <Link href="/company" className="hover:text-white">Empresas</Link>
             <Link href="/score-info" className="hover:text-white">Como funciona</Link>
           </nav>
