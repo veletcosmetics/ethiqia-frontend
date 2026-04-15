@@ -1,12 +1,6 @@
-// lib/api.ts
+// lib/api.ts — helpers de autenticacion local (no se usa API externa)
 
 const TOKEN_KEY = 'ethiqia_token';
-
-export function getBase() {
-  // URL base de la API de Ethiqia
-  // En producción puedes definir NEXT_PUBLIC_API_BASE en Render
-  return process.env.NEXT_PUBLIC_API_BASE || 'http://localhost:5000';
-}
 
 export function setToken(token: string) {
   if (typeof window === 'undefined') return;
