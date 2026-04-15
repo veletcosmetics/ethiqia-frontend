@@ -45,7 +45,7 @@ export default function ProfilePage() {
   const [followStats, setFollowStats] = useState<FollowStats>({ followers: 0, following: 0 });
   const [loading, setLoading] = useState(true);
   const [avatarUploading, setAvatarUploading] = useState(false);
-  const [myCompany, setMyCompany] = useState<{ handle: string; name: string; score: number; logo_url?: string | null } | null>(null);
+  const [myCompany, setMyCompany] = useState<{ handle: string; display_name: string; ethq_score: number; logo_url?: string | null } | null>(null);
   const [editing, setEditing] = useState(false);
   const [editForm, setEditForm] = useState({
     full_name: "", bio: "", profession: "", location: "",
@@ -153,7 +153,7 @@ export default function ProfilePage() {
           console.log("[profile] Buscando empresa para user:", user.id);
           const { data: companyRow, error: companyErr } = await supabaseBrowser
             .from("company_profiles")
-            .select("handle, name, score, logo_url")
+            .select("handle, display_name, ethq_score, logo_url")
             .eq("owner_user_id", user.id)
             .maybeSingle();
           console.log("[profile] Empresa encontrada:", companyRow, "error:", companyErr);
@@ -580,12 +580,12 @@ export default function ProfilePage() {
                   // eslint-disable-next-line @next/next/no-img-element
                   <img src={myCompany.logo_url} alt="" className="w-full h-full object-contain p-1" />
                 ) : (
-                  <span className="text-sm font-bold text-white">{myCompany.name?.[0]?.toUpperCase() ?? "E"}</span>
+                  <span className="text-sm font-bold text-white">{myCompany.display_name?.[0]?.toUpperCase() ?? "E"}</span>
                 )}
               </div>
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-semibold text-neutral-100">{myCompany.name}</p>
-                <p className="text-xs text-emerald-400">Score: {myCompany.score ?? "—"}</p>
+                <p className="text-sm font-semibold text-neutral-100">{myCompany.display_name}</p>
+                <p className="text-xs text-emerald-400">Score: {myCompany.ethq_score ?? "—"}</p>
               </div>
               <Link
                 href={`/company/${myCompany.handle}`}
