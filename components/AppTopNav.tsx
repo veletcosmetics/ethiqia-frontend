@@ -207,36 +207,22 @@ export default function AppTopNav() {
           </Link>
 
           <nav className="hidden sm:flex items-center gap-3 text-xs text-neutral-300">
-            <Link href="/feed" className="hover:text-white">
-              Feed
-            </Link>
-            <Link href="/explore" className="hover:text-white">
-              Explorar
-            </Link>
-            <Link href="/profile" className="hover:text-white">
-              Mi perfil
-            </Link>
-            <Link href="/company" className="hover:text-white">
-              Empresas
-            </Link>
-            <Link href="/score-info" className="hover:text-white">
-              Como funciona
-            </Link>
+            <Link href="/feed" className="hover:text-white">Feed</Link>
+            <Link href="/profile" className="hover:text-white">Mi perfil</Link>
+            <Link href="/company" className="hover:text-white">Empresas</Link>
+            <Link href="/score-info" className="hover:text-white">Como funciona</Link>
           </nav>
         </div>
 
         <div className="flex items-center gap-2">
-          {/* Lupa */}
+          {/* Buscar */}
           <Link
             href="/explore"
-            className="rounded-full border border-neutral-800 bg-black px-3 py-2 text-xs text-neutral-200 hover:border-neutral-600"
-            aria-label="Buscar usuarios"
-            title="Buscar usuarios"
+            className="rounded-full border border-neutral-800 bg-black px-2.5 py-1.5 text-xs text-neutral-200 hover:border-neutral-600 transition-colors"
+            aria-label="Buscar"
+            title="Buscar"
           >
-            <div className="flex items-center gap-2">
-              <SearchIcon className="h-4 w-4" />
-              <span className="hidden sm:inline">Buscar</span>
-            </div>
+            <SearchIcon className="h-4 w-4" />
           </Link>
 
           {/* Avatar usuario con menu */}
