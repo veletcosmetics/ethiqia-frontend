@@ -1,8 +1,10 @@
 import Anthropic from "@anthropic-ai/sdk";
 
-const anthropic = new Anthropic({
-  apiKey: process.env.ANTHROPIC_API_KEY!,
-});
+function getAnthropic() {
+  const key = process.env.ANTHROPIC_API_KEY;
+  if (!key) throw new Error("ANTHROPIC_API_KEY not configured");
+  return new Anthropic({ apiKey: key });
+}
 
 export type ModerationResult = {
   aiProbability: number; // 0–100
@@ -33,7 +35,7 @@ export async function moderatePost(options: {
     text: `Texto del post: ${text?.slice(0, 2000) || "(sin texto)"}`,
   });
 
-  const message = await anthropic.messages.create({
+  const message = await getAnthropic().messages.create({
     model: "claude-sonnet-4-6",
     max_tokens: 256,
     system: `Eres el sistema de moderación de contenido de Ethiqia, una red social de autenticidad.

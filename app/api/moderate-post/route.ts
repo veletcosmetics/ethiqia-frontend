@@ -53,19 +53,13 @@ export async function POST(req: NextRequest) {
       err?.message?.toLowerCase().includes('rate limit') ||
       err?.message?.toLowerCase().includes('quota');
 
-    if (isRateLimit) {
-      console.warn('[/api/moderate-post] rate limit — modo degradado');
-      return NextResponse.json({
-        allowed: true,
-        blocked: false,
-        aiProbability: 0,
-        reason: 'Moderación no disponible por límite de uso',
-      });
-    }
-
-    return NextResponse.json(
-      { error: 'Error en la moderación de contenido' },
-      { status: 500 }
-    );
+    // Cualquier error de Anthropic → modo degradado, no bloquear
+    console.warn('[/api/moderate-post] modo degradado por error:', err?.status ?? err?.message);
+    return NextResponse.json({
+      allowed: true,
+      blocked: false,
+      aiProbability: 0,
+      reason: 'Moderacion IA no disponible temporalmente',
+    });
   }
 }

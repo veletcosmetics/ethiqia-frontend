@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { moderatePost } from "@/lib/moderatePost";
 
 export const runtime = "nodejs";
 
@@ -171,24 +170,21 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // 2) Moderacion IA (si esta disponible)
-    console.log("[comments] Iniciando moderacion IA, user:", userId);
-    console.log("[comments] ANTHROPIC_API_KEY presente:", !!process.env.ANTHROPIC_API_KEY);
-    try {
-      console.log("[comments] Llamando a moderatePost con texto de", cleanText.length, "chars");
-      const modResult = await moderatePost({ text: cleanText });
-      console.log("[comments] Resultado moderacion:", JSON.stringify(modResult));
-
-      if (!modResult.allowed) {
-        console.log("[comments] Comentario RECHAZADO por IA:", modResult.reason);
-        return NextResponse.json(
-          { error: "Comentario rechazado por moderacion", reason: modResult.reason },
-          { status: 403 }
-        );
+    // 2) Moderacion IA (opcional, no bloquea si falla)
+    if (process.env.ANTHROPIC_API_KEY) {
+      try {
+        const { moderatePost } = await import("@/lib/moderatePost");
+        const modResult = await moderatePost({ text: cleanText });
+        if (!modResult.allowed) {
+          console.log("[comments] Rechazado por IA:", modResult.reason);
+          return NextResponse.json(
+            { error: "Comentario rechazado por moderacion", reason: modResult.reason },
+            { status: 403 }
+          );
+        }
+      } catch (modErr: any) {
+        console.warn("[comments] Moderacion IA no disponible:", modErr?.message);
       }
-      console.log("[comments] Comentario APROBADO por IA");
-    } catch (modErr: any) {
-      console.error("[comments] ERROR en moderacion IA (se usa solo filtro por palabras):", modErr?.message ?? modErr);
     }
 
     // 3) Insertar comentario

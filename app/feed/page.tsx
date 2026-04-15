@@ -227,15 +227,19 @@ export default function FeedPage() {
         body: JSON.stringify({ caption: newPost.caption, imageUrl }),
       });
 
-      if (!moderationRes.ok) {
-        console.error("Error en /api/moderate-post:", await moderationRes.text());
-        throw new Error("Error moderando el contenido");
-      }
+      let aiProbability = 0;
+      let blocked = false;
+      let reason: string | null = null;
 
-      const moderation = await moderationRes.json();
-      const aiProbability: number = moderation.aiProbability ?? 0;
-      const blocked: boolean = moderation.blocked ?? !moderation.allowed;
-      const reason: string | null = moderation.reason ?? null;
+      if (moderationRes.ok) {
+        const moderation = await moderationRes.json();
+        aiProbability = moderation.aiProbability ?? 0;
+        blocked = moderation.blocked ?? !moderation.allowed;
+        reason = moderation.reason ?? null;
+      } else {
+        // Moderacion no disponible — continuar sin bloquear
+        console.warn("Moderacion no disponible, continuando:", moderationRes.status);
+      }
 
       if (blocked) {
         setMessageIsError(true);
