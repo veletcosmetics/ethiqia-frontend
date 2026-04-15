@@ -598,6 +598,20 @@ export default function ProfilePage() {
             ))}
           </div>
         </section>
+
+        {/* Cerrar sesion */}
+        <div className="pt-4 pb-8 text-center">
+          <button
+            type="button"
+            onClick={async () => {
+              await supabaseBrowser.auth.signOut();
+              window.location.href = "/";
+            }}
+            className="text-xs text-neutral-500 hover:text-red-400 transition-colors"
+          >
+            Cerrar sesion
+          </button>
+        </div>
       </section>
     </main>
   );
