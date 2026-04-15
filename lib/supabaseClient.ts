@@ -13,7 +13,14 @@ if (!supabaseUrl || !supabaseAnonKey) {
 
 const client =
   supabaseUrl && supabaseAnonKey
-    ? createClient(supabaseUrl, supabaseAnonKey)
+    ? createClient(supabaseUrl, supabaseAnonKey, {
+        auth: {
+          flowType: "pkce",
+          detectSessionInUrl: true,
+          persistSession: true,
+          autoRefreshToken: true,
+        },
+      })
     : (null as any);
 
 export const supabaseClient = client;
