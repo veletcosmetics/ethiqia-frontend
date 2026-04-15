@@ -150,13 +150,17 @@ export default function ProfilePage() {
         }
         // Mi empresa
         try {
-          const { data: companyRow } = await supabaseBrowser
+          console.log("[profile] Buscando empresa para user:", user.id);
+          const { data: companyRow, error: companyErr } = await supabaseBrowser
             .from("company_profiles")
             .select("handle, name, score, logo_url")
             .eq("owner_user_id", user.id)
             .maybeSingle();
+          console.log("[profile] Empresa encontrada:", companyRow, "error:", companyErr);
           if (companyRow) setMyCompany(companyRow as any);
-        } catch { /* no company_profiles table or no row */ }
+        } catch (e) {
+          console.error("[profile] Error buscando empresa:", e);
+        }
 
       } catch (err) {
         console.error("Error cargando perfil:", err);
