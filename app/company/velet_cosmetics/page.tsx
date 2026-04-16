@@ -89,12 +89,12 @@ export default function CompanyPage() {
         {/* CABECERA */}
         <header className="space-y-4">
           <div className="flex gap-5 items-center">
-            <div className="w-[160px] h-[80px] rounded-lg bg-white p-2 flex items-center justify-center shadow-lg shadow-emerald-500/10 overflow-hidden shrink-0">
+            <div className="w-20 h-20 rounded-lg bg-white p-2 flex items-center justify-center overflow-hidden shrink-0">
               {logoError ? (
-                <span className="text-2xl font-semibold text-white">VC</span>
+                <span className="text-2xl font-semibold text-neutral-800">VC</span>
               ) : (
                 // eslint-disable-next-line @next/next/no-img-element
-                <img src="/logo-velet.png" alt={data.name} className="w-full h-full object-contain p-2" onError={() => setLogoError(true)} />
+                <img src="/logo-velet.png" alt={data.name} className="w-full h-full object-contain" onError={() => setLogoError(true)} />
               )}
             </div>
 

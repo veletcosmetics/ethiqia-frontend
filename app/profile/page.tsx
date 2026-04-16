@@ -468,13 +468,13 @@ export default function ProfilePage() {
                 {myCompany.logo_url && !companyLogoError ? (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img
-                    src={myCompany.logo_url.startsWith("/") ? myCompany.logo_url : myCompany.logo_url}
+                    src={myCompany.logo_url}
                     alt={myCompany.display_name}
-                    className="w-full h-full object-contain p-1"
+                    className="w-full h-full object-contain"
                     onError={() => setCompanyLogoError(true)}
                   />
                 ) : (
-                  <span className="text-lg font-bold text-white">{(myCompany.display_name ?? "E").slice(0, 2).toUpperCase()}</span>
+                  <span className="text-lg font-bold text-neutral-800">{(myCompany.display_name ?? "E").slice(0, 2).toUpperCase()}</span>
                 )}
               </div>
               <div className="flex-1 min-w-0">
