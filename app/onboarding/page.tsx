@@ -296,9 +296,9 @@ export default function OnboardingPage() {
 
             {userType === "company" ? (
               <div className="space-y-3">
-                <button type="button" onClick={() => { saveProfile({ onboarding_completed: true }); router.push("/company"); }} className="w-full rounded-2xl border border-neutral-800 bg-neutral-900/60 hover:border-emerald-500/50 p-5 text-left transition-colors">
-                  <p className="text-sm font-semibold">Ir a mi perfil de empresa</p>
-                  <p className="text-xs text-neutral-400 mt-1">Vincula herramientas, sube documentos y empieza a verificar tu actividad</p>
+                <button type="button" onClick={() => setStep(5)} className="w-full rounded-2xl border border-neutral-800 bg-neutral-900/60 hover:border-emerald-500/50 p-5 text-left transition-colors">
+                  <p className="text-sm font-semibold">Crear mi perfil de empresa</p>
+                  <p className="text-xs text-neutral-400 mt-1">Registra tu empresa, sube logo y empieza a verificar tu actividad</p>
                 </button>
               </div>
             ) : (
@@ -333,7 +333,7 @@ export default function OnboardingPage() {
               <p className="text-sm text-neutral-400 mt-3">Tu Ethiqia Score: <span className="text-emerald-400 font-semibold">0</span> · Empieza a crecer</p>
             </div>
             <button onClick={handleFinish} className="rounded-full bg-emerald-500 hover:bg-emerald-600 px-10 py-3 text-sm font-semibold transition-colors">
-              Ver el feed →
+              {userType === "company" ? "Crear mi empresa →" : "Ver el feed →"}
             </button>
           </div>
         )}
