@@ -12,6 +12,7 @@ export default function CompanyPage() {
   const data: CompanyData = companyData;
 
   const [logoError, setLogoError] = useState(false);
+  const [logoUrl, setLogoUrl] = useState("/logo-velet.png");
   const [uploadingDoc, setUploadingDoc] = useState(false);
   const [admin, setAdmin] = useState<{ id: string; full_name: string; avatar_url: string | null } | null>(null);
   const [isOwner, setIsOwner] = useState(false);
@@ -40,9 +41,13 @@ export default function CompanyPage() {
           // Check ownership via company_profiles
           const { data: companyRow } = await supabaseBrowser
             .from("company_profiles")
-            .select("owner_user_id")
+            .select("owner_user_id, logo_url")
             .eq("handle", "velet_cosmetics")
             .maybeSingle();
+          if (companyRow?.logo_url) {
+            setLogoUrl(companyRow.logo_url);
+            setLogoError(false);
+          }
           if (companyRow?.owner_user_id === user.id) {
             setIsOwner(true);
             setEditForm({
@@ -114,7 +119,7 @@ export default function CompanyPage() {
                 <span className="text-2xl font-semibold text-neutral-800">VC</span>
               ) : (
                 // eslint-disable-next-line @next/next/no-img-element
-                <img src="/logo-velet.png" alt={data.name} className="w-full h-full object-contain" onError={() => setLogoError(true)} />
+                <img src={logoUrl} alt={data.name} className="w-full h-full object-contain" onError={() => setLogoError(true)} />
               )}
             </div>
 
@@ -166,12 +171,21 @@ export default function CompanyPage() {
                       if (res.ok) {
                         const json = await res.json();
                         const url = json.publicUrl ?? json.url;
+                        console.log("[company] Logo URL despues de upload:", url);
                         if (url) {
-                          await supabaseBrowser.from("company_profiles").update({ logo_url: url }).eq("handle", "velet_cosmetics");
-                          setLogoError(false);
+                          const { error: upErr } = await supabaseBrowser.from("company_profiles").update({ logo_url: url }).eq("handle", "velet_cosmetics");
+                          console.log("[company] Update logo_url result:", { url, error: upErr });
+                          if (!upErr) {
+                            setLogoUrl(url);
+                            setLogoError(false);
+                          } else {
+                            alert(`Error guardando logo: ${upErr.message}`);
+                          }
                         }
+                      } else {
+                        console.error("[company] Upload failed:", res.status);
                       }
-                    } catch { /* no-op */ }
+                    } catch (err) { console.error("[company] Logo upload error:", err); }
                     finally { setUploadingLogo(false); e.target.value = ""; }
                   }} />
                   {uploadingLogo ? "Subiendo..." : "Cambiar logo"}
