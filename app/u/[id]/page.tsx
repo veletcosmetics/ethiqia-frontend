@@ -217,11 +217,15 @@ export default function PublicProfilePage({ params }: { params: { id: string } }
         await loadCounts();
         await loadPosts(token);
 
-        // Score
+        // Score - query directa
         try {
-          const { data: scoreData } = await supabaseBrowser.rpc("calculate_user_score", { p_user_id: targetId });
-          if (scoreData?.total_score != null) setUserScore(scoreData.total_score);
-          else setUserScore(65);
+          const { data: repEvents } = await supabaseBrowser
+            .from("reputation_events")
+            .select("points")
+            .eq("subject_id", targetId)
+            .eq("subject_type", "user");
+          const total = 50 + (repEvents?.reduce((s: number, r: any) => s + (r.points ?? 0), 0) ?? 0);
+          setUserScore(Math.min(100, total));
         } catch { setUserScore(65); }
 
         if (viewerId) {

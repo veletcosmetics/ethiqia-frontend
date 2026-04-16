@@ -85,15 +85,22 @@ export default function ProfilePage() {
           setProfile(profileData as Profile);
         }
 
-        // Score
-        const { data: scoreData, error: scoreError } =
-          await supabaseBrowser.rpc("calculate_user_score", {
-            p_user_id: user.id,
+        // Score - query directa a reputation_events
+        try {
+          const { data: repEvents } = await supabaseBrowser
+            .from("reputation_events")
+            .select("points")
+            .eq("subject_id", user.id)
+            .eq("subject_type", "user");
+          const total = 50 + (repEvents?.reduce((s: number, r: any) => s + (r.points ?? 0), 0) ?? 0);
+          setScore({
+            transparency_score: Math.min(35, Math.round(total * 0.35)),
+            positive_behavior_score: Math.min(25, Math.round(total * 0.25)),
+            internal_reputation_score: Math.min(20, Math.round(total * 0.2)),
+            external_reputation_score: Math.min(20, Math.round(total * 0.1)),
+            total_score: Math.min(100, total),
           });
-
-        if (!scoreError && scoreData) {
-          setScore(scoreData as UserScore);
-        } else {
+        } catch {
           setScore({
             transparency_score: 25,
             positive_behavior_score: 18,

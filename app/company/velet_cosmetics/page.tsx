@@ -61,7 +61,7 @@ export default function CompanyPage() {
           .from("reputation_events")
           .select("event_type, points, created_at, metadata")
           .eq("subject_type", "company")
-          .eq("subject_id", "velet_cosmetics")
+          .eq("subject_id", "7c9071c5-1b04-4fd6-b0db-deb55dcdd145")
           .order("created_at", { ascending: false })
           .limit(10);
 
