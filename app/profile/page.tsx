@@ -46,6 +46,7 @@ export default function ProfilePage() {
   const [loading, setLoading] = useState(true);
   const [avatarUploading, setAvatarUploading] = useState(false);
   const [myCompany, setMyCompany] = useState<{ handle: string; display_name: string; ethq_score: number; logo_url?: string | null } | null>(null);
+  const [companyLogoError, setCompanyLogoError] = useState(false);
   const [editing, setEditing] = useState(false);
   const [editForm, setEditForm] = useState({
     full_name: "", bio: "", profession: "", location: "",
@@ -463,14 +464,17 @@ export default function ProfilePage() {
           <section className="rounded-2xl border border-emerald-800/30 bg-emerald-500/5 p-5">
             <h2 className="text-xs font-semibold text-neutral-400 uppercase tracking-wider mb-3">Mi empresa</h2>
             <div className="flex items-center gap-4">
-              <div className="w-14 h-14 rounded-xl bg-[#111111] flex items-center justify-center overflow-hidden shrink-0">
-                {myCompany.logo_url ? (
+              <div className="w-14 h-14 rounded-lg bg-[#1a1a1a] flex items-center justify-center overflow-hidden shrink-0">
+                {myCompany.logo_url && !companyLogoError ? (
                   // eslint-disable-next-line @next/next/no-img-element
-                  <img src={myCompany.logo_url} alt={myCompany.display_name} className="w-full h-full object-contain p-1.5" onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }} />
-                ) : null}
-                {/* Fallback initials (siempre renderizado, oculto si hay logo) */}
-                {!myCompany.logo_url && (
-                  <span className="text-lg font-bold text-white">{myCompany.display_name?.[0]?.toUpperCase() ?? "E"}</span>
+                  <img
+                    src={myCompany.logo_url.startsWith("/") ? myCompany.logo_url : myCompany.logo_url}
+                    alt={myCompany.display_name}
+                    className="w-full h-full object-contain p-1"
+                    onError={() => setCompanyLogoError(true)}
+                  />
+                ) : (
+                  <span className="text-lg font-bold text-white">{(myCompany.display_name ?? "E").slice(0, 2).toUpperCase()}</span>
                 )}
               </div>
               <div className="flex-1 min-w-0">
