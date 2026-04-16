@@ -20,6 +20,7 @@ type Profile = {
   twitter_url: string | null;
   tiktok_url: string | null;
   youtube_url: string | null;
+  user_type: string | null;
 };
 
 type UserScore = {
@@ -489,6 +490,12 @@ export default function ProfilePage() {
               </Link>
             </div>
           </section>
+        )}
+        {!myCompany && profile?.user_type === "company" && (
+          <Link href="/company/new" className="block rounded-2xl border border-emerald-500/30 bg-emerald-500/5 p-5 text-center hover:bg-emerald-500/10 transition-colors">
+            <p className="text-sm font-semibold text-emerald-400">Crear mi empresa →</p>
+            <p className="text-xs text-neutral-500 mt-1">Registra tu empresa para obtener el badge verificado</p>
+          </Link>
         )}
 
         {/* ── Premium ── */}

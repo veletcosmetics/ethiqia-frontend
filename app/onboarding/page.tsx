@@ -160,7 +160,7 @@ export default function OnboardingPage() {
 
   const handleFinish = async () => {
     await saveProfile({ onboarding_completed: true });
-    router.push("/feed");
+    router.push(userType === "company" ? "/company/new" : "/feed");
   };
 
   if (loading) {
