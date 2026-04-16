@@ -14,6 +14,13 @@ export default function CompanyPage() {
   const [logoError, setLogoError] = useState(false);
   const [uploadingDoc, setUploadingDoc] = useState(false);
   const [admin, setAdmin] = useState<{ id: string; full_name: string; avatar_url: string | null } | null>(null);
+  const [isOwner, setIsOwner] = useState(false);
+  const [editMode, setEditMode] = useState(false);
+  const [editForm, setEditForm] = useState({
+    display_name: "", bio: "", website: "", sector: "", founded_year: "", country: "", city: "",
+  });
+  const [savingEdit, setSavingEdit] = useState(false);
+  const [uploadingLogo, setUploadingLogo] = useState(false);
   const [activity, setActivity] = useState<{ title: string; date: string; points: number }[]>([]);
   const [activityLoaded, setActivityLoaded] = useState(false);
 
@@ -30,13 +37,26 @@ export default function CompanyPage() {
       try {
         const { data: { user } } = await supabaseBrowser.auth.getUser();
         if (user) {
+          // Check ownership via company_profiles
+          const { data: companyRow } = await supabaseBrowser
+            .from("company_profiles")
+            .select("owner_user_id")
+            .eq("handle", "velet_cosmetics")
+            .maybeSingle();
+          if (companyRow?.owner_user_id === user.id) {
+            setIsOwner(true);
+            setEditForm({
+              display_name: data.name, bio: "Cooperativa espanola de cosmetica profesional vegana.", website: "veletcosmetics.com",
+              sector: data.sector, founded_year: "2019", country: data.country, city: "Elche, Alicante",
+            });
+          }
+          // Load admin profile for display
           const { data: prof } = await supabaseBrowser
             .from("profiles")
-            .select("id, full_name, avatar_url, user_type")
-            .eq("id", user.id)
+            .select("id, full_name, avatar_url")
+            .eq("id", companyRow?.owner_user_id ?? user.id)
             .maybeSingle();
-          // Solo mostrar como admin si user_type es company
-          if (prof?.full_name && prof.user_type === "company") {
+          if (prof?.full_name && companyRow?.owner_user_id === user.id) {
             setAdmin({ id: prof.id, full_name: prof.full_name, avatar_url: prof.avatar_url });
           }
         }
@@ -118,7 +138,107 @@ export default function CompanyPage() {
                 Cooperativa espanola de cosmetica profesional vegana. Formulacion biotecnologica, sin testeo animal, con registros CPNP y FDA activos.
               </p>
             </div>
+
+            {isOwner && (
+              <button type="button" onClick={() => setEditMode(!editMode)} className="text-xs text-emerald-400 hover:text-emerald-300 transition-colors shrink-0 self-start mt-1">
+                {editMode ? "Cancelar" : "Editar empresa"}
+              </button>
+            )}
           </div>
+
+          {/* Formulario edicion empresa (solo owner) */}
+          {editMode && isOwner && (
+            <div className="mt-5 pt-5 border-t border-neutral-800 space-y-3">
+              {/* Logo upload */}
+              <div>
+                <label className="text-[11px] text-neutral-500 mb-1 block">Logo</label>
+                <label className="inline-flex items-center gap-2 cursor-pointer text-xs text-emerald-400 hover:text-emerald-300 transition-colors">
+                  <input type="file" accept="image/*" className="hidden" onChange={async (e) => {
+                    const file = e.target.files?.[0];
+                    if (!file) return;
+                    setUploadingLogo(true);
+                    try {
+                      const formData = new FormData();
+                      formData.append("file", file);
+                      const { data: session } = await supabaseBrowser.auth.getSession();
+                      const token = session.session?.access_token;
+                      const res = await fetch("/api/upload-avatar", { method: "POST", headers: token ? { Authorization: `Bearer ${token}` } : {}, body: formData });
+                      if (res.ok) {
+                        const json = await res.json();
+                        const url = json.publicUrl ?? json.url;
+                        if (url) {
+                          await supabaseBrowser.from("company_profiles").update({ logo_url: url }).eq("handle", "velet_cosmetics");
+                          setLogoError(false);
+                        }
+                      }
+                    } catch { /* no-op */ }
+                    finally { setUploadingLogo(false); e.target.value = ""; }
+                  }} />
+                  {uploadingLogo ? "Subiendo..." : "Cambiar logo"}
+                </label>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="text-[11px] text-neutral-500 mb-1 block">Nombre comercial</label>
+                  <input className="w-full rounded-lg bg-black border border-neutral-700 px-3 py-1.5 text-sm text-white focus:outline-none focus:ring-1 focus:ring-emerald-500" value={editForm.display_name} onChange={(e) => setEditForm(f => ({ ...f, display_name: e.target.value }))} />
+                </div>
+                <div>
+                  <label className="text-[11px] text-neutral-500 mb-1 block">Web oficial</label>
+                  <input className="w-full rounded-lg bg-black border border-neutral-700 px-3 py-1.5 text-sm text-white focus:outline-none focus:ring-1 focus:ring-emerald-500" value={editForm.website} onChange={(e) => setEditForm(f => ({ ...f, website: e.target.value }))} />
+                </div>
+                <div>
+                  <label className="text-[11px] text-neutral-500 mb-1 block">Sector</label>
+                  <input className="w-full rounded-lg bg-black border border-neutral-700 px-3 py-1.5 text-sm text-white focus:outline-none focus:ring-1 focus:ring-emerald-500" value={editForm.sector} onChange={(e) => setEditForm(f => ({ ...f, sector: e.target.value }))} />
+                </div>
+                <div>
+                  <label className="text-[11px] text-neutral-500 mb-1 block">Ano de fundacion</label>
+                  <input className="w-full rounded-lg bg-black border border-neutral-700 px-3 py-1.5 text-sm text-white focus:outline-none focus:ring-1 focus:ring-emerald-500" value={editForm.founded_year} onChange={(e) => setEditForm(f => ({ ...f, founded_year: e.target.value }))} placeholder="2019" />
+                </div>
+                <div>
+                  <label className="text-[11px] text-neutral-500 mb-1 block">Pais</label>
+                  <input className="w-full rounded-lg bg-black border border-neutral-700 px-3 py-1.5 text-sm text-white focus:outline-none focus:ring-1 focus:ring-emerald-500" value={editForm.country} onChange={(e) => setEditForm(f => ({ ...f, country: e.target.value }))} />
+                </div>
+                <div>
+                  <label className="text-[11px] text-neutral-500 mb-1 block">Ciudad</label>
+                  <input className="w-full rounded-lg bg-black border border-neutral-700 px-3 py-1.5 text-sm text-white focus:outline-none focus:ring-1 focus:ring-emerald-500" value={editForm.city} onChange={(e) => setEditForm(f => ({ ...f, city: e.target.value }))} />
+                </div>
+              </div>
+              <div>
+                <label className="text-[11px] text-neutral-500 mb-1 block">Descripcion</label>
+                <textarea className="w-full rounded-lg bg-black border border-neutral-700 px-3 py-2 text-sm text-white focus:outline-none focus:ring-1 focus:ring-emerald-500 resize-none" rows={3} value={editForm.bio} onChange={(e) => setEditForm(f => ({ ...f, bio: e.target.value }))} />
+              </div>
+              <button
+                type="button"
+                disabled={savingEdit}
+                onClick={async () => {
+                  setSavingEdit(true);
+                  try {
+                    const { error } = await supabaseBrowser.from("company_profiles").update({
+                      display_name: editForm.display_name || null,
+                      bio: editForm.bio || null,
+                      website: editForm.website || null,
+                      sector: editForm.sector || null,
+                      founded_year: editForm.founded_year ? parseInt(editForm.founded_year) : null,
+                      country: editForm.country || null,
+                      city: editForm.city || null,
+                    }).eq("handle", "velet_cosmetics");
+                    if (error) {
+                      console.error("Error guardando empresa:", error);
+                      alert(`Error: ${error.message}`);
+                    } else {
+                      setEditMode(false);
+                    }
+                  } catch (err: any) {
+                    alert(`Error: ${err?.message}`);
+                  } finally { setSavingEdit(false); }
+                }}
+                className="rounded-full bg-emerald-500 hover:bg-emerald-600 px-5 py-1.5 text-xs font-semibold disabled:opacity-50 transition-colors"
+              >
+                {savingEdit ? "Guardando..." : "Guardar cambios"}
+              </button>
+            </div>
+          )}
         </header>
 
         {/* METRICAS */}
